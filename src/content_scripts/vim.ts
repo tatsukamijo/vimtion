@@ -84,9 +84,23 @@ const getModeText = (mode: "insert" | "normal") => {
 const setCursorPosition = (element: Element, index: number) => {
   console.log(`[Vim-Notion] setCursorPosition: setting position ${index} on element:`, element);
 
-  let i = 0;
   const childNodes = Array.from(element.childNodes);
 
+  // Handle empty elements (no child nodes or only empty text)
+  if (childNodes.length === 0 || (element.textContent?.length || 0) === 0) {
+    const range = document.createRange();
+    const selection = window.getSelection();
+
+    // Select the element itself for empty lines
+    range.selectNodeContents(element);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    console.log(`[Vim-Notion] Cursor set to empty element`);
+    return;
+  }
+
+  let i = 0;
   for (const node of childNodes) {
     const isInRange = index >= i && index <= i + node.textContent.length;
     if (isInRange && node.nodeType === Node.ELEMENT_NODE) {
