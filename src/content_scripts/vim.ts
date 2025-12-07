@@ -173,6 +173,22 @@ const insertAtLineStart = () => {
   updateInfoContainer();
 };
 
+const insertAfterCursor = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const lineLength = currentElement.textContent?.length || 0;
+
+  // Move cursor one position forward (unless at end of line)
+  if (currentCursorPosition < lineLength) {
+    setCursorPosition(currentElement, currentCursorPosition + 1);
+    vim_info.desired_column = currentCursorPosition + 1;
+  }
+
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
 const deleteCharacter = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -391,10 +407,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
   } = window;
 
   switch (e.key) {
-    case "a":
     case "i":
       window.vim_info.mode = "insert";
       updateInfoContainer();
+      return true;
+    case "a":
+      insertAfterCursor();
       return true;
     case "A":
       insertAtLineEnd();
