@@ -54,9 +54,34 @@ This fork has been updated to:
 | `I` |    ✅     | Insert at beginning of line                                                                                                        |
 | `x` |    ✅     | Delete character under cursor (copies to clipboard)                                                                                |
 | `s` |    ✅     | Substitute character (delete and enter insert mode)                                                                                |
-| `v` |    ✅     | Enter visual mode (character-wise, single line only)                                                                               |
-| `d` |    ✅     | Delete selection (visual mode only, copies to clipboard)                                                                           |
+| `v` |    ✅     | Enter visual mode (character-wise selection)                                                                                       |
+| `V` |    ✅     | Enter visual line mode (line-wise selection, supports multi-line with j/k)                                                         |
+| `d` |    ✅     | Delete selection (visual/visual-line mode, copies to clipboard)                                                                    |
+| `y` |    ✅     | Yank (copy) selection (visual/visual-line mode)                                                                                    |
+| `p` |    ✅     | Paste from clipboard after cursor                                                                                                  |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
+
+#### Visual Mode Motions
+When in visual mode (`v`), you can use these motions to extend the selection:
+| Key | Supported | Comments                                                                                                                           |
+| :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
+| `h` |    ✅     | Extend selection left                                                                                                              |
+| `l` |    ✅     | Extend selection right                                                                                                             |
+| `w` |    ✅     | Extend selection to next word                                                                                                      |
+| `b` |    ✅     | Extend selection to previous word                                                                                                  |
+| `e` |    ✅     | Extend selection to end of word                                                                                                    |
+| `W` |    ✅     | Extend selection to next WORD                                                                                                      |
+| `B` |    ✅     | Extend selection to previous WORD                                                                                                  |
+| `E` |    ✅     | Extend selection to end of WORD                                                                                                    |
+| `0` |    ✅     | Extend selection to beginning of line                                                                                              |
+| `$` |    ✅     | Extend selection to end of line                                                                                                    |
+
+#### Visual Line Mode Motions
+When in visual line mode (`V`), you can use these motions:
+| Key | Supported | Comments                                                                                                                           |
+| :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
+| `j` |    ✅     | Extend selection down one line                                                                                                     |
+| `k` |    ✅     | Extend selection up one line                                                                                                       |
 
 ### Planned Support
 
@@ -66,8 +91,7 @@ This fork has been updated to:
 | `G` |     🗓     | Jump to last line                                                                                               |
 | `d` |     🗓     | Delete operator (normal mode with motions like `dw`, `dd`, `d$`)                                               |
 | `c` |     🗓     | Change operator                                                                                                 |
-| `y` |     🗓     | Yank (copy) operator                                                                                            |
-| `p` |     🗓     | Paste from clipboard                                                                                            |
+| `y` |     🗓     | Yank operator (normal mode with motions like `yw`, `yy`, `y$`)                                                 |
 | `o` |     🗓     | Open new line below                                                                                             |
 | `O` |     🗓     | Open new line above                                                                                             |
 | `f` |     🗓     | Find character forward                                                                                          |
