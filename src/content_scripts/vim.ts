@@ -70,6 +70,15 @@ const jumpToNextWord = () => {
     pos++;
   }
 
+  // If we reached end of line, move to next line
+  if (pos >= text.length && vim_info.active_line < vim_info.lines.length - 1) {
+    setActiveLine(vim_info.active_line + 1);
+    const nextElement = vim_info.lines[vim_info.active_line].element;
+    setCursorPosition(nextElement, 0);
+    vim_info.desired_column = 0;
+    return;
+  }
+
   setCursorPosition(currentElement, pos);
   vim_info.desired_column = pos;
 };
@@ -80,7 +89,17 @@ const jumpToPreviousWord = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const text = currentElement.textContent || "";
 
-  if (currentCursorPosition === 0) return;
+  // If at beginning of line, move to end of previous line
+  if (currentCursorPosition === 0) {
+    if (vim_info.active_line > 0) {
+      setActiveLine(vim_info.active_line - 1);
+      const prevElement = vim_info.lines[vim_info.active_line].element;
+      const prevLineLength = prevElement.textContent?.length || 0;
+      setCursorPosition(prevElement, prevLineLength);
+      vim_info.desired_column = prevLineLength;
+    }
+    return;
+  }
 
   let pos = currentCursorPosition - 1;
 
@@ -1244,7 +1263,18 @@ const moveCursorBackwards = () => {
 
   console.log(`[Vim-Notion] moveCursorBackwards on line ${vim_info.active_line}, pos ${currentCursorPosition}`);
 
-  if (currentCursorPosition === 0) return;
+  // If at beginning of line, move to end of previous line
+  if (currentCursorPosition === 0) {
+    if (vim_info.active_line > 0) {
+      setActiveLine(vim_info.active_line - 1);
+      const prevElement = vim_info.lines[vim_info.active_line].element;
+      const prevLineLength = prevElement.textContent?.length || 0;
+      setCursorPosition(prevElement, prevLineLength);
+      vim_info.desired_column = prevLineLength;
+    }
+    return;
+  }
+
   const newPosition = currentCursorPosition - 1;
   setCursorPosition(currentElement, newPosition);
   vim_info.desired_column = newPosition; // Remember this column
@@ -1254,11 +1284,21 @@ const moveCursorForwards = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const lineLength = currentElement.textContent?.length || 0;
 
   console.log(`[Vim-Notion] moveCursorForwards on line ${vim_info.active_line}, pos ${currentCursorPosition}`);
 
-  if (currentCursorPosition >= (currentElement.textContent?.length || 0))
+  // If at end of line, move to next line
+  if (currentCursorPosition >= lineLength) {
+    if (vim_info.active_line < vim_info.lines.length - 1) {
+      setActiveLine(vim_info.active_line + 1);
+      const nextElement = vim_info.lines[vim_info.active_line].element;
+      setCursorPosition(nextElement, 0);
+      vim_info.desired_column = 0;
+    }
     return;
+  }
+
   const newPosition = currentCursorPosition + 1;
   setCursorPosition(currentElement, newPosition);
   vim_info.desired_column = newPosition; // Remember this column

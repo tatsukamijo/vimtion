@@ -36,12 +36,12 @@ This fork has been updated to:
 
 | Key | Supported | Comments                                                                                                                           |
 | :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `h` |    ✅     | Move cursor left                                                                                                                   |
+| `h` |    ✅     | Move cursor left (wraps to previous line)                                                                                         |
 | `j` |    ✅     | Move cursor down (preserves column position!)                                                                                      |
 | `k` |    ✅     | Move cursor up (preserves column position!)                                                                                        |
-| `l` |    ✅     | Move cursor right                                                                                                                  |
-| `w` |    ✅     | Jump to next word                                                                                                                  |
-| `b` |    ✅     | Jump to previous word                                                                                                              |
+| `l` |    ✅     | Move cursor right (wraps to next line)                                                                                             |
+| `w` |    ✅     | Jump to next word (wraps to next line)                                                                                             |
+| `b` |    ✅     | Jump to previous word (wraps to previous line)                                                                                     |
 | `e` |    ✅     | Jump to end of word                                                                                                                |
 | `W` |    ✅     | Jump to next WORD (space-separated)                                                                                                |
 | `B` |    ✅     | Jump to previous WORD (space-separated)                                                                                            |
