@@ -49,11 +49,13 @@ This fork has been updated to:
 | `0` |    ✅     | Jump to beginning of line                                                                                                          |
 | `$` |    ✅     | Jump to end of line                                                                                                                |
 | `i` |    ✅     | Enter insert mode                                                                                                                  |
-| `a` |    ✅     | Enter insert mode (same as `i` for now)                                                                                            |
+| `a` |    ✅     | Enter insert mode after cursor                                                                                                     |
 | `A` |    ✅     | Insert at end of line                                                                                                              |
 | `I` |    ✅     | Insert at beginning of line                                                                                                        |
-| `x` |    ✅     | Delete character under cursor                                                                                                      |
+| `x` |    ✅     | Delete character under cursor (copies to clipboard)                                                                                |
 | `s` |    ✅     | Substitute character (delete and enter insert mode)                                                                                |
+| `v` |    ✅     | Enter visual mode (character-wise, single line only)                                                                               |
+| `d` |    ✅     | Delete selection (visual mode only, copies to clipboard)                                                                           |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
 
 ### Planned Support
@@ -62,10 +64,10 @@ This fork has been updated to:
 | :-: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
 | `g` |     🗓     | Limited support planned. Will only support gg.                                                                  |
 | `G` |     🗓     | Jump to last line                                                                                               |
-| `d` |     🗓     | Delete operator                                                                                                 |
+| `d` |     🗓     | Delete operator (normal mode with motions like `dw`, `dd`, `d$`)                                               |
 | `c` |     🗓     | Change operator                                                                                                 |
 | `y` |     🗓     | Yank (copy) operator                                                                                            |
-| `p` |     🗓     | Paste                                                                                                           |
+| `p` |     🗓     | Paste from clipboard                                                                                            |
 | `o` |     🗓     | Open new line below                                                                                             |
 | `O` |     🗓     | Open new line above                                                                                             |
 | `f` |     🗓     | Find character forward                                                                                          |
@@ -85,9 +87,7 @@ This fork has been updated to:
 | `m` |    ❌     |
 | `n` |    ❌     |
 | `q` |    ❌     |
-| `s` |    ❌     |
 | `u` |    ❌     |
-| `v` |    ❌     |
 | `z` |    ❌     |
 | `H` |    ❌     |
 | `J` |    ❌     |
