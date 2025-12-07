@@ -516,9 +516,11 @@ const updateVisualSelection = () => {
     }
   };
 
+  const lineLength = currentElement.textContent?.length || 0;
+
   const [selStart, selEnd] = startPos <= currentPos
-    ? [startPos, currentPos + 1]  // Include character under cursor
-    : [currentPos, startPos + 1];
+    ? [startPos, Math.min(currentPos + 1, lineLength)]  // Include character under cursor, but don't exceed line length
+    : [currentPos, Math.min(startPos + 1, lineLength)];
 
   setRangeInElement(currentElement, selStart, selEnd);
   selection?.removeAllRanges();
