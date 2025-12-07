@@ -1,10 +1,30 @@
-# VIM for Notion
+# Vimtion
 
-This is a project created by [Luke Ingalls](https://www.linkedin.com/in/luke-ingalls/).
+A Chrome extension that brings Vim keybindings to Notion, updated for modern Chrome compatibility.
 
-In general, I have implemented commands to the degree in which I miss them when using notion. This is by no means meant to be a complete implementation. If you have questions you can reach out to me.
+## About This Project
 
-# Supported commands
+This project is based on [lukeingalls/vim-notion](https://github.com/lukeingalls/vim-notion), originally created by [Luke Ingalls](https://www.linkedin.com/in/luke-ingalls/). The original project stopped being maintained around 4 years ago and became incompatible with modern Chrome versions due to the Manifest V2 to V3 migration.
+
+This fork has been updated to:
+- **Chrome Manifest V3** compatibility
+- **Modern dependencies** (Parcel 2.x, TypeScript 5.x)
+- **Improved vim keybindings** with proper cursor position handling and column memory for j/k navigation
+
+## Installation
+
+**Local Installation**:
+1. Clone this repository
+2. Run `npm install` (or `yarn install`)
+3. Run `npm run build` (or `yarn build`)
+4. Load the `dist` folder as an unpacked extension in Chrome
+   - Go to `chrome://extensions/`
+   - Enable "Developer mode"
+   - Click "Load unpacked" and select the `dist` folder
+
+[How to install unpacked extensions in Chrome](https://webkul.com/blog/how-to-install-the-unpacked-extension-in-chrome/)
+
+## Supported Commands
 
 | Support Icon |      Definition      |
 | :----------: | :------------------: |
@@ -12,64 +32,92 @@ In general, I have implemented commands to the degree in which I miss them when 
 |      ✅      | Feature is Supported |
 |      ❌      |  No support planned  |
 
+### Currently Working Commands
+
 | Key | Supported | Comments                                                                                                                           |
 | :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `a` |    ✅     | [`caret-shape`](https://css-tricks.com/almanac/properties/c/caret-shape/) isn't supported yet so `i` and `a` operate the same way. |
-| `b` |     🗓     |                                                                                                                                    |
-| `c` |     🗓     |                                                                                                                                    |
-| `d` |     🗓     |                                                                                                                                    |
-| `e` |     🗓     |                                                                                                                                    |
-| `f` |     🗓     |                                                                                                                                    |
-| `g` |     🗓     | Limited support is planned. Will only support gg.                                                                                  |
-| `h` |    ✅     |                                                                                                                                    |
-| `i` |    ✅     | **See a**                                                                                                                          |
-| `j` |    ✅     | The cursor position within a line is not preserved when moving with j and k.                                                       |
-| `k` |    ✅     | **See j**                                                                                                                          |
-| `l` |    ✅     |                                                                                                                                    |
-| `m` |    ❌     |                                                                                                                                    |
-| `n` |    ❌     |                                                                                                                                    |
-| `o` |     🗓     |                                                                                                                                    |
-| `p` |     🗓     |                                                                                                                                    |
-| `q` |    ❌     |                                                                                                                                    |
-| `r` |     🗓     |                                                                                                                                    |
-| `s` |    ❌     |                                                                                                                                    |
-| `t` |     🗓     |                                                                                                                                    |
-| `u` |    ❌     |                                                                                                                                    |
-| `v` |    ❌     |                                                                                                                                    |
-| `w` |     🗓     |                                                                                                                                    |
-| `x` |     🗓     |                                                                                                                                    |
-| `y` |     🗓     | Limited support is planned. Will support `yy`, `yw`, `yb`,`ye`, and capitalized variants of the aforementioned.                    |
-| `z` |    ❌     |                                                                                                                                    |
-| `A` |     🗓     |                                                                                                                                    |
-| `B` |     🗓     |                                                                                                                                    |
-| `C` |     🗓     |                                                                                                                                    |
-| `D` |     🗓     |                                                                                                                                    |
-| `E` |     🗓     |                                                                                                                                    |
-| `F` |     🗓     |                                                                                                                                    |
-| `G` |     🗓     |                                                                                                                                    |
-| `H` |    ❌     |                                                                                                                                    |
-| `I` |     🗓     |                                                                                                                                    |
-| `J` |    ❌     |                                                                                                                                    |
-| `K` |    ❌     |                                                                                                                                    |
-| `L` |    ❌     |                                                                                                                                    |
-| `M` |    ❌     |                                                                                                                                    |
-| `N` |    ❌     |                                                                                                                                    |
-| `O` |     🗓     |                                                                                                                                    |
-| `P` |     🗓     |                                                                                                                                    |
-| `Q` |    ❌     |                                                                                                                                    |
-| `R` |    ❌     |                                                                                                                                    |
-| `S` |    ❌     |                                                                                                                                    |
-| `T` |     🗓     |                                                                                                                                    |
-| `U` |    ❌     |                                                                                                                                    |
-| `V` |    ❌     |                                                                                                                                    |
-| `W` |    ✅     |                                                                                                                                    |
-| `X` |     🗓     |                                                                                                                                    |
-| `Y` |    ❌     |                                                                                                                                    |
-| `Z` |    ❌     |                                                                                                                                    |
+| `h` |    ✅     | Move cursor left                                                                                                                   |
+| `j` |    ✅     | Move cursor down (preserves column position!)                                                                                      |
+| `k` |    ✅     | Move cursor up (preserves column position!)                                                                                        |
+| `l` |    ✅     | Move cursor right                                                                                                                  |
+| `i` |    ✅     | Enter insert mode                                                                                                                  |
+| `a` |    ✅     | Enter insert mode (same as `i` for now)                                                                                            |
+| `Esc` |  ✅     | Return to normal mode                                                                                                              |
 
-# Setup and Install
+### Planned Support
 
-**Hosted**: There is not currently a hosted version. I will be putting up a version on the chrome extension store once the commands listed under the planned support are completed.
+| Key | Supported | Comments                                                                                                        |
+| :-: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
+| `w` |     🗓     | Jump to next word                                                                                               |
+| `W` |     🗓     | Jump to next WORD                                                                                               |
+| `b` |     🗓     | Jump to previous word                                                                                           |
+| `B` |     🗓     | Jump to previous WORD                                                                                           |
+| `e` |     🗓     | Jump to end of word                                                                                             |
+| `E` |     🗓     | Jump to end of WORD                                                                                             |
+| `0` |     🗓     | Jump to beginning of line                                                                                       |
+| `$` |     🗓     | Jump to end of line                                                                                             |
+| `g` |     🗓     | Limited support planned. Will only support gg.                                                                  |
+| `G` |     🗓     | Jump to last line                                                                                               |
+| `x` |     🗓     | Delete character                                                                                                |
+| `d` |     🗓     | Delete operator                                                                                                 |
+| `c` |     🗓     | Change operator                                                                                                 |
+| `y` |     🗓     | Yank (copy) operator                                                                                            |
+| `p` |     🗓     | Paste                                                                                                           |
+| `o` |     🗓     | Open new line below                                                                                             |
+| `O` |     🗓     | Open new line above                                                                                             |
+| `A` |     🗓     | Insert at end of line                                                                                           |
+| `I` |     🗓     | Insert at beginning of line                                                                                     |
+| `f` |     🗓     | Find character forward                                                                                          |
+| `F` |     🗓     | Find character backward                                                                                         |
+| `t` |     🗓     | Till character forward                                                                                          |
+| `T` |     🗓     | Till character backward                                                                                         |
+| `r` |     🗓     | Replace character                                                                                               |
+| `C` |     🗓     | Change to end of line                                                                                           |
+| `D` |     🗓     | Delete to end of line                                                                                           |
+| `P` |     🗓     | Paste before cursor                                                                                             |
+| `X` |     🗓     | Delete character before cursor                                                                                  |
 
-**Local**: First, clone the repository wherever you want it. Next run `yarn install` and then run `yarn build`. The build should create a `dist` directory which holds the extension. You will be able to run the extension by loading the `dist` folder as an unpacked extension for Chrome. [Here is an article that explains how to do that](https://webkul.com/blog/how-to-install-the-unpacked-extension-in-chrome/).
-Currently, Chrome is the main browser being supported. My guess is most chromium browser ought to work but there is no gaurantee (it depends on whether they use the Chrome keyword or browser keyword for extension apis). Long term I would only specifically support Chrome and Firefox (if I am the only dev).
+### No Support Planned
+
+| Key | Supported |
+| :-: | :-------: |
+| `m` |    ❌     |
+| `n` |    ❌     |
+| `q` |    ❌     |
+| `s` |    ❌     |
+| `u` |    ❌     |
+| `v` |    ❌     |
+| `z` |    ❌     |
+| `H` |    ❌     |
+| `J` |    ❌     |
+| `K` |    ❌     |
+| `L` |    ❌     |
+| `M` |    ❌     |
+| `N` |    ❌     |
+| `Q` |    ❌     |
+| `R` |    ❌     |
+| `S` |    ❌     |
+| `U` |    ❌     |
+| `V` |    ❌     |
+| `Y` |    ❌     |
+| `Z` |    ❌     |
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Build the extension
+npm run build
+
+# The built extension will be in the dist/ folder
+```
+
+## Credits
+
+Original implementation by [Luke Ingalls](https://github.com/lukeingalls) - [vim-notion](https://github.com/lukeingalls/vim-notion)
+
+## License
+
+MIT License - see LICENSE file for details
