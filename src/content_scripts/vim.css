@@ -21,3 +21,29 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   white-space: nowrap;
 }
+
+/* Normal mode: hide native cursor, we'll draw our own */
+body.vim-normal-mode [contenteditable="true"] {
+  caret-color: transparent !important;
+}
+
+/* Insert mode: thin purple cursor */
+body.vim-insert-mode [contenteditable="true"] {
+  caret-color: #667eea !important;
+}
+
+/* Custom block cursor for normal mode */
+.vim-block-cursor {
+  position: absolute;
+  background-color: rgba(102, 126, 234, 0.5);
+  width: 8px;
+  height: 1.2em;
+  pointer-events: none;
+  z-index: 9999;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}

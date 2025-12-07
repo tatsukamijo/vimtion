@@ -9,6 +9,49 @@ const createInfoContainer = () => {
   document.body.appendChild(infoContainer);
 };
 
+const createBlockCursor = () => {
+  const cursor = document.createElement("div");
+  cursor.classList.add("vim-block-cursor");
+  cursor.style.display = "none";
+  document.body.appendChild(cursor);
+  return cursor;
+};
+
+const updateBlockCursor = () => {
+  const { vim_info } = window;
+  let blockCursor = document.querySelector(".vim-block-cursor") as HTMLDivElement;
+
+  if (!blockCursor) {
+    blockCursor = createBlockCursor();
+  }
+
+  if (vim_info.mode !== "normal") {
+    blockCursor.style.display = "none";
+    return;
+  }
+
+  // Get current cursor position
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    blockCursor.style.display = "none";
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  const rect = range.getBoundingClientRect();
+
+  if (rect.width === 0 && rect.height === 0) {
+    blockCursor.style.display = "none";
+    return;
+  }
+
+  // Position the block cursor
+  blockCursor.style.display = "block";
+  blockCursor.style.left = `${rect.left + window.scrollX}px`;
+  blockCursor.style.top = `${rect.top + window.scrollY}px`;
+  blockCursor.style.height = `${rect.height || 20}px`;
+};
+
 const jumpToNextWord = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -209,6 +252,7 @@ const setCursorPosition = (element: Element, index: number) => {
     selection.removeAllRanges();
     selection.addRange(range);
     console.log(`[Vim-Notion] Cursor set to empty element`);
+    updateBlockCursor();
     return;
   }
 
@@ -228,6 +272,7 @@ const setCursorPosition = (element: Element, index: number) => {
       selection.removeAllRanges();
       selection.addRange(range);
       console.log(`[Vim-Notion] Cursor set to position ${index}`);
+      updateBlockCursor();
       break;
     }
     i += node.textContent.length;
@@ -446,12 +491,26 @@ const updateInfoContainer = () => {
   const mode = document.querySelector(".vim-mode") as HTMLDivElement;
   const { vim_info } = window;
   mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}`;
+
+  // Update body class for cursor styling
+  if (vim_info.mode === "normal") {
+    document.body.classList.remove("vim-insert-mode");
+    document.body.classList.add("vim-normal-mode");
+  } else {
+    document.body.classList.remove("vim-normal-mode");
+    document.body.classList.add("vim-insert-mode");
+  }
+
+  // Update block cursor position
+  updateBlockCursor();
 };
 
 (() => {
   console.log("[Vim-Notion] Extension loading...");
   initVimInfo();
   createInfoContainer();
+  // Set initial cursor style for normal mode
+  document.body.classList.add("vim-normal-mode");
   console.log("[Vim-Notion] Info container created");
 
   let attempts = 0;
