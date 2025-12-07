@@ -1,13 +1,20 @@
 {
-  "name": "vim-notion",
+  "name": "vimtion",
   "version": "1.0.0",
-  "description": "This is a web extension that will let you use vim from within the notion web client.",
+  "description": "A Chrome extension that brings Vim keybindings to Notion, updated for modern Chrome compatibility.",
   "scripts": {
     "build": "parcel build src/content_scripts/{vim.ts,vim.css} --dist-dir dist/content_scripts && cp src/manifest.json dist/",
     "lint": "eslint"
   },
-  "keywords": [],
-  "author": "Luke Ingalls",
+  "keywords": ["vim", "notion", "chrome-extension", "productivity"],
+  "author": "Tatsuya Kamijo",
+  "maintainers": [
+    "Tatsuya Kamijo"
+  ],
+  "contributors": [
+    "Tatsuya Kamijo",
+    "Luke Ingalls"
+  ],
   "license": "ISC",
   "devDependencies": {
     "@parcel/transformer-typescript-tsc": "^2.12.0",

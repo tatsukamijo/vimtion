@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Vim for Notion",
-  "version": "0.0.1",
-  "description": "Allows you to edit notion documents using vim",
+  "name": "Vimtion",
+  "version": "1.0.0",
+  "description": "A Chrome extension that brings Vim keybindings to Notion",
+  "author": "Luke Ingalls",
   "content_scripts": [
     {
       "matches": ["*://*.notion.so/*"],
