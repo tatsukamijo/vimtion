@@ -1336,6 +1336,97 @@ const deleteInnerWord = () => {
   vim_info.desired_column = start;
 };
 
+// Helper function to find matching brackets/quotes
+const findMatchingBrackets = (text: string, cursorPos: number, openChar: string, closeChar: string): [number, number] | null => {
+  // Find the opening bracket before cursor
+  let openIndex = -1;
+  let closeIndex = -1;
+  let depth = 0;
+
+  // Search backward for opening bracket
+  for (let i = cursorPos; i >= 0; i--) {
+    if (text[i] === closeChar) {
+      depth++;
+    } else if (text[i] === openChar) {
+      if (depth === 0) {
+        openIndex = i;
+        break;
+      }
+      depth--;
+    }
+  }
+
+  // If not found backward, search forward
+  if (openIndex === -1) {
+    depth = 0;
+    for (let i = cursorPos; i < text.length; i++) {
+      if (text[i] === closeChar) {
+        depth++;
+      } else if (text[i] === openChar) {
+        if (depth === 0) {
+          openIndex = i;
+          break;
+        }
+        depth--;
+      }
+    }
+  }
+
+  if (openIndex === -1) return null;
+
+  // Search forward for matching closing bracket
+  depth = 0;
+  for (let i = openIndex + 1; i < text.length; i++) {
+    if (text[i] === openChar) {
+      depth++;
+    } else if (text[i] === closeChar) {
+      if (depth === 0) {
+        closeIndex = i;
+        break;
+      }
+      depth--;
+    }
+  }
+
+  if (closeIndex === -1) return null;
+
+  return [openIndex, closeIndex];
+};
+
+const deleteInnerBracket = (openChar: string, closeChar: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const result = findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  if (!result) return;
+
+  const [openIndex, closeIndex] = result;
+  const newText = text.slice(0, openIndex + 1) + text.slice(closeIndex);
+  currentElement.textContent = newText;
+
+  setCursorPosition(currentElement, openIndex + 1);
+  vim_info.desired_column = openIndex + 1;
+};
+
+const deleteAroundBracket = (openChar: string, closeChar: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const result = findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  if (!result) return;
+
+  const [openIndex, closeIndex] = result;
+  const newText = text.slice(0, openIndex) + text.slice(closeIndex + 1);
+  currentElement.textContent = newText;
+
+  setCursorPosition(currentElement, openIndex);
+  vim_info.desired_column = openIndex;
+};
+
 const deleteFindCharForward = (char: string) => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -1469,6 +1560,46 @@ const changeInnerWord = () => {
   deleteInnerWord();
   window.vim_info.mode = "insert";
   updateInfoContainer();
+};
+
+const changeInnerBracket = (openChar: string, closeChar: string) => {
+  deleteInnerBracket(openChar, closeChar);
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const changeAroundBracket = (openChar: string, closeChar: string) => {
+  deleteAroundBracket(openChar, closeChar);
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const yankInnerBracket = (openChar: string, closeChar: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const result = findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  if (!result) return;
+
+  const [openIndex, closeIndex] = result;
+  const textToYank = text.slice(openIndex + 1, closeIndex);
+  navigator.clipboard.writeText(textToYank);
+};
+
+const yankAroundBracket = (openChar: string, closeChar: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const result = findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  if (!result) return;
+
+  const [openIndex, closeIndex] = result;
+  const textToYank = text.slice(openIndex, closeIndex + 1);
+  navigator.clipboard.writeText(textToYank);
 };
 
 const undo = () => {
@@ -1848,6 +1979,10 @@ const handlePendingOperator = (key: string): boolean => {
         // yi{motion} - yank inner text object, wait for next key
         vim_info.pending_operator = "yi";
         return true;
+      case "a":
+        // ya{motion} - yank around text object, wait for next key
+        vim_info.pending_operator = "ya";
+        return true;
       default:
         console.log('[Vim-Notion] Invalid motion, canceling');
         return true;
@@ -1891,6 +2026,10 @@ const handlePendingOperator = (key: string): boolean => {
         // di{motion} - delete inner text object, wait for next key
         vim_info.pending_operator = "di";
         return true;
+      case "a":
+        // da{motion} - delete around text object, wait for next key
+        vim_info.pending_operator = "da";
+        return true;
       default:
         console.log('[Vim-Notion] Invalid motion, canceling');
         return true;
@@ -1933,6 +2072,10 @@ const handlePendingOperator = (key: string): boolean => {
       case "i":
         // ci{motion} - change inner text object, wait for next key
         vim_info.pending_operator = "ci";
+        return true;
+      case "a":
+        // ca{motion} - change around text object, wait for next key
+        vim_info.pending_operator = "ca";
         return true;
       default:
         console.log('[Vim-Notion] Invalid motion, canceling');
@@ -1989,6 +2132,113 @@ const handlePendingOperator = (key: string): boolean => {
           deleteInnerWord();
         } else if (operator === "ci") {
           changeInnerWord();
+        }
+        return true;
+      case "(":
+      case ")":
+      case "b":
+        if (operator === "yi") {
+          yankInnerBracket("(", ")");
+        } else if (operator === "di") {
+          deleteInnerBracket("(", ")");
+        } else if (operator === "ci") {
+          changeInnerBracket("(", ")");
+        }
+        return true;
+      case "[":
+      case "]":
+        if (operator === "yi") {
+          yankInnerBracket("[", "]");
+        } else if (operator === "di") {
+          deleteInnerBracket("[", "]");
+        } else if (operator === "ci") {
+          changeInnerBracket("[", "]");
+        }
+        return true;
+      case "{":
+      case "}":
+      case "B":
+        if (operator === "yi") {
+          yankInnerBracket("{", "}");
+        } else if (operator === "di") {
+          deleteInnerBracket("{", "}");
+        } else if (operator === "ci") {
+          changeInnerBracket("{", "}");
+        }
+        return true;
+      case "'":
+        if (operator === "yi") {
+          yankInnerBracket("'", "'");
+        } else if (operator === "di") {
+          deleteInnerBracket("'", "'");
+        } else if (operator === "ci") {
+          changeInnerBracket("'", "'");
+        }
+        return true;
+      case '"':
+        if (operator === "yi") {
+          yankInnerBracket('"', '"');
+        } else if (operator === "di") {
+          deleteInnerBracket('"', '"');
+        } else if (operator === "ci") {
+          changeInnerBracket('"', '"');
+        }
+        return true;
+      default:
+        console.log('[Vim-Notion] Invalid text object, canceling');
+        return true;
+    }
+  } else if (operator === "ya" || operator === "da" || operator === "ca") {
+    // Handle around text objects
+    switch (key) {
+      case "(":
+      case ")":
+      case "b":
+        if (operator === "ya") {
+          yankAroundBracket("(", ")");
+        } else if (operator === "da") {
+          deleteAroundBracket("(", ")");
+        } else if (operator === "ca") {
+          changeAroundBracket("(", ")");
+        }
+        return true;
+      case "[":
+      case "]":
+        if (operator === "ya") {
+          yankAroundBracket("[", "]");
+        } else if (operator === "da") {
+          deleteAroundBracket("[", "]");
+        } else if (operator === "ca") {
+          changeAroundBracket("[", "]");
+        }
+        return true;
+      case "{":
+      case "}":
+      case "B":
+        if (operator === "ya") {
+          yankAroundBracket("{", "}");
+        } else if (operator === "da") {
+          deleteAroundBracket("{", "}");
+        } else if (operator === "ca") {
+          changeAroundBracket("{", "}");
+        }
+        return true;
+      case "'":
+        if (operator === "ya") {
+          yankAroundBracket("'", "'");
+        } else if (operator === "da") {
+          deleteAroundBracket("'", "'");
+        } else if (operator === "ca") {
+          changeAroundBracket("'", "'");
+        }
+        return true;
+      case '"':
+        if (operator === "ya") {
+          yankAroundBracket('"', '"');
+        } else if (operator === "da") {
+          deleteAroundBracket('"', '"');
+        } else if (operator === "ca") {
+          changeAroundBracket('"', '"');
         }
         return true;
       default:

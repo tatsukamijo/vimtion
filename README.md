@@ -23,6 +23,7 @@ This fork has been extensively rebuilt with:
 - **Line jumping**: `gg` (first line) and `G` (last line) support
 - **Visual modes**: Character-wise (`v`) and line-wise (`V`) visual selection with full operator support
 - **Operators with motions**: Comprehensive support for d/c/y with all motions (w/W/b/B/e/E/$0/iw)
+- **Text objects**: Full support for `i`(inner) and `a`(around) with brackets, quotes (e.g., `ci(`, `da"`, `yi{`)
 - **Undo/Redo**: `u` for undo, `r` for redo (using native Notion history)
 - **Mouse support**: Click to position cursor in normal mode
 - **Better cursor visibility**: Enhanced block cursor with improved opacity and visibility on empty lines
@@ -43,142 +44,53 @@ This fork has been extensively rebuilt with:
 
 ## Supported Commands
 
-| Support Icon |      Definition      |
-| :----------: | :------------------: |
-|      🗓       |  Support is planned  |
-|      ✅      | Feature is Supported |
-|      ❌      |  No support planned  |
+### Motions
+**Basic**: `h` `j` `k` `l` (with line wrapping) • `w` `b` `e` `W` `B` `E` (word motions) • `0` `$` (line start/end) • `gg` `G` (document start/end)
+**Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character)
 
-### Currently Working Commands
+### Modes
+**Insert**: `i` `I` `a` `A` `o` `O` • **Visual**: `v` (char) `V` (line) • **Normal**: `Esc`
 
-#### Basic Motions
-| Key | Supported | Comments                                                                                                                           |
-| :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `h` |    ✅     | Move cursor left (wraps to previous line)                                                                                         |
-| `j` |    ✅     | Move cursor down (preserves column position!)                                                                                      |
-| `k` |    ✅     | Move cursor up (preserves column position!)                                                                                        |
-| `l` |    ✅     | Move cursor right (wraps to next line)                                                                                             |
-| `w` |    ✅     | Jump to next word (wraps to next line)                                                                                             |
-| `b` |    ✅     | Jump to previous word (wraps to previous line)                                                                                     |
-| `e` |    ✅     | Jump to end of word                                                                                                                |
-| `W` |    ✅     | Jump to next WORD (space-separated)                                                                                                |
-| `B` |    ✅     | Jump to previous WORD (space-separated)                                                                                            |
-| `E` |    ✅     | Jump to end of WORD                                                                                                                |
-| `0` |    ✅     | Jump to beginning of line                                                                                                          |
-| `$` |    ✅     | Jump to end of line                                                                                                                |
-| `gg` |   ✅     | Jump to first line                                                                                                                 |
-| `G` |    ✅     | Jump to last line                                                                                                                  |
-| `f{char}` | ✅  | Find character forward in line                                                                                                     |
-| `F{char}` | ✅  | Find character backward in line                                                                                                    |
-| `t{char}` | ✅  | Till (before) character forward in line                                                                                            |
-| `T{char}` | ✅  | Till (after) character backward in line                                                                                            |
+### Editing
+**Delete**: `x` `X` `s` `D` • **Undo/Redo**: `u` `r` • **Paste**: `p` `P`
 
-#### Mode Commands
-| Key | Supported | Comments                                                                                                                           |
-| :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `i` |    ✅     | Enter insert mode at cursor                                                                                                        |
-| `I` |    ✅     | Enter insert mode at beginning of line                                                                                             |
-| `a` |    ✅     | Enter insert mode after cursor                                                                                                     |
-| `A` |    ✅     | Enter insert mode at end of line                                                                                                   |
-| `o` |    ✅     | Open new line below and enter insert mode                                                                                          |
-| `O` |    ✅     | Open new line above and enter insert mode                                                                                          |
-| `v` |    ✅     | Enter visual mode (character-wise selection)                                                                                       |
-| `V` |    ✅     | Enter visual line mode (line-wise selection)                                                                                       |
-| `Esc` |  ✅     | Return to normal mode                                                                                                              |
+### Operators with Motions
+All operators (`d` delete, `c` change, `y` yank) work with all motions:
+- **Lines**: `dd` `cc` `yy`
+- **Words**: `dw` `cw` `yw` `de` `ce` `ye` `db` `cb` `yb` (also `W` `B` `E` variants)
+- **Line parts**: `d$` `c$` `y$` `d0` `c0` `y0` `D` `C`
+- **Find**: `df{char}` `cf{char}` `dt{char}` `ct{char}` (also `F` `T` variants)
 
-#### Edit Commands
-| Key | Supported | Comments                                                                                                                           |
-| :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `x` |    ✅     | Delete character under cursor (copies to clipboard)                                                                                |
-| `X` |    ✅     | Delete character before cursor                                                                                                     |
-| `s` |    ✅     | Substitute character (delete and enter insert mode)                                                                                |
-| `u` |    ✅     | Undo                                                                                                                                |
-| `r` |    ✅     | Redo (Note: `r` is used for redo instead of replace character)                                                                     |
-| `p` |    ✅     | Paste from clipboard after cursor                                                                                                  |
-| `P` |    ✅     | Paste from clipboard before cursor                                                                                                 |
-| `D` |    ✅     | Delete to end of line (same as `d$`)                                                                                               |
-| `C` |    ✅     | Change to end of line (same as `c$`)                                                                                               |
+### Text Objects
 
-#### Operators with Motions
+Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) work with text objects:
 
-**Delete operator (`d`)**
-| Command | Supported | Comments                                                                                                                     |
-| :-----: | :-------: | :--------------------------------------------------------------------------------------------------------------------------- |
-| `dd`    |    ✅     | Delete entire line                                                                                                           |
-| `dw`    |    ✅     | Delete to next word                                                                                                          |
-| `dW`    |    ✅     | Delete to next WORD                                                                                                          |
-| `de`    |    ✅     | Delete to end of word                                                                                                        |
-| `dE`    |    ✅     | Delete to end of WORD                                                                                                        |
-| `db`    |    ✅     | Delete to previous word                                                                                                      |
-| `dB`    |    ✅     | Delete to previous WORD                                                                                                      |
-| `d$`    |    ✅     | Delete to end of line                                                                                                        |
-| `d0`    |    ✅     | Delete to beginning of line                                                                                                  |
-| `diw`   |    ✅     | Delete inner word (word under cursor)                                                                                        |
-| `df{char}` | ✅  | Delete find character (delete to and including character)                                                                    |
-| `dF{char}` | ✅  | Delete find character backward                                                                                               |
-| `dt{char}` | ✅  | Delete till character (delete up to but not including character)                                                             |
-| `dT{char}` | ✅  | Delete till character backward                                                                                               |
+**Supported delimiters**: `w` (word) • `(` `)` `b` (parentheses) • `[` `]` (brackets) • `{` `}` `B` (braces) • `'` `"` (quotes)
 
-**Change operator (`c`)**
-| Command | Supported | Comments                                                                                                                     |
-| :-----: | :-------: | :--------------------------------------------------------------------------------------------------------------------------- |
-| `cc`    |    ✅     | Change entire line                                                                                                           |
-| `cw`    |    ✅     | Change to next word                                                                                                          |
-| `cW`    |    ✅     | Change to next WORD                                                                                                          |
-| `ce`    |    ✅     | Change to end of word                                                                                                        |
-| `cE`    |    ✅     | Change to end of WORD                                                                                                        |
-| `cb`    |    ✅     | Change to previous word                                                                                                      |
-| `cB`    |    ✅     | Change to previous WORD                                                                                                      |
-| `c$`    |    ✅     | Change to end of line                                                                                                        |
-| `c0`    |    ✅     | Change to beginning of line                                                                                                  |
-| `ciw`   |    ✅     | Change inner word (word under cursor)                                                                                        |
-| `cf{char}` | ✅  | Change find character (delete to and including character, enter insert mode)                                                 |
-| `cF{char}` | ✅  | Change find character backward                                                                                               |
-| `ct{char}` | ✅  | Change till character (delete up to but not including character, enter insert mode)                                          |
-| `cT{char}` | ✅  | Change till character backward                                                                                               |
+**Inner (`i`)**: Content only
+- `ciw` `diw` `yiw` - word under cursor
+- `ci(` `di(` `yi(` - inside `()`
+- `ci[` `di[` `yi[` - inside `[]`
+- `ci{` `di{` `yi{` - inside `{}`
+- `ci'` `di'` `yi'` - inside `''`
+- `ci"` `di"` `yi"` - inside `""`
 
-**Yank operator (`y`)**
-| Command | Supported | Comments                                                                                                                     |
-| :-----: | :-------: | :--------------------------------------------------------------------------------------------------------------------------- |
-| `yy`    |    ✅     | Yank entire line                                                                                                             |
-| `yw`    |    ✅     | Yank to next word                                                                                                            |
-| `yW`    |    ✅     | Yank to next WORD                                                                                                            |
-| `ye`    |    ✅     | Yank to end of word                                                                                                          |
-| `yE`    |    ✅     | Yank to end of WORD                                                                                                          |
-| `yb`    |    ✅     | Yank to previous word                                                                                                        |
-| `yB`    |    ✅     | Yank to previous WORD                                                                                                        |
-| `y$`    |    ✅     | Yank to end of line                                                                                                          |
-| `y0`    |    ✅     | Yank to beginning of line                                                                                                    |
-| `yiw`   |    ✅     | Yank inner word (word under cursor)                                                                                          |
+**Around (`a`)**: Content + delimiters
+- `ca(` `da(` `ya(` - including `()`
+- `ca[` `da[` `ya[` - including `[]`
+- `ca{` `da{` `ya{` - including `{}`
+- `ca'` `da'` `ya'` - including `''`
+- `ca"` `da"` `ya"` - including `""`
 
-#### Visual Mode
-In visual mode (`v` or `V`), you can use motions to extend selection and operators to act on the selection:
+**Example**: In `text (example) text` with cursor on `example`:
+- `ci(` → leaves `()`, enters insert mode
+- `di(` → leaves `()`
+- `ca(` → removes `(example)`, enters insert mode
 
-**Visual character-wise mode (`v`)**
-| Key | Supported | Comments                                                                                                                           |
-| :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `h` |    ✅     | Extend selection left                                                                                                              |
-| `l` |    ✅     | Extend selection right                                                                                                             |
-| `w` |    ✅     | Extend selection to next word                                                                                                      |
-| `b` |    ✅     | Extend selection to previous word                                                                                                  |
-| `e` |    ✅     | Extend selection to end of word                                                                                                    |
-| `W` |    ✅     | Extend selection to next WORD                                                                                                      |
-| `B` |    ✅     | Extend selection to previous WORD                                                                                                  |
-| `E` |    ✅     | Extend selection to end of WORD                                                                                                    |
-| `0` |    ✅     | Extend selection to beginning of line                                                                                              |
-| `$` |    ✅     | Extend selection to end of line                                                                                                    |
-| `d`/`x` | ✅   | Delete selection                                                                                                                   |
-| `y` |    ✅     | Yank (copy) selection                                                                                                              |
-| `c` |    ✅     | Change selection (delete and enter insert mode)                                                                                    |
+### Visual Mode
 
-**Visual line mode (`V`)**
-| Key | Supported | Comments                                                                                                                           |
-| :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `j` |    ✅     | Extend selection down one line                                                                                                     |
-| `k` |    ✅     | Extend selection up one line                                                                                                       |
-| `d`/`x` | ✅   | Delete selected lines                                                                                                              |
-| `y` |    ✅     | Yank (copy) selected lines                                                                                                         |
-| `c` |    ✅     | Change selected lines (delete and enter insert mode)                                                                               |
+**Character-wise (`v`)**: Select with `h` `l` `w` `b` `e` `0` `$`, then `d` `y` `c`
+**Line-wise (`V`)**: Select with `j` `k`, then `d` `y` `c`
 
 ## Known Limitations
 
