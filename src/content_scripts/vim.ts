@@ -98,6 +98,66 @@ const jumpToPreviousWord = () => {
   vim_info.desired_column = pos;
 };
 
+const jumpToEndOfWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  let pos = currentCursorPosition;
+
+  // Always move at least one character forward
+  pos++;
+
+  // Skip non-word characters
+  while (pos < text.length && !/\w/.test(text[pos])) {
+    pos++;
+  }
+
+  // Skip to end of next word
+  while (pos < text.length && /\w/.test(text[pos])) {
+    pos++;
+  }
+
+  pos--; // Move back to last character of the word
+
+  if (pos >= text.length) pos = text.length - 1;
+  if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
+
+  setCursorPosition(currentElement, pos);
+  vim_info.desired_column = pos;
+};
+
+const jumpToEndOfWORD = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  let pos = currentCursorPosition;
+
+  // Always move at least one character forward
+  pos++;
+
+  // Skip whitespace
+  while (pos < text.length && /\s/.test(text[pos])) {
+    pos++;
+  }
+
+  // Skip to end of next WORD
+  while (pos < text.length && !/\s/.test(text[pos])) {
+    pos++;
+  }
+
+  pos--; // Move back to last character of the WORD
+
+  if (pos >= text.length) pos = text.length - 1;
+  if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
+
+  setCursorPosition(currentElement, pos);
+  vim_info.desired_column = pos;
+};
+
 const jumpToNextWORD = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -437,6 +497,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "b":
       jumpToPreviousWord();
+      return true;
+    case "e":
+      jumpToEndOfWord();
+      return true;
+    case "E":
+      jumpToEndOfWORD();
       return true;
     case "W":
       jumpToNextWORD();

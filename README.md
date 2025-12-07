@@ -42,8 +42,10 @@ This fork has been updated to:
 | `l` |    ✅     | Move cursor right                                                                                                                  |
 | `w` |    ✅     | Jump to next word                                                                                                                  |
 | `b` |    ✅     | Jump to previous word                                                                                                              |
+| `e` |    ✅     | Jump to end of word                                                                                                                |
 | `W` |    ✅     | Jump to next WORD (space-separated)                                                                                                |
 | `B` |    ✅     | Jump to previous WORD (space-separated)                                                                                            |
+| `E` |    ✅     | Jump to end of WORD                                                                                                                |
 | `0` |    ✅     | Jump to beginning of line                                                                                                          |
 | `$` |    ✅     | Jump to end of line                                                                                                                |
 | `i` |    ✅     | Enter insert mode                                                                                                                  |
@@ -57,8 +59,6 @@ This fork has been updated to:
 
 | Key | Supported | Comments                                                                                                        |
 | :-: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
-| `e` |     🗓     | Jump to end of word                                                                                             |
-| `E` |     🗓     | Jump to end of WORD                                                                                             |
 | `g` |     🗓     | Limited support planned. Will only support gg.                                                                  |
 | `G` |     🗓     | Jump to last line                                                                                               |
 | `d` |     🗓     | Delete operator                                                                                                 |
