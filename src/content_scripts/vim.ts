@@ -427,6 +427,67 @@ const setCursorPosition = (element: Element, index: number) => {
   }
 };
 
+const handleClick = (e: MouseEvent) => {
+  const { vim_info } = window;
+
+  // Only handle clicks in normal mode
+  if (vim_info.mode !== "normal") {
+    return;
+  }
+
+  // Find which line was clicked
+  const target = e.target as HTMLElement;
+  const clickedElement = target.closest('[contenteditable="true"]') as HTMLDivElement;
+
+  if (!clickedElement) {
+    return;
+  }
+
+  // Find the line index
+  const lineIndex = vim_info.lines.findIndex((line: any) => line.element === clickedElement);
+
+  if (lineIndex === -1) {
+    return;
+  }
+
+  console.log(`[Vim-Notion] Click detected on line ${lineIndex} in normal mode`);
+
+  // Let the browser handle the click to position the cursor, then update our state
+  setTimeout(() => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+
+      // Get cursor position in the element
+      let cursorPos = 0;
+      const walker = document.createTreeWalker(
+        clickedElement,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+
+      let node;
+      let found = false;
+      while ((node = walker.nextNode())) {
+        if (node === range.startContainer) {
+          cursorPos += range.startOffset;
+          found = true;
+          break;
+        }
+        cursorPos += node.textContent?.length || 0;
+      }
+
+      if (found) {
+        // Update active line without moving cursor
+        vim_info.active_line = lineIndex;
+        vim_info.desired_column = cursorPos;
+        updateBlockCursor();
+        console.log(`[Vim-Notion] Cursor moved to position ${cursorPos} on line ${lineIndex}`);
+      }
+    }
+  }, 0);
+};
+
 const handleKeydown = (e: KeyboardEvent) => {
   const { vim_info } = window;
   console.log(`[Vim-Notion] handleKeydown called: key=${e.key}, mode=${vim_info.mode}`);
@@ -1581,7 +1642,8 @@ const refreshLines = () => {
         element: elem,
       });
       elem.addEventListener("keydown", handleKeydown, true);
-      console.log(`[Vim-Notion] Added event listener to new line`);
+      elem.addEventListener("click", handleClick, true);
+      console.log(`[Vim-Notion] Added event listeners to new line`);
     });
 
     console.log(`[Vim-Notion] Total lines: ${vim_info.lines.length}`);
@@ -1605,7 +1667,8 @@ const setLines = (f: HTMLDivElement[]) => {
   // Add event listeners to ALL lines at once
   vim_info.lines.forEach((line, index) => {
     line.element.addEventListener("keydown", handleKeydown, true);
-    console.log(`[Vim-Notion] Added event listener to line ${index}`);
+    line.element.addEventListener("click", handleClick, true);
+    console.log(`[Vim-Notion] Added event listeners to line ${index}`);
   });
 
   // Set initial active line
