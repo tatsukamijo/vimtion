@@ -127,12 +127,14 @@ const handleKeydown = (e: KeyboardEvent) => {
   console.log(`[Vim-Notion] handleKeydown called: key=${e.key}, mode=${vim_info.mode}`);
 
   if (vim_info.mode === "normal") {
-    // Stop event propagation BEFORE processing
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    console.log(`[Vim-Notion] Blocked key in normal mode: ${e.key}`);
-    normalReducer(e);
+    // Let normalReducer decide if this key should be handled
+    const handled = normalReducer(e);
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      console.log(`[Vim-Notion] Blocked key in normal mode: ${e.key}`);
+    }
   } else {
     insertReducer(e);
   }
@@ -221,34 +223,40 @@ const moveCursorForwards = () => {
   vim_info.desired_column = newPosition; // Remember this column
 };
 
-const normalReducer = (e: KeyboardEvent) => {
+const normalReducer = (e: KeyboardEvent): boolean => {
+  // Don't handle keys with modifiers (Command, Ctrl, Alt) - let browser handle them
+  if (e.metaKey || e.ctrlKey || e.altKey) {
+    return false;
+  }
+
   const {
     vim_info: { active_line },
   } = window;
+
   switch (e.key) {
     case "a":
     case "i":
       window.vim_info.mode = "insert";
       updateInfoContainer();
-      break;
+      return true;
     case "h":
       moveCursorBackwards();
-      break;
+      return true;
     case "j":
       setActiveLine(active_line + 1);
-      break;
+      return true;
     case "k":
       setActiveLine(active_line - 1);
-      break;
+      return true;
     case "l":
       moveCursorForwards();
-      break;
+      return true;
     case "W":
       jumpToNextWORD();
-      break;
+      return true;
     default:
-      // Block all other keys in normal mode
-      break;
+      // Don't block unhandled keys - let browser/Notion handle them
+      return false;
   }
 };
 
