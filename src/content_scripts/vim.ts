@@ -250,6 +250,76 @@ const jumpToLineEnd = () => {
   vim_info.desired_column = lineLength;
 };
 
+const findCharForward = (char: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  // Search for character after current position
+  const foundIndex = text.indexOf(char, currentPos + 1);
+  if (foundIndex !== -1) {
+    setCursorPosition(currentElement, foundIndex);
+    vim_info.desired_column = foundIndex;
+    console.log(`[Vim-Notion] Found '${char}' at position ${foundIndex}`);
+  } else {
+    console.log(`[Vim-Notion] Character '${char}' not found forward`);
+  }
+};
+
+const findCharBackward = (char: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  // Search for character before current position
+  const foundIndex = text.lastIndexOf(char, currentPos - 1);
+  if (foundIndex !== -1) {
+    setCursorPosition(currentElement, foundIndex);
+    vim_info.desired_column = foundIndex;
+    console.log(`[Vim-Notion] Found '${char}' at position ${foundIndex}`);
+  } else {
+    console.log(`[Vim-Notion] Character '${char}' not found backward`);
+  }
+};
+
+const tillCharForward = (char: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  // Search for character after current position, but stop one before it
+  const foundIndex = text.indexOf(char, currentPos + 1);
+  if (foundIndex !== -1) {
+    const targetPos = foundIndex - 1;
+    setCursorPosition(currentElement, targetPos);
+    vim_info.desired_column = targetPos;
+    console.log(`[Vim-Notion] Till '${char}' at position ${targetPos}`);
+  } else {
+    console.log(`[Vim-Notion] Character '${char}' not found forward`);
+  }
+};
+
+const tillCharBackward = (char: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  // Search for character before current position, but stop one after it
+  const foundIndex = text.lastIndexOf(char, currentPos - 1);
+  if (foundIndex !== -1) {
+    const targetPos = foundIndex + 1;
+    setCursorPosition(currentElement, targetPos);
+    vim_info.desired_column = targetPos;
+    console.log(`[Vim-Notion] Till '${char}' at position ${targetPos}`);
+  } else {
+    console.log(`[Vim-Notion] Character '${char}' not found backward`);
+  }
+};
+
 const insertAtLineEnd = () => {
   jumpToLineEnd();
   window.vim_info.mode = "insert";
@@ -606,7 +676,7 @@ const initVimInfo = () => {
     mode: "normal" as "normal" | "insert" | "visual" | "visual-line",
     visual_start_line: 0,
     visual_start_pos: 0,
-    pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "g" | null, // For commands like yy, dd, gg, etc.
+    pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "g" | "f" | "F" | "t" | "T" | null, // For commands like yy, dd, gg, ff, etc.
   };
   window.vim_info = vim_info;
 };
@@ -1465,7 +1535,27 @@ const handlePendingOperator = (key: string): boolean => {
   // Clear pending operator
   vim_info.pending_operator = null;
 
-  if (operator === "g") {
+  if (operator === "f") {
+    // Handle f{char} - find character forward
+    console.log(`[Vim-Notion] Executing f${key}`);
+    findCharForward(key);
+    return true;
+  } else if (operator === "F") {
+    // Handle F{char} - find character backward
+    console.log(`[Vim-Notion] Executing F${key}`);
+    findCharBackward(key);
+    return true;
+  } else if (operator === "t") {
+    // Handle t{char} - till character forward
+    console.log(`[Vim-Notion] Executing t${key}`);
+    tillCharForward(key);
+    return true;
+  } else if (operator === "T") {
+    // Handle T{char} - till character backward
+    console.log(`[Vim-Notion] Executing T${key}`);
+    tillCharBackward(key);
+    return true;
+  } else if (operator === "g") {
     // Handle g commands
     switch (key) {
       case "g":
@@ -1685,6 +1775,18 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       console.log('[Vim-Notion] Executing G (jump to last line)');
       setActiveLine(vim_info.lines.length - 1);
       jumpToLineStart();
+      return true;
+    case "f":
+      window.vim_info.pending_operator = "f";
+      return true;
+    case "F":
+      window.vim_info.pending_operator = "F";
+      return true;
+    case "t":
+      window.vim_info.pending_operator = "t";
+      return true;
+    case "T":
+      window.vim_info.pending_operator = "T";
       return true;
     case "u":
       undo();

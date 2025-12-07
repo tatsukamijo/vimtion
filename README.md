@@ -63,6 +63,10 @@ This fork has been extensively rebuilt with:
 | `$` |    ✅     | Jump to end of line                                                                                                                |
 | `gg` |   ✅     | Jump to first line                                                                                                                 |
 | `G` |    ✅     | Jump to last line                                                                                                                  |
+| `f{char}` | ✅  | Find character forward in line                                                                                                     |
+| `F{char}` | ✅  | Find character backward in line                                                                                                    |
+| `t{char}` | ✅  | Till (before) character forward in line                                                                                            |
+| `T{char}` | ✅  | Till (after) character backward in line                                                                                            |
 
 #### Mode Commands
 | Key | Supported | Comments                                                                                                                           |
@@ -174,14 +178,6 @@ This will correctly create separate Notion blocks for each line. Single-line pas
 
 | Command | Supported | Comments                                                                                                        |
 | :-----: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
-| `f{char}` |   🗓     | Find character forward in line                                                                                  |
-| `F{char}` |   🗓     | Find character backward in line                                                                                 |
-| `t{char}` |   🗓     | Till (before) character forward in line                                                                         |
-| `T{char}` |   🗓     | Till (after) character backward in line                                                                         |
-| `dt{char}` |  🗓     | Delete till character                                                                                           |
-| `ct{char}` |  🗓     | Change till character                                                                                           |
-| `df{char}` |  🗓     | Delete find character                                                                                           |
-| `cf{char}` |  🗓     | Change find character                                                                                           |
 | `C`     |     🗓     | Change to end of line (same as `c$`)                                                                            |
 | `D`     |     🗓     | Delete to end of line (same as `d$`)                                                                            |
 | `P`     |     🗓     | Paste before cursor                                                                                             |
