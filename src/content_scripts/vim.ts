@@ -258,12 +258,20 @@ const deleteCharacter = () => {
   // Don't delete if at end of line
   if (currentCursorPosition >= text.length) return;
 
-  // Delete character by reconstructing text
-  const newText = text.slice(0, currentCursorPosition) + text.slice(currentCursorPosition + 1);
-  currentElement.textContent = newText;
-
-  // Keep cursor at same position
+  // Select the character at cursor position
   setCursorPosition(currentElement, currentCursorPosition);
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) {
+    const r = sel.getRangeAt(0);
+    r.setStart(r.startContainer, r.startOffset);
+    r.setEnd(r.startContainer, r.startOffset + 1);
+    sel.removeAllRanges();
+    sel.addRange(r);
+
+    // Cut to clipboard like vim's 'x' command
+    document.execCommand('cut');
+  }
+
   vim_info.desired_column = currentCursorPosition;
 };
 
@@ -281,12 +289,21 @@ const substituteCharacter = () => {
     return;
   }
 
-  // Delete character by reconstructing text
-  const newText = text.slice(0, currentCursorPosition) + text.slice(currentCursorPosition + 1);
-  currentElement.textContent = newText;
+  // Select the character at cursor position
+  setCursorPosition(currentElement, currentCursorPosition);
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) {
+    const r = sel.getRangeAt(0);
+    r.setStart(r.startContainer, r.startOffset);
+    r.setEnd(r.startContainer, r.startOffset + 1);
+    sel.removeAllRanges();
+    sel.addRange(r);
+
+    // Delete the selection using execCommand
+    document.execCommand('delete');
+  }
 
   // Keep cursor at same position and enter insert mode
-  setCursorPosition(currentElement, currentCursorPosition);
   vim_info.desired_column = currentCursorPosition;
 
   window.vim_info.mode = "insert";
@@ -565,19 +582,10 @@ const deleteVisualSelection = () => {
     return;
   }
 
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentPos = getCursorIndexInElement(currentElement);
-  const startPos = vim_info.visual_start_pos;
-  const text = currentElement.textContent || "";
+  // The selection is already set by updateVisualSelection
+  // Use 'cut' to copy to clipboard like vim's 'd' command
+  document.execCommand('cut');
 
-  const [delStart, delEnd] = startPos < currentPos
-    ? [startPos, currentPos + 1]
-    : [currentPos, startPos + 1];
-
-  const newText = text.slice(0, delStart) + text.slice(delEnd);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, delStart);
   vim_info.mode = "normal";
   window.getSelection()?.removeAllRanges();
   updateInfoContainer();
