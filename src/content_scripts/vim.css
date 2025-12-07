@@ -41,6 +41,15 @@ body.vim-visual-mode [contenteditable="true"] {
   caret-color: #667eea !important;
 }
 
+/* Visual line mode: highlight selection */
+body.vim-visual-line-mode [contenteditable="true"]::selection {
+  background-color: rgba(102, 126, 234, 0.3) !important;
+}
+
+body.vim-visual-line-mode [contenteditable="true"] {
+  caret-color: #667eea !important;
+}
+
 /* Custom block cursor for normal mode */
 .vim-block-cursor {
   position: absolute;
