@@ -56,12 +56,24 @@ This fork has been updated to:
 | `s` |    ✅     | Substitute character (delete and enter insert mode)                                                                                |
 | `v` |    ✅     | Enter visual mode (character-wise selection)                                                                                       |
 | `V` |    ✅     | Enter visual line mode (line-wise selection, supports multi-line with j/k)                                                         |
-| `d` |    ✅     | Delete selection (visual/visual-line mode, copies to clipboard)                                                                    |
-| `y` |    ✅     | Yank (copy) - supports both visual mode selection and normal mode with motions                                                     |
-| `yy` |   ✅     | Yank (copy) entire line                                                                                                            |
-| `yw` |   ✅     | Yank (copy) to next word                                                                                                           |
-| `y$` |   ✅     | Yank (copy) to end of line                                                                                                         |
-| `y0` |   ✅     | Yank (copy) to beginning of line                                                                                                   |
+| `d` |    ✅     | Delete operator - works with motions and in visual mode (copies to clipboard)                                                     |
+| `dd` |   ✅     | Delete entire line                                                                                                                 |
+| `dw` |   ✅     | Delete to next word                                                                                                                |
+| `d$` |   ✅     | Delete to end of line                                                                                                              |
+| `d0` |   ✅     | Delete to beginning of line                                                                                                        |
+| `diw` |  ✅     | Delete inner word (word under cursor)                                                                                              |
+| `c` |    ✅     | Change operator - deletes and enters insert mode, works with motions                                                               |
+| `cc` |   ✅     | Change entire line                                                                                                                 |
+| `cw` |   ✅     | Change to next word                                                                                                                |
+| `c$` |   ✅     | Change to end of line                                                                                                              |
+| `c0` |   ✅     | Change to beginning of line                                                                                                        |
+| `ciw` |  ✅     | Change inner word (word under cursor)                                                                                              |
+| `y` |    ✅     | Yank (copy) operator - works with motions and in visual mode                                                                       |
+| `yy` |   ✅     | Yank entire line                                                                                                                   |
+| `yw` |   ✅     | Yank to next word                                                                                                                  |
+| `y$` |   ✅     | Yank to end of line                                                                                                                |
+| `y0` |   ✅     | Yank to beginning of line                                                                                                          |
+| `yiw` |  ✅     | Yank inner word (word under cursor)                                                                                                |
 | `p` |    ✅     | Paste from clipboard after cursor                                                                                                  |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
 
@@ -93,8 +105,6 @@ When in visual line mode (`V`), you can use these motions:
 | :-: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
 | `g` |     🗓     | Limited support planned. Will only support gg.                                                                  |
 | `G` |     🗓     | Jump to last line                                                                                               |
-| `d` |     🗓     | Delete operator (normal mode with motions like `dw`, `dd`, `d$`)                                               |
-| `c` |     🗓     | Change operator                                                                                                 |
 | `o` |     🗓     | Open new line below                                                                                             |
 | `O` |     🗓     | Open new line above                                                                                             |
 | `f` |     🗓     | Find character forward                                                                                          |

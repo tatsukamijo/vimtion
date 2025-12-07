@@ -815,6 +815,169 @@ const yankToBeginningOfLine = async () => {
   }
 };
 
+const getInnerWordBounds = (text: string, pos: number): [number, number] => {
+  let start = pos;
+  let end = pos;
+
+  // If not on a word character, return empty range
+  if (!/\w/.test(text[pos])) {
+    return [pos, pos];
+  }
+
+  // Find start of word
+  while (start > 0 && /\w/.test(text[start - 1])) {
+    start--;
+  }
+
+  // Find end of word
+  while (end < text.length && /\w/.test(text[end])) {
+    end++;
+  }
+
+  return [start, end];
+};
+
+const yankInnerWord = async () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const [start, end] = getInnerWordBounds(text, currentCursorPosition);
+  const yankedText = text.slice(start, end);
+
+  try {
+    await navigator.clipboard.writeText(yankedText);
+  } catch (err) {
+    console.error('[Vim-Notion] Failed to yank:', err);
+  }
+};
+
+const deleteCurrentLine = async () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+
+  // Select entire line
+  const range = document.createRange();
+  range.selectNodeContents(currentElement);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+
+  // Cut to clipboard
+  document.execCommand('cut');
+};
+
+const deleteToNextWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  let pos = currentCursorPosition;
+
+  // Skip current word
+  while (pos < text.length && /\w/.test(text[pos])) {
+    pos++;
+  }
+
+  // Skip non-word characters
+  while (pos < text.length && !/\w/.test(text[pos])) {
+    pos++;
+  }
+
+  // Select from cursor to pos
+  setCursorPosition(currentElement, currentCursorPosition);
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) {
+    const r = sel.getRangeAt(0);
+    r.setStart(r.startContainer, r.startOffset);
+    r.setEnd(r.startContainer, r.startOffset + (pos - currentCursorPosition));
+    sel.removeAllRanges();
+    sel.addRange(r);
+
+    document.execCommand('cut');
+  }
+
+  vim_info.desired_column = currentCursorPosition;
+};
+
+const deleteToEndOfLine = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const newText = text.slice(0, currentCursorPosition);
+  currentElement.textContent = newText;
+
+  setCursorPosition(currentElement, currentCursorPosition);
+  vim_info.desired_column = currentCursorPosition;
+};
+
+const deleteToBeginningOfLine = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const newText = text.slice(currentCursorPosition);
+  currentElement.textContent = newText;
+
+  setCursorPosition(currentElement, 0);
+  vim_info.desired_column = 0;
+};
+
+const deleteInnerWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const [start, end] = getInnerWordBounds(text, currentCursorPosition);
+
+  const newText = text.slice(0, start) + text.slice(end);
+  currentElement.textContent = newText;
+
+  setCursorPosition(currentElement, start);
+  vim_info.desired_column = start;
+};
+
+const changeCurrentLine = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+
+  currentElement.textContent = "";
+  setCursorPosition(currentElement, 0);
+  vim_info.desired_column = 0;
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const changeToNextWord = () => {
+  deleteToNextWord();
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const changeToEndOfLine = () => {
+  deleteToEndOfLine();
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const changeToBeginningOfLine = () => {
+  deleteToBeginningOfLine();
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const changeInnerWord = () => {
+  deleteInnerWord();
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
 const visualMoveCursorBackwards = () => {
   const { vim_info } = window;
 
@@ -1086,27 +1249,97 @@ const handlePendingOperator = (key: string): boolean => {
     switch (key) {
       case "y":
         console.log('[Vim-Notion] Executing yy');
-        // yy - yank entire line
         yankCurrentLine();
         return true;
       case "w":
         console.log('[Vim-Notion] Executing yw');
-        // yw - yank to next word
         yankToNextWord();
         return true;
       case "$":
         console.log('[Vim-Notion] Executing y$');
-        // y$ - yank to end of line
         yankToEndOfLine();
         return true;
       case "0":
         console.log('[Vim-Notion] Executing y0');
-        // y0 - yank to beginning of line
         yankToBeginningOfLine();
+        return true;
+      case "i":
+        // yi{motion} - yank inner text object, wait for next key
+        vim_info.pending_operator = "yi";
         return true;
       default:
         console.log('[Vim-Notion] Invalid motion, canceling');
-        // Invalid motion, just cancel
+        return true;
+    }
+  } else if (operator === "d") {
+    // Handle delete operations
+    switch (key) {
+      case "d":
+        console.log('[Vim-Notion] Executing dd');
+        deleteCurrentLine();
+        return true;
+      case "w":
+        console.log('[Vim-Notion] Executing dw');
+        deleteToNextWord();
+        return true;
+      case "$":
+        console.log('[Vim-Notion] Executing d$');
+        deleteToEndOfLine();
+        return true;
+      case "0":
+        console.log('[Vim-Notion] Executing d0');
+        deleteToBeginningOfLine();
+        return true;
+      case "i":
+        // di{motion} - delete inner text object, wait for next key
+        vim_info.pending_operator = "di";
+        return true;
+      default:
+        console.log('[Vim-Notion] Invalid motion, canceling');
+        return true;
+    }
+  } else if (operator === "c") {
+    // Handle change operations (delete and enter insert mode)
+    switch (key) {
+      case "c":
+        console.log('[Vim-Notion] Executing cc');
+        changeCurrentLine();
+        return true;
+      case "w":
+        console.log('[Vim-Notion] Executing cw');
+        changeToNextWord();
+        return true;
+      case "$":
+        console.log('[Vim-Notion] Executing c$');
+        changeToEndOfLine();
+        return true;
+      case "0":
+        console.log('[Vim-Notion] Executing c0');
+        changeToBeginningOfLine();
+        return true;
+      case "i":
+        // ci{motion} - change inner text object, wait for next key
+        vim_info.pending_operator = "ci";
+        return true;
+      default:
+        console.log('[Vim-Notion] Invalid motion, canceling');
+        return true;
+    }
+  } else if (operator === "yi" || operator === "di" || operator === "ci") {
+    // Handle inner text objects
+    switch (key) {
+      case "w":
+        console.log(`[Vim-Notion] Executing ${operator}w`);
+        if (operator === "yi") {
+          yankInnerWord();
+        } else if (operator === "di") {
+          deleteInnerWord();
+        } else if (operator === "ci") {
+          changeInnerWord();
+        }
+        return true;
+      default:
+        console.log('[Vim-Notion] Invalid text object, canceling');
         return true;
     }
   }
@@ -1198,6 +1431,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "y":
       window.vim_info.pending_operator = "y";
+      return true;
+    case "d":
+      window.vim_info.pending_operator = "d";
+      return true;
+    case "c":
+      window.vim_info.pending_operator = "c";
       return true;
     default:
       // Block all other keys in normal mode (including space, numbers, etc.)
