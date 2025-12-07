@@ -1,5 +1,3 @@
-import { keywords, whitespace } from "../constants";
-
 const createInfoContainer = () => {
   const { vim_info } = window;
   const infoContainer = document.createElement("div");
@@ -11,29 +9,72 @@ const createInfoContainer = () => {
   document.body.appendChild(infoContainer);
 };
 
-// W - Disabled for now to avoid errors
-// Will be re-enabled after fixing setActiveLine reference
-const jumpToNextWORD = (node?: HTMLElement, start_position?: number) => {
-  // Simplified implementation without setActiveLine
-  const currentCursorPosition = start_position ?? getCursorIndex();
-  const currentNode = node || (document.activeElement as HTMLElement);
-  const currentLineTextContent = currentNode.innerText;
+const jumpToNextWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
 
-  const currentRemainingText = currentLineTextContent.slice(
-    currentCursorPosition
-  );
+  let pos = currentCursorPosition;
 
-  const nextWhiteSpaceAfterCursor = currentRemainingText.search(whitespace);
-  const nextWhiteSpaceIndex =
-    nextWhiteSpaceAfterCursor >= 0
-      ? currentCursorPosition + nextWhiteSpaceAfterCursor
-      : currentLineTextContent.length;
-
-  if (nextWhiteSpaceIndex < currentLineTextContent.length) {
-    setCursorPosition(currentNode, nextWhiteSpaceIndex + 1);
-  } else {
-    setCursorPosition(currentNode, nextWhiteSpaceIndex);
+  // Skip current word (alphanumeric characters)
+  while (pos < text.length && /\w/.test(text[pos])) {
+    pos++;
   }
+
+  // Skip non-word characters (spaces, punctuation)
+  while (pos < text.length && !/\w/.test(text[pos])) {
+    pos++;
+  }
+
+  setCursorPosition(currentElement, pos);
+  vim_info.desired_column = pos;
+};
+
+const jumpToPreviousWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  if (currentCursorPosition === 0) return;
+
+  let pos = currentCursorPosition - 1;
+
+  // Skip non-word characters (spaces, punctuation) backwards
+  while (pos > 0 && !/\w/.test(text[pos])) {
+    pos--;
+  }
+
+  // Skip current word backwards
+  while (pos > 0 && /\w/.test(text[pos - 1])) {
+    pos--;
+  }
+
+  setCursorPosition(currentElement, pos);
+  vim_info.desired_column = pos;
+};
+
+const jumpToNextWORD = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  let pos = currentCursorPosition;
+
+  // Skip non-whitespace characters
+  while (pos < text.length && !/\s/.test(text[pos])) {
+    pos++;
+  }
+
+  // Skip whitespace
+  while (pos < text.length && /\s/.test(text[pos])) {
+    pos++;
+  }
+
+  setCursorPosition(currentElement, pos);
+  vim_info.desired_column = pos;
 };
 
 const getActiveLine = () => {
@@ -250,6 +291,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "l":
       moveCursorForwards();
+      return true;
+    case "w":
+      jumpToNextWord();
+      return true;
+    case "b":
+      jumpToPreviousWord();
       return true;
     case "W":
       jumpToNextWORD();
