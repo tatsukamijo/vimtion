@@ -726,6 +726,14 @@ const startVisualMode = () => {
   updateInfoContainer();
 };
 
+const clearAllBackgroundColors = () => {
+  // Clear background colors from ALL contenteditable elements in the document
+  const allEditableElements = document.querySelectorAll("[contenteditable=true]");
+  allEditableElements.forEach((elem) => {
+    (elem as HTMLElement).style.backgroundColor = '';
+  });
+};
+
 const startVisualLineMode = () => {
   const { vim_info } = window;
 
@@ -742,6 +750,9 @@ const updateVisualLineSelection = () => {
 
   if (vim_info.mode !== "visual-line") return;
 
+  // First, clear any previous highlights from all elements
+  clearAllBackgroundColors();
+
   const selection = window.getSelection();
   const range = document.createRange();
 
@@ -753,13 +764,38 @@ const updateVisualLineSelection = () => {
     ? [startLine, endLine]
     : [endLine, startLine];
 
+  // Highlight all lines in range
+  for (let i = firstLine; i <= lastLine; i++) {
+    const element = vim_info.lines[i].element;
+    element.style.backgroundColor = 'rgba(102, 126, 234, 0.3)';
+  }
+
   // Set range to cover all lines from first to last
   const firstElement = vim_info.lines[firstLine].element;
   const lastElement = vim_info.lines[lastLine].element;
 
-  // Select from the beginning of the first line to the end of the last line
-  range.setStartBefore(firstElement.firstChild || firstElement);
-  range.setEndAfter(lastElement.lastChild || lastElement);
+  // For empty lines, we need to select the element itself to show background
+  // Check if elements have content
+  const firstHasContent = firstElement.childNodes.length > 0;
+  const lastHasContent = lastElement.childNodes.length > 0;
+
+  if (firstHasContent && lastHasContent) {
+    // Both have content: select from start of first to end of last
+    range.setStartBefore(firstElement.firstChild!);
+    range.setEndAfter(lastElement.lastChild!);
+  } else if (!firstHasContent && !lastHasContent) {
+    // Both empty: select the elements themselves
+    range.setStart(firstElement, 0);
+    range.setEnd(lastElement, 0);
+  } else if (!firstHasContent) {
+    // First is empty: select first element and content of last
+    range.setStart(firstElement, 0);
+    range.setEndAfter(lastElement.lastChild!);
+  } else {
+    // Last is empty: select content of first and last element
+    range.setStartBefore(firstElement.firstChild!);
+    range.setEnd(lastElement, 0);
+  }
 
   selection?.removeAllRanges();
   selection?.addRange(range);
@@ -890,6 +926,8 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
 
   switch (e.key) {
     case "Escape":
+      // Clear background highlights from all elements
+      clearAllBackgroundColors();
       vim_info.mode = "normal";
       window.getSelection()?.removeAllRanges();
       updateInfoContainer();
@@ -937,12 +975,88 @@ const visualLineMoveCursorUp = () => {
 const deleteVisualLineSelection = () => {
   const { vim_info } = window;
 
-  // Use execCommand('cut') to delete and copy to clipboard
-  document.execCommand('cut');
+  const startLine = vim_info.visual_start_line;
+  const endLine = vim_info.active_line;
 
-  vim_info.mode = "normal";
-  window.getSelection()?.removeAllRanges();
-  updateInfoContainer();
+  // Determine the range of lines to delete
+  const [firstLine, lastLine] = startLine <= endLine
+    ? [startLine, endLine]
+    : [endLine, startLine];
+
+  console.log(`[Vim-Notion] Deleting lines ${firstLine} to ${lastLine}`);
+
+  // Collect text from all lines for clipboard
+  const textLines: string[] = [];
+  for (let i = firstLine; i <= lastLine; i++) {
+    textLines.push(vim_info.lines[i].element.textContent || '');
+  }
+  const clipboardText = textLines.join('\n');
+
+  // Copy to clipboard
+  navigator.clipboard.writeText(clipboardText).catch(err => {
+    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  });
+
+  // Clear background highlights from all elements before deletion
+  clearAllBackgroundColors();
+
+  // Get the parent blocks (the selectable divs, not just contenteditable)
+  const firstElement = vim_info.lines[firstLine].element;
+  const lastElement = vim_info.lines[lastLine].element;
+
+  // Find the notion-selectable parent blocks
+  const firstBlock = firstElement.closest('[data-block-id]') || firstElement.parentElement?.parentElement;
+  const lastBlock = lastElement.closest('[data-block-id]') || lastElement.parentElement?.parentElement;
+
+  if (!firstBlock || !lastBlock) {
+    console.error('[Vim-Notion] Could not find block elements');
+    vim_info.mode = "normal";
+    updateInfoContainer();
+    return;
+  }
+
+  // Create a range that selects the entire blocks
+  const range = document.createRange();
+  range.setStartBefore(firstBlock);
+  range.setEndAfter(lastBlock);
+
+  // Set the selection
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+
+  // Switch to insert mode and dispatch Backspace to let Notion handle deletion
+  vim_info.mode = "insert";
+
+  setTimeout(() => {
+    // Dispatch Backspace to delete the selection
+    const backspaceEvent = new KeyboardEvent('keydown', {
+      key: 'Backspace',
+      code: 'Backspace',
+      keyCode: 8,
+      which: 8,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    document.activeElement?.dispatchEvent(backspaceEvent) ||
+      firstElement.dispatchEvent(backspaceEvent);
+
+    // Switch back to normal mode after deletion
+    setTimeout(() => {
+      vim_info.mode = "normal";
+      window.getSelection()?.removeAllRanges();
+
+      setTimeout(() => {
+        refreshLines();
+        const newActiveLine = Math.min(firstLine, vim_info.lines.length - 1);
+        if (newActiveLine >= 0) {
+          setActiveLine(newActiveLine);
+        }
+        updateInfoContainer();
+      }, 100);
+    }, 100);
+  }, 50);
 };
 
 const yankVisualSelection = () => {
@@ -961,6 +1075,9 @@ const yankVisualLineSelection = () => {
 
   // Use execCommand('copy') to copy to clipboard without deleting
   document.execCommand('copy');
+
+  // Clear background highlights from all elements
+  clearAllBackgroundColors();
 
   vim_info.mode = "normal";
   window.getSelection()?.removeAllRanges();

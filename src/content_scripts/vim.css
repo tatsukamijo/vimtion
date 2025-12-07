@@ -50,6 +50,18 @@ body.vim-visual-line-mode [contenteditable="true"] {
   caret-color: #667eea !important;
 }
 
+/* Visual line mode: highlight empty lines too */
+body.vim-visual-line-mode [contenteditable="true"]:empty::before {
+  content: '\200B'; /* Zero-width space to make selection visible */
+  display: inline-block;
+}
+
+body.vim-visual-line-mode [contenteditable="true"]:empty::selection {
+  background-color: rgba(102, 126, 234, 0.3) !important;
+  display: block;
+  min-height: 1em;
+}
+
 /* Custom block cursor for normal mode */
 .vim-block-cursor {
   position: absolute;
