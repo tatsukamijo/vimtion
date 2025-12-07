@@ -40,6 +40,10 @@ This fork has been updated to:
 | `j` |    ✅     | Move cursor down (preserves column position!)                                                                                      |
 | `k` |    ✅     | Move cursor up (preserves column position!)                                                                                        |
 | `l` |    ✅     | Move cursor right                                                                                                                  |
+| `w` |    ✅     | Jump to next word                                                                                                                  |
+| `b` |    ✅     | Jump to previous word                                                                                                              |
+| `W` |    ✅     | Jump to next WORD (space-separated)                                                                                                |
+| `B` |    ✅     | Jump to previous WORD (space-separated)                                                                                            |
 | `i` |    ✅     | Enter insert mode                                                                                                                  |
 | `a` |    ✅     | Enter insert mode (same as `i` for now)                                                                                            |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
@@ -48,10 +52,6 @@ This fork has been updated to:
 
 | Key | Supported | Comments                                                                                                        |
 | :-: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
-| `w` |     🗓     | Jump to next word                                                                                               |
-| `W` |     🗓     | Jump to next WORD                                                                                               |
-| `b` |     🗓     | Jump to previous word                                                                                           |
-| `B` |     🗓     | Jump to previous WORD                                                                                           |
 | `e` |     🗓     | Jump to end of word                                                                                             |
 | `E` |     🗓     | Jump to end of WORD                                                                                             |
 | `0` |     🗓     | Jump to beginning of line                                                                                       |
