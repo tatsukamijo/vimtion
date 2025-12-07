@@ -1231,6 +1231,38 @@ const setActiveLine = (idx: number) => {
   console.log(`[Vim-Notion] Active line is now: ${i}, cursor at column ${targetColumn}`);
 };
 
+const refreshLines = () => {
+  const { vim_info } = window;
+  const allEditableElements = Array.from(
+    document.querySelectorAll("[contenteditable=true]")
+  ) as HTMLDivElement[];
+
+  // Find new elements that aren't in our lines array yet
+  const existingElements = new Set(vim_info.lines.map(line => line.element));
+  const newElements = allEditableElements.filter(elem => !existingElements.has(elem));
+
+  if (newElements.length > 0) {
+    console.log(`[Vim-Notion] Found ${newElements.length} new editable elements`);
+
+    // Add new elements to lines array
+    newElements.forEach(elem => {
+      vim_info.lines.push({
+        cursor_position: 0,
+        element: elem,
+      });
+      elem.addEventListener("keydown", handleKeydown, true);
+      console.log(`[Vim-Notion] Added event listener to new line`);
+    });
+
+    console.log(`[Vim-Notion] Total lines: ${vim_info.lines.length}`);
+  }
+
+  // Remove elements that no longer exist in the DOM
+  vim_info.lines = vim_info.lines.filter(line =>
+    document.body.contains(line.element)
+  );
+};
+
 const setLines = (f: HTMLDivElement[]) => {
   const { vim_info } = window;
   console.log(`[Vim-Notion] Setting up ${f.length} lines`);
@@ -1249,6 +1281,18 @@ const setLines = (f: HTMLDivElement[]) => {
   // Set initial active line
   setActiveLine(vim_info.active_line || 0);
   console.log(`[Vim-Notion] Lines setup complete, active line: ${vim_info.active_line}`);
+
+  // Set up MutationObserver to detect new lines
+  const observer = new MutationObserver(() => {
+    refreshLines();
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+
+  console.log("[Vim-Notion] MutationObserver set up to detect new lines");
 };
 
 const updateInfoContainer = () => {
