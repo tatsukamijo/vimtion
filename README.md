@@ -57,7 +57,11 @@ This fork has been updated to:
 | `v` |    ✅     | Enter visual mode (character-wise selection)                                                                                       |
 | `V` |    ✅     | Enter visual line mode (line-wise selection, supports multi-line with j/k)                                                         |
 | `d` |    ✅     | Delete selection (visual/visual-line mode, copies to clipboard)                                                                    |
-| `y` |    ✅     | Yank (copy) selection (visual/visual-line mode)                                                                                    |
+| `y` |    ✅     | Yank (copy) - supports both visual mode selection and normal mode with motions                                                     |
+| `yy` |   ✅     | Yank (copy) entire line                                                                                                            |
+| `yw` |   ✅     | Yank (copy) to next word                                                                                                           |
+| `y$` |   ✅     | Yank (copy) to end of line                                                                                                         |
+| `y0` |   ✅     | Yank (copy) to beginning of line                                                                                                   |
 | `p` |    ✅     | Paste from clipboard after cursor                                                                                                  |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
 
@@ -91,7 +95,6 @@ When in visual line mode (`V`), you can use these motions:
 | `G` |     🗓     | Jump to last line                                                                                               |
 | `d` |     🗓     | Delete operator (normal mode with motions like `dw`, `dd`, `d$`)                                               |
 | `c` |     🗓     | Change operator                                                                                                 |
-| `y` |     🗓     | Yank operator (normal mode with motions like `yw`, `yy`, `y$`)                                                 |
 | `o` |     🗓     | Open new line below                                                                                             |
 | `O` |     🗓     | Open new line above                                                                                             |
 | `f` |     🗓     | Find character forward                                                                                          |

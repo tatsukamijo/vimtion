@@ -441,6 +441,7 @@ const initVimInfo = () => {
     mode: "normal" as "normal" | "insert" | "visual" | "visual-line",
     visual_start_line: 0,
     visual_start_pos: 0,
+    pending_operator: null as "y" | "d" | "c" | null, // For commands like yy, dd, etc.
   };
   window.vim_info = vim_info;
 };
@@ -745,6 +746,75 @@ const pasteAfterCursor = async () => {
   }
 };
 
+const yankCurrentLine = async () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (err) {
+    console.error('[Vim-Notion] Failed to yank:', err);
+  }
+};
+
+const yankToNextWord = async () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  let pos = currentCursorPosition;
+
+  // Skip current word (alphanumeric characters)
+  while (pos < text.length && /\w/.test(text[pos])) {
+    pos++;
+  }
+
+  // Skip non-word characters (spaces, punctuation)
+  while (pos < text.length && !/\w/.test(text[pos])) {
+    pos++;
+  }
+
+  const yankedText = text.slice(currentCursorPosition, pos);
+
+  try {
+    await navigator.clipboard.writeText(yankedText);
+  } catch (err) {
+    console.error('[Vim-Notion] Failed to yank:', err);
+  }
+};
+
+const yankToEndOfLine = async () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const yankedText = text.slice(currentCursorPosition);
+
+  try {
+    await navigator.clipboard.writeText(yankedText);
+  } catch (err) {
+    console.error('[Vim-Notion] Failed to yank:', err);
+  }
+};
+
+const yankToBeginningOfLine = async () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const yankedText = text.slice(0, currentCursorPosition);
+
+  try {
+    await navigator.clipboard.writeText(yankedText);
+  } catch (err) {
+    console.error('[Vim-Notion] Failed to yank:', err);
+  }
+};
+
 const visualMoveCursorBackwards = () => {
   const { vim_info } = window;
 
@@ -996,15 +1066,70 @@ const moveCursorForwards = () => {
   vim_info.desired_column = newPosition; // Remember this column
 };
 
+const handlePendingOperator = (key: string): boolean => {
+  const { vim_info } = window;
+  const operator = vim_info.pending_operator;
+
+  console.log(`[Vim-Notion] handlePendingOperator: operator=${operator}, key=${key}`);
+
+  // Ignore modifier keys - don't clear pending_operator
+  if (key === "Shift" || key === "Control" || key === "Alt" || key === "Meta") {
+    console.log('[Vim-Notion] Ignoring modifier key');
+    return true;
+  }
+
+  // Clear pending operator
+  vim_info.pending_operator = null;
+
+  if (operator === "y") {
+    // Handle yank operations
+    switch (key) {
+      case "y":
+        console.log('[Vim-Notion] Executing yy');
+        // yy - yank entire line
+        yankCurrentLine();
+        return true;
+      case "w":
+        console.log('[Vim-Notion] Executing yw');
+        // yw - yank to next word
+        yankToNextWord();
+        return true;
+      case "$":
+        console.log('[Vim-Notion] Executing y$');
+        // y$ - yank to end of line
+        yankToEndOfLine();
+        return true;
+      case "0":
+        console.log('[Vim-Notion] Executing y0');
+        // y0 - yank to beginning of line
+        yankToBeginningOfLine();
+        return true;
+      default:
+        console.log('[Vim-Notion] Invalid motion, canceling');
+        // Invalid motion, just cancel
+        return true;
+    }
+  }
+
+  return true;
+};
+
 const normalReducer = (e: KeyboardEvent): boolean => {
   // Don't handle keys with modifiers (Command, Ctrl, Alt) - let browser handle them
   if (e.metaKey || e.ctrlKey || e.altKey) {
     return false;
   }
 
-  const {
-    vim_info: { active_line },
-  } = window;
+  const { vim_info } = window;
+  const { active_line, pending_operator } = vim_info;
+
+  console.log(`[Vim-Notion] normalReducer: key=${e.key}, pending_operator=${pending_operator}`);
+
+  // If we have a pending operator, handle it
+  if (pending_operator) {
+    console.log(`[Vim-Notion] Handling pending operator: ${pending_operator}${e.key}`);
+    return handlePendingOperator(e.key);
+  }
 
   switch (e.key) {
     case "i":
@@ -1070,6 +1195,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "p":
       pasteAfterCursor();
+      return true;
+    case "y":
+      window.vim_info.pending_operator = "y";
       return true;
     default:
       // Block all other keys in normal mode (including space, numbers, etc.)
