@@ -75,6 +75,8 @@ This fork has been updated to:
 | `y0` |   ✅     | Yank to beginning of line                                                                                                          |
 | `yiw` |  ✅     | Yank inner word (word under cursor)                                                                                                |
 | `p` |    ✅     | Paste from clipboard after cursor                                                                                                  |
+| `u` |    ✅     | Undo                                                                                                                                |
+| `r` |    ✅     | Redo                                                                                                                                |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
 
 #### Visual Mode Motions
@@ -111,7 +113,6 @@ When in visual line mode (`V`), you can use these motions:
 | `F` |     🗓     | Find character backward                                                                                         |
 | `t` |     🗓     | Till character forward                                                                                          |
 | `T` |     🗓     | Till character backward                                                                                         |
-| `r` |     🗓     | Replace character                                                                                               |
 | `C` |     🗓     | Change to end of line                                                                                           |
 | `D` |     🗓     | Delete to end of line                                                                                           |
 | `P` |     🗓     | Paste before cursor                                                                                             |
@@ -119,12 +120,13 @@ When in visual line mode (`V`), you can use these motions:
 
 ### No Support Planned
 
+**Note**: `r` is used for redo instead of replace character (vim's default behavior). Replace character functionality is not supported.
+
 | Key | Supported |
 | :-: | :-------: |
 | `m` |    ❌     |
 | `n` |    ❌     |
 | `q` |    ❌     |
-| `u` |    ❌     |
 | `z` |    ❌     |
 | `H` |    ❌     |
 | `J` |    ❌     |

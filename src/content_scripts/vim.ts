@@ -978,6 +978,41 @@ const changeInnerWord = () => {
   updateInfoContainer();
 };
 
+const undo = () => {
+  // Simulate Cmd+Z / Ctrl+Z to trigger Notion's undo
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  const event = new KeyboardEvent('keydown', {
+    key: 'z',
+    code: 'KeyZ',
+    keyCode: 90,
+    which: 90,
+    metaKey: isMac,
+    ctrlKey: !isMac,
+    bubbles: true,
+    cancelable: true,
+  });
+
+  document.dispatchEvent(event);
+};
+
+const redo = () => {
+  // Simulate Cmd+Shift+Z / Ctrl+Shift+Z to trigger Notion's redo
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  const event = new KeyboardEvent('keydown', {
+    key: 'z',
+    code: 'KeyZ',
+    keyCode: 90,
+    which: 90,
+    shiftKey: true,
+    metaKey: isMac,
+    ctrlKey: !isMac,
+    bubbles: true,
+    cancelable: true,
+  });
+
+  document.dispatchEvent(event);
+};
+
 const visualMoveCursorBackwards = () => {
   const { vim_info } = window;
 
@@ -1437,6 +1472,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "c":
       window.vim_info.pending_operator = "c";
+      return true;
+    case "u":
+      undo();
+      return true;
+    case "r":
+      redo();
       return true;
     default:
       // Block all other keys in normal mode (including space, numbers, etc.)
