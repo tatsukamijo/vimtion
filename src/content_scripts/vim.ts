@@ -334,7 +334,7 @@ const getCursorIndex = () => {
   return i;
 };
 
-const getModeText = (mode: "insert" | "normal") => {
+const getModeText = (mode: "insert" | "normal" | "visual") => {
   return `-- ${mode.toUpperCase()} --`;
 };
 
@@ -394,6 +394,14 @@ const handleKeydown = (e: KeyboardEvent) => {
       e.stopImmediatePropagation();
       console.log(`[Vim-Notion] Blocked key in normal mode: ${e.key}`);
     }
+  } else if (vim_info.mode === "visual") {
+    const handled = visualReducer(e);
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      console.log(`[Vim-Notion] Blocked key in visual mode: ${e.key}`);
+    }
   } else {
     insertReducer(e);
   }
@@ -405,7 +413,9 @@ const initVimInfo = () => {
     cursor_position: 0,
     desired_column: 0, // Remember cursor column for j/k navigation
     lines: [] as any,
-    mode: "normal" as const,
+    mode: "normal" as "normal" | "insert" | "visual",
+    visual_start_line: 0,
+    visual_start_pos: 0,
   };
   window.vim_info = vim_info;
 };
@@ -422,6 +432,155 @@ const insertReducer = (e: KeyboardEvent) => {
       break;
   }
   return;
+};
+
+const startVisualMode = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+
+  vim_info.mode = "visual";
+  vim_info.visual_start_line = vim_info.active_line;
+  vim_info.visual_start_pos = currentCursorPosition;
+
+  updateInfoContainer();
+};
+
+const updateVisualSelection = () => {
+  const { vim_info } = window;
+
+  if (vim_info.mode !== "visual") return;
+
+  // Only support single-line selection for now
+  if (vim_info.active_line !== vim_info.visual_start_line) {
+    // For now, don't support multi-line
+    return;
+  }
+
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentPos = vim_info.desired_column;
+  const startPos = vim_info.visual_start_pos;
+
+  // Create selection using browser's Selection API
+  const selection = window.getSelection();
+  const range = document.createRange();
+
+  // Find the text node and set range
+  const setRangeInElement = (element: Node, start: number, end: number) => {
+    let textOffset = 0;
+    let startSet = false;
+    let endSet = false;
+
+    for (const node of Array.from(element.childNodes)) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const nodeLength = node.textContent?.length || 0;
+        const nodeEnd = textOffset + nodeLength;
+
+        if (!startSet && start >= textOffset && start <= nodeEnd) {
+          range.setStart(node, Math.min(start - textOffset, nodeLength));
+          startSet = true;
+        }
+        if (!endSet && end >= textOffset && end <= nodeEnd) {
+          range.setEnd(node, Math.min(end - textOffset, nodeLength));
+          endSet = true;
+        }
+
+        textOffset += nodeLength;
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const childLength = node.textContent?.length || 0;
+
+        if (!startSet && start < textOffset + childLength) {
+          setRangeInElement(node, start - textOffset, end - textOffset);
+          return;
+        }
+
+        textOffset += childLength;
+      }
+    }
+  };
+
+  const [selStart, selEnd] = startPos <= currentPos
+    ? [startPos, currentPos + 1]  // Include character under cursor
+    : [currentPos, startPos + 1];
+
+  setRangeInElement(currentElement, selStart, selEnd);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+};
+
+const visualReducer = (e: KeyboardEvent): boolean => {
+  const { vim_info } = window;
+
+  switch (e.key) {
+    case "Escape":
+      vim_info.mode = "normal";
+      window.getSelection()?.removeAllRanges();
+      updateInfoContainer();
+      return true;
+    case "h":
+      visualMoveCursorBackwards();
+      return true;
+    case "j":
+      // For now, disable j/k in visual mode (single line only)
+      return true;
+    case "k":
+      return true;
+    case "l":
+      visualMoveCursorForwards();
+      return true;
+    case "d":
+    case "x":
+      deleteVisualSelection();
+      return true;
+    default:
+      return true; // Block other keys
+  }
+};
+
+const visualMoveCursorBackwards = () => {
+  const { vim_info } = window;
+
+  if (vim_info.desired_column === 0) return;
+
+  vim_info.desired_column--;
+  updateVisualSelection();
+};
+
+const visualMoveCursorForwards = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const lineLength = currentElement.textContent?.length || 0;
+
+  if (vim_info.desired_column >= lineLength) return;
+
+  vim_info.desired_column++;
+  updateVisualSelection();
+};
+
+const deleteVisualSelection = () => {
+  const { vim_info } = window;
+
+  if (vim_info.active_line !== vim_info.visual_start_line) {
+    // Don't support multi-line delete yet
+    return;
+  }
+
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentPos = getCursorIndexInElement(currentElement);
+  const startPos = vim_info.visual_start_pos;
+  const text = currentElement.textContent || "";
+
+  const [delStart, delEnd] = startPos < currentPos
+    ? [startPos, currentPos + 1]
+    : [currentPos, startPos + 1];
+
+  const newText = text.slice(0, delStart) + text.slice(delEnd);
+  currentElement.textContent = newText;
+
+  setCursorPosition(currentElement, delStart);
+  vim_info.mode = "normal";
+  window.getSelection()?.removeAllRanges();
+  updateInfoContainer();
 };
 
 const getCursorIndexInElement = (element: Element): number => {
@@ -548,6 +707,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     case "s":
       substituteCharacter();
       return true;
+    case "v":
+      startVisualMode();
+      return true;
     default:
       // Block all other keys in normal mode (including space, numbers, etc.)
       return true;
@@ -606,11 +768,13 @@ const updateInfoContainer = () => {
   mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}`;
 
   // Update body class for cursor styling
+  document.body.classList.remove("vim-normal-mode", "vim-insert-mode", "vim-visual-mode");
+
   if (vim_info.mode === "normal") {
-    document.body.classList.remove("vim-insert-mode");
     document.body.classList.add("vim-normal-mode");
+  } else if (vim_info.mode === "visual") {
+    document.body.classList.add("vim-visual-mode");
   } else {
-    document.body.classList.remove("vim-normal-mode");
     document.body.classList.add("vim-insert-mode");
   }
 
