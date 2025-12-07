@@ -11,10 +11,10 @@ const createInfoContainer = () => {
   document.body.appendChild(infoContainer);
 };
 
-// W
+// W - Disabled for now to avoid errors
+// Will be re-enabled after fixing setActiveLine reference
 const jumpToNextWORD = (node?: HTMLElement, start_position?: number) => {
-  const active_line = getActiveLine();
-  const lines = getLines();
+  // Simplified implementation without setActiveLine
   const currentCursorPosition = start_position ?? getCursorIndex();
   const currentNode = node || (document.activeElement as HTMLElement);
   const currentLineTextContent = currentNode.innerText;
@@ -28,22 +28,12 @@ const jumpToNextWORD = (node?: HTMLElement, start_position?: number) => {
     nextWhiteSpaceAfterCursor >= 0
       ? currentCursorPosition + nextWhiteSpaceAfterCursor
       : currentLineTextContent.length;
+
   if (nextWhiteSpaceIndex < currentLineTextContent.length) {
     setCursorPosition(currentNode, nextWhiteSpaceIndex + 1);
-    return;
+  } else {
+    setCursorPosition(currentNode, nextWhiteSpaceIndex);
   }
-  // we are on the original line
-  if (!node && lines[active_line + 1]?.element) {
-    const new_elem = lines[active_line + 1].element;
-    setActiveLine(active_line + 1);
-    if (whitespace.test(new_elem.innerText[0])) {
-      jumpToNextWORD(lines[active_line + 1].element, 0);
-    } else {
-      setCursorPosition(new_elem, 0);
-    }
-    return;
-  }
-  setCursorPosition(currentNode, nextWhiteSpaceIndex);
 };
 
 const getActiveLine = () => {
@@ -55,8 +45,13 @@ const getLines = () => {
 };
 
 const getCursorIndex = () => {
-  const range = document.getSelection().getRangeAt(0);
+  const selection = document.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    console.log("[Vim-Notion] getCursorIndex: No selection");
+    return 0;
+  }
 
+  const range = selection.getRangeAt(0);
   let i = 0;
 
   const checkElementNode = (element: Element) => {
@@ -78,6 +73,7 @@ const getCursorIndex = () => {
   };
 
   checkElementNode(document.activeElement);
+  console.log(`[Vim-Notion] getCursorIndex: ${i}, activeElement:`, document.activeElement);
   return i;
 };
 
@@ -86,6 +82,8 @@ const getModeText = (mode: "insert" | "normal") => {
 };
 
 const setCursorPosition = (element: Element, index: number) => {
+  console.log(`[Vim-Notion] setCursorPosition: setting position ${index} on element:`, element);
+
   let i = 0;
   const childNodes = Array.from(element.childNodes);
 
@@ -103,6 +101,7 @@ const setCursorPosition = (element: Element, index: number) => {
       range.collapse(true);
       selection.removeAllRanges();
       selection.addRange(range);
+      console.log(`[Vim-Notion] Cursor set to position ${index}`);
       break;
     }
     i += node.textContent.length;
@@ -111,33 +110,25 @@ const setCursorPosition = (element: Element, index: number) => {
 
 const handleKeydown = (e: KeyboardEvent) => {
   const { vim_info } = window;
+  console.log(`[Vim-Notion] handleKeydown called: key=${e.key}, mode=${vim_info.mode}`);
+
   if (vim_info.mode === "normal") {
+    // Stop event propagation BEFORE processing
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    console.log(`[Vim-Notion] Blocked key in normal mode: ${e.key}`);
     normalReducer(e);
   } else {
     insertReducer(e);
   }
 };
 
-// For reference only
-// const setCaret = () => {
-//   const el = document.activeElement;
-//   console.log(el);
-//   const range = document.createRange();
-//   console.log(range);
-//   const sel = window.getSelection();
-//   console.log(sel);
-//   console.log(el.childNodes);
-//   range.setStart(el.childNodes[1], 0);
-//   range.setEnd(el.childNodes[2], 0);
-
-//   sel.removeAllRanges();
-//   sel.addRange(range);
-// };
-
 const initVimInfo = () => {
   const vim_info = {
     active_line: 0,
     cursor_position: 0,
+    desired_column: 0, // Remember cursor column for j/k navigation
     lines: [] as any,
     mode: "normal" as const,
   };
@@ -158,17 +149,62 @@ const insertReducer = (e: KeyboardEvent) => {
   return;
 };
 
+const getCursorIndexInElement = (element: Element): number => {
+  const selection = document.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    console.log("[Vim-Notion] getCursorIndexInElement: No selection");
+    return 0;
+  }
+
+  const range = selection.getRangeAt(0);
+  let i = 0;
+
+  const checkElementNode = (el: Element): boolean => {
+    for (const node of Array.from(el.childNodes)) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (checkElementNode(node as Element)) {
+          return true;
+        }
+        continue;
+      }
+      if (node.isSameNode(range.startContainer)) {
+        i += range.startOffset;
+        return true;
+      }
+      i += node.textContent?.length || 0;
+    }
+    return false;
+  };
+
+  checkElementNode(element);
+  return i;
+};
+
 const moveCursorBackwards = () => {
-  const currentCursorPosition = getCursorIndex();
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+
+  console.log(`[Vim-Notion] moveCursorBackwards on line ${vim_info.active_line}, pos ${currentCursorPosition}`);
+
   if (currentCursorPosition === 0) return;
-  setCursorPosition(document.activeElement, currentCursorPosition - 1);
+  const newPosition = currentCursorPosition - 1;
+  setCursorPosition(currentElement, newPosition);
+  vim_info.desired_column = newPosition; // Remember this column
 };
 
 const moveCursorForwards = () => {
-  const currentCursorPosition = getCursorIndex();
-  if (currentCursorPosition >= document.activeElement.textContent.length)
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+
+  console.log(`[Vim-Notion] moveCursorForwards on line ${vim_info.active_line}, pos ${currentCursorPosition}`);
+
+  if (currentCursorPosition >= (currentElement.textContent?.length || 0))
     return;
-  setCursorPosition(document.activeElement, currentCursorPosition + 1);
+  const newPosition = currentCursorPosition + 1;
+  setCursorPosition(currentElement, newPosition);
+  vim_info.desired_column = newPosition; // Remember this column
 };
 
 const normalReducer = (e: KeyboardEvent) => {
@@ -178,75 +214,106 @@ const normalReducer = (e: KeyboardEvent) => {
   switch (e.key) {
     case "a":
     case "i":
-      e.preventDefault();
       window.vim_info.mode = "insert";
       updateInfoContainer();
       break;
     case "h":
-      e.preventDefault();
       moveCursorBackwards();
       break;
     case "j":
-      e.preventDefault();
       setActiveLine(active_line + 1);
       break;
     case "k":
-      e.preventDefault();
       setActiveLine(active_line - 1);
       break;
     case "l":
-      e.preventDefault();
       moveCursorForwards();
       break;
     case "W":
-      e.preventDefault();
       jumpToNextWORD();
       break;
     default:
-      e.preventDefault();
+      // Block all other keys in normal mode
       break;
   }
 };
 
 const setActiveLine = (idx: number) => {
   const {
-    vim_info: { lines },
+    vim_info: { lines, desired_column },
   } = window;
-  const active_line = getActiveLine();
   let i = idx;
 
   if (idx >= lines.length) i = lines.length - 1;
   if (i < 0) i = 0;
-  lines[active_line].element.removeEventListener("keydown", handleKeydown);
-  lines[i].element.click();
-  lines[i].element.addEventListener("keydown", handleKeydown);
+
+  console.log(`[Vim-Notion] setActiveLine: moving to ${i}`);
+
+  // Update the active line index
   window.vim_info.active_line = i;
+
+  // Click and focus the new line
+  lines[i].element.click();
+  lines[i].element.focus();
+
+  // Set cursor to desired column, or end of line if line is shorter
+  const lineLength = lines[i].element.textContent?.length || 0;
+  const targetColumn = Math.min(desired_column, lineLength);
+  setCursorPosition(lines[i].element, targetColumn);
+
+  console.log(`[Vim-Notion] Active line is now: ${i}, cursor at column ${targetColumn}`);
 };
 
 const setLines = (f: HTMLDivElement[]) => {
   const { vim_info } = window;
+  console.log(`[Vim-Notion] Setting up ${f.length} lines`);
+
   vim_info.lines = f.map((elem) => ({
     cursor_position: 0,
     element: elem as HTMLDivElement,
   }));
+
+  // Add event listeners to ALL lines at once
+  vim_info.lines.forEach((line, index) => {
+    line.element.addEventListener("keydown", handleKeydown, true);
+    console.log(`[Vim-Notion] Added event listener to line ${index}`);
+  });
+
+  // Set initial active line
   setActiveLine(vim_info.active_line || 0);
+  console.log(`[Vim-Notion] Lines setup complete, active line: ${vim_info.active_line}`);
 };
 
 const updateInfoContainer = () => {
   const mode = document.querySelector(".vim-mode") as HTMLDivElement;
-  mode.innerText = getModeText(window.vim_info.mode);
+  const { vim_info } = window;
+  mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}`;
 };
 
 (() => {
+  console.log("[Vim-Notion] Extension loading...");
   initVimInfo();
   createInfoContainer();
+  console.log("[Vim-Notion] Info container created");
+
+  let attempts = 0;
   const poll = setInterval(() => {
+    attempts++;
     const f = Array.from(
-      document.querySelectorAll(".notion-page-content [contenteditable=true]")
+      document.querySelectorAll("[contenteditable=true]")
     );
+    console.log(`[Vim-Notion] Attempt ${attempts}: Found ${f.length} editable elements`);
+
     if (f.length > 0) {
       clearInterval(poll);
+      console.log("[Vim-Notion] Setting up lines...");
       setLines(f as HTMLDivElement[]);
+      console.log("[Vim-Notion] Setup complete!");
+    }
+
+    if (attempts > 40) {
+      clearInterval(poll);
+      console.error("[Vim-Notion] Timed out waiting for editable elements");
     }
   }, 250);
 })();

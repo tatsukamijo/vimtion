@@ -1,8 +1,8 @@
 {
-  "description": "Allows you to edit notion documents using vim",
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "Vim for Notion",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "description": "Allows you to edit notion documents using vim",
   "content_scripts": [
     {
       "matches": ["*://*.notion.so/*"],
