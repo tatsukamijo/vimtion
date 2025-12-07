@@ -159,6 +159,17 @@ In visual mode (`v` or `V`), you can use motions to extend selection and operato
 | `y` |    ✅     | Yank (copy) selected lines                                                                                                         |
 | `c` |    ✅     | Change selected lines (delete and enter insert mode)                                                                               |
 
+## Known Limitations
+
+### Multi-line Paste
+When you yank multiple lines using Visual line mode (`V` + selection + `y`), the text is correctly copied to your system clipboard with newlines preserved. However, the `p` command currently cannot properly paste multi-line content as separate Notion blocks.
+
+**Workaround**: After yanking multiple lines with `Vy`, use your browser's native paste command instead:
+- **macOS**: `Cmd+V`
+- **Windows/Linux**: `Ctrl+V`
+
+This will correctly create separate Notion blocks for each line. Single-line paste with `p` works as expected.
+
 ### Planned Support
 
 | Command | Supported | Comments                                                                                                        |
