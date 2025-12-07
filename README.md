@@ -120,4 +120,6 @@ Original implementation by [Luke Ingalls](https://github.com/lukeingalls) - [vim
 
 ## License
 
-MIT License - see LICENSE file for details
+ISC License - see LICENSE file for details
+
+Original implementation Copyright (c) 2020 Luke Ingalls
