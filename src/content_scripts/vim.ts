@@ -545,6 +545,24 @@ const visualReducer = (e: KeyboardEvent): boolean => {
     case "l":
       visualMoveCursorForwards();
       return true;
+    case "w":
+      visualJumpToNextWord();
+      return true;
+    case "b":
+      visualJumpToPreviousWord();
+      return true;
+    case "e":
+      visualJumpToEndOfWord();
+      return true;
+    case "W":
+      visualJumpToNextWORD();
+      return true;
+    case "B":
+      visualJumpToPreviousWORD();
+      return true;
+    case "E":
+      visualJumpToEndOfWORD();
+      return true;
     case "d":
     case "x":
       deleteVisualSelection();
@@ -571,6 +589,148 @@ const visualMoveCursorForwards = () => {
   if (vim_info.desired_column >= lineLength) return;
 
   vim_info.desired_column++;
+  updateVisualSelection();
+};
+
+const visualJumpToNextWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  let pos = vim_info.desired_column;
+
+  // Skip current word (alphanumeric characters)
+  while (pos < text.length && /\w/.test(text[pos])) {
+    pos++;
+  }
+
+  // Skip non-word characters (spaces, punctuation)
+  while (pos < text.length && !/\w/.test(text[pos])) {
+    pos++;
+  }
+
+  vim_info.desired_column = pos;
+  updateVisualSelection();
+};
+
+const visualJumpToPreviousWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+
+  if (vim_info.desired_column === 0) return;
+
+  let pos = vim_info.desired_column - 1;
+
+  // Skip non-word characters (spaces, punctuation) backwards
+  while (pos > 0 && !/\w/.test(text[pos])) {
+    pos--;
+  }
+
+  // Skip current word backwards
+  while (pos > 0 && /\w/.test(text[pos - 1])) {
+    pos--;
+  }
+
+  vim_info.desired_column = pos;
+  updateVisualSelection();
+};
+
+const visualJumpToEndOfWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  let pos = vim_info.desired_column;
+
+  // Always move at least one character forward
+  pos++;
+
+  // Skip non-word characters
+  while (pos < text.length && !/\w/.test(text[pos])) {
+    pos++;
+  }
+
+  // Skip to end of next word
+  while (pos < text.length && /\w/.test(text[pos])) {
+    pos++;
+  }
+
+  pos--; // Move back to last character of the word
+
+  if (pos >= text.length) pos = text.length - 1;
+  if (pos < vim_info.desired_column) pos = vim_info.desired_column; // Don't move backward
+
+  vim_info.desired_column = pos;
+  updateVisualSelection();
+};
+
+const visualJumpToNextWORD = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  let pos = vim_info.desired_column;
+
+  // Skip current WORD (non-whitespace characters)
+  while (pos < text.length && !/\s/.test(text[pos])) {
+    pos++;
+  }
+
+  // Skip whitespace
+  while (pos < text.length && /\s/.test(text[pos])) {
+    pos++;
+  }
+
+  vim_info.desired_column = pos;
+  updateVisualSelection();
+};
+
+const visualJumpToPreviousWORD = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+
+  if (vim_info.desired_column === 0) return;
+
+  let pos = vim_info.desired_column - 1;
+
+  // Skip whitespace backwards
+  while (pos > 0 && /\s/.test(text[pos])) {
+    pos--;
+  }
+
+  // Skip current WORD backwards
+  while (pos > 0 && !/\s/.test(text[pos - 1])) {
+    pos--;
+  }
+
+  vim_info.desired_column = pos;
+  updateVisualSelection();
+};
+
+const visualJumpToEndOfWORD = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  let pos = vim_info.desired_column;
+
+  // Always move at least one character forward
+  pos++;
+
+  // Skip whitespace
+  while (pos < text.length && /\s/.test(text[pos])) {
+    pos++;
+  }
+
+  // Skip to end of next WORD
+  while (pos < text.length && !/\s/.test(text[pos])) {
+    pos++;
+  }
+
+  pos--; // Move back to last character of the WORD
+
+  if (pos >= text.length) pos = text.length - 1;
+  if (pos < vim_info.desired_column) pos = vim_info.desired_column; // Don't move backward
+
+  vim_info.desired_column = pos;
   updateVisualSelection();
 };
 
