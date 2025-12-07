@@ -983,8 +983,6 @@ const deleteVisualLineSelection = () => {
     ? [startLine, endLine]
     : [endLine, startLine];
 
-  console.log(`[Vim-Notion] Deleting lines ${firstLine} to ${lastLine}`);
-
   // Collect text from all lines for clipboard
   const textLines: string[] = [];
   for (let i = firstLine; i <= lastLine; i++) {
@@ -1009,7 +1007,6 @@ const deleteVisualLineSelection = () => {
   const lastBlock = lastElement.closest('[data-block-id]') || lastElement.parentElement?.parentElement;
 
   if (!firstBlock || !lastBlock) {
-    console.error('[Vim-Notion] Could not find block elements');
     vim_info.mode = "normal";
     updateInfoContainer();
     return;
