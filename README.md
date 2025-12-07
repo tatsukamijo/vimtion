@@ -44,6 +44,8 @@ This fork has been updated to:
 | `b` |    ✅     | Jump to previous word                                                                                                              |
 | `W` |    ✅     | Jump to next WORD (space-separated)                                                                                                |
 | `B` |    ✅     | Jump to previous WORD (space-separated)                                                                                            |
+| `0` |    ✅     | Jump to beginning of line                                                                                                          |
+| `$` |    ✅     | Jump to end of line                                                                                                                |
 | `i` |    ✅     | Enter insert mode                                                                                                                  |
 | `a` |    ✅     | Enter insert mode (same as `i` for now)                                                                                            |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
@@ -54,8 +56,6 @@ This fork has been updated to:
 | :-: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
 | `e` |     🗓     | Jump to end of word                                                                                             |
 | `E` |     🗓     | Jump to end of WORD                                                                                             |
-| `0` |     🗓     | Jump to beginning of line                                                                                       |
-| `$` |     🗓     | Jump to end of line                                                                                             |
 | `g` |     🗓     | Limited support planned. Will only support gg.                                                                  |
 | `G` |     🗓     | Jump to last line                                                                                               |
 | `x` |     🗓     | Delete character                                                                                                |

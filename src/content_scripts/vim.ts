@@ -101,6 +101,23 @@ const jumpToPreviousWORD = () => {
   vim_info.desired_column = pos;
 };
 
+const jumpToLineStart = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+
+  setCursorPosition(currentElement, 0);
+  vim_info.desired_column = 0;
+};
+
+const jumpToLineEnd = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const lineLength = currentElement.textContent?.length || 0;
+
+  setCursorPosition(currentElement, lineLength);
+  vim_info.desired_column = lineLength;
+};
+
 const getActiveLine = () => {
   return window.vim_info.active_line;
 };
@@ -327,6 +344,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "B":
       jumpToPreviousWORD();
+      return true;
+    case "0":
+      jumpToLineStart();
+      return true;
+    case "$":
+      jumpToLineEnd();
       return true;
     default:
       // Don't block unhandled keys - let browser/Notion handle them
