@@ -105,6 +105,10 @@ This fork has been extensively rebuilt with:
 | `d$`    |    ✅     | Delete to end of line                                                                                                        |
 | `d0`    |    ✅     | Delete to beginning of line                                                                                                  |
 | `diw`   |    ✅     | Delete inner word (word under cursor)                                                                                        |
+| `df{char}` | ✅  | Delete find character (delete to and including character)                                                                    |
+| `dF{char}` | ✅  | Delete find character backward                                                                                               |
+| `dt{char}` | ✅  | Delete till character (delete up to but not including character)                                                             |
+| `dT{char}` | ✅  | Delete till character backward                                                                                               |
 
 **Change operator (`c`)**
 | Command | Supported | Comments                                                                                                                     |
@@ -119,6 +123,10 @@ This fork has been extensively rebuilt with:
 | `c$`    |    ✅     | Change to end of line                                                                                                        |
 | `c0`    |    ✅     | Change to beginning of line                                                                                                  |
 | `ciw`   |    ✅     | Change inner word (word under cursor)                                                                                        |
+| `cf{char}` | ✅  | Change find character (delete to and including character, enter insert mode)                                                 |
+| `cF{char}` | ✅  | Change find character backward                                                                                               |
+| `ct{char}` | ✅  | Change till character (delete up to but not including character, enter insert mode)                                          |
+| `cT{char}` | ✅  | Change till character backward                                                                                               |
 
 **Yank operator (`y`)**
 | Command | Supported | Comments                                                                                                                     |

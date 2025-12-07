@@ -676,7 +676,7 @@ const initVimInfo = () => {
     mode: "normal" as "normal" | "insert" | "visual" | "visual-line",
     visual_start_line: 0,
     visual_start_pos: 0,
-    pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "g" | "f" | "F" | "t" | "T" | null, // For commands like yy, dd, gg, ff, etc.
+    pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "g" | "f" | "F" | "t" | "T" | "df" | "dF" | "dt" | "dT" | "cf" | "cF" | "ct" | "cT" | null, // For commands like yy, dd, gg, ff, df, etc.
   };
   window.vim_info = vim_info;
 };
@@ -1178,6 +1178,106 @@ const deleteInnerWord = () => {
   vim_info.desired_column = start;
 };
 
+const deleteFindCharForward = (char: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  const foundIndex = text.indexOf(char, currentPos + 1);
+  if (foundIndex !== -1) {
+    // Delete from current position to and including the found character
+    const newText = text.slice(0, currentPos) + text.slice(foundIndex + 1);
+    currentElement.textContent = newText;
+    setCursorPosition(currentElement, currentPos);
+    vim_info.desired_column = currentPos;
+    console.log(`[Vim-Notion] Deleted to f${char}`);
+  } else {
+    console.log(`[Vim-Notion] Character '${char}' not found forward`);
+  }
+};
+
+const deleteFindCharBackward = (char: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  const foundIndex = text.lastIndexOf(char, currentPos - 1);
+  if (foundIndex !== -1) {
+    // Delete from and including the found character to current position
+    const newText = text.slice(0, foundIndex) + text.slice(currentPos);
+    currentElement.textContent = newText;
+    setCursorPosition(currentElement, foundIndex);
+    vim_info.desired_column = foundIndex;
+    console.log(`[Vim-Notion] Deleted to F${char}`);
+  } else {
+    console.log(`[Vim-Notion] Character '${char}' not found backward`);
+  }
+};
+
+const deleteTillCharForward = (char: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  const foundIndex = text.indexOf(char, currentPos + 1);
+  if (foundIndex !== -1) {
+    // Delete from current position to before the found character
+    const newText = text.slice(0, currentPos) + text.slice(foundIndex);
+    currentElement.textContent = newText;
+    setCursorPosition(currentElement, currentPos);
+    vim_info.desired_column = currentPos;
+    console.log(`[Vim-Notion] Deleted till t${char}`);
+  } else {
+    console.log(`[Vim-Notion] Character '${char}' not found forward`);
+  }
+};
+
+const deleteTillCharBackward = (char: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  const foundIndex = text.lastIndexOf(char, currentPos - 1);
+  if (foundIndex !== -1) {
+    // Delete from after the found character to current position
+    const newText = text.slice(0, foundIndex + 1) + text.slice(currentPos);
+    currentElement.textContent = newText;
+    setCursorPosition(currentElement, foundIndex + 1);
+    vim_info.desired_column = foundIndex + 1;
+    console.log(`[Vim-Notion] Deleted till T${char}`);
+  } else {
+    console.log(`[Vim-Notion] Character '${char}' not found backward`);
+  }
+};
+
+const changeFindCharForward = (char: string) => {
+  deleteFindCharForward(char);
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const changeFindCharBackward = (char: string) => {
+  deleteFindCharBackward(char);
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const changeTillCharForward = (char: string) => {
+  deleteTillCharForward(char);
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const changeTillCharBackward = (char: string) => {
+  deleteTillCharBackward(char);
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
 const changeCurrentLine = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -1613,6 +1713,22 @@ const handlePendingOperator = (key: string): boolean => {
         console.log('[Vim-Notion] Executing d0');
         deleteToBeginningOfLine();
         return true;
+      case "f":
+        // df{char} - delete find character, wait for next key
+        vim_info.pending_operator = "df";
+        return true;
+      case "F":
+        // dF{char} - delete find character backward, wait for next key
+        vim_info.pending_operator = "dF";
+        return true;
+      case "t":
+        // dt{char} - delete till character, wait for next key
+        vim_info.pending_operator = "dt";
+        return true;
+      case "T":
+        // dT{char} - delete till character backward, wait for next key
+        vim_info.pending_operator = "dT";
+        return true;
       case "i":
         // di{motion} - delete inner text object, wait for next key
         vim_info.pending_operator = "di";
@@ -1640,6 +1756,22 @@ const handlePendingOperator = (key: string): boolean => {
         console.log('[Vim-Notion] Executing c0');
         changeToBeginningOfLine();
         return true;
+      case "f":
+        // cf{char} - change find character, wait for next key
+        vim_info.pending_operator = "cf";
+        return true;
+      case "F":
+        // cF{char} - change find character backward, wait for next key
+        vim_info.pending_operator = "cF";
+        return true;
+      case "t":
+        // ct{char} - change till character, wait for next key
+        vim_info.pending_operator = "ct";
+        return true;
+      case "T":
+        // cT{char} - change till character backward, wait for next key
+        vim_info.pending_operator = "cT";
+        return true;
       case "i":
         // ci{motion} - change inner text object, wait for next key
         vim_info.pending_operator = "ci";
@@ -1648,6 +1780,46 @@ const handlePendingOperator = (key: string): boolean => {
         console.log('[Vim-Notion] Invalid motion, canceling');
         return true;
     }
+  } else if (operator === "df") {
+    // Handle df{char} - delete find character forward
+    console.log(`[Vim-Notion] Executing df${key}`);
+    deleteFindCharForward(key);
+    return true;
+  } else if (operator === "dF") {
+    // Handle dF{char} - delete find character backward
+    console.log(`[Vim-Notion] Executing dF${key}`);
+    deleteFindCharBackward(key);
+    return true;
+  } else if (operator === "dt") {
+    // Handle dt{char} - delete till character forward
+    console.log(`[Vim-Notion] Executing dt${key}`);
+    deleteTillCharForward(key);
+    return true;
+  } else if (operator === "dT") {
+    // Handle dT{char} - delete till character backward
+    console.log(`[Vim-Notion] Executing dT${key}`);
+    deleteTillCharBackward(key);
+    return true;
+  } else if (operator === "cf") {
+    // Handle cf{char} - change find character forward
+    console.log(`[Vim-Notion] Executing cf${key}`);
+    changeFindCharForward(key);
+    return true;
+  } else if (operator === "cF") {
+    // Handle cF{char} - change find character backward
+    console.log(`[Vim-Notion] Executing cF${key}`);
+    changeFindCharBackward(key);
+    return true;
+  } else if (operator === "ct") {
+    // Handle ct{char} - change till character forward
+    console.log(`[Vim-Notion] Executing ct${key}`);
+    changeTillCharForward(key);
+    return true;
+  } else if (operator === "cT") {
+    // Handle cT{char} - change till character backward
+    console.log(`[Vim-Notion] Executing cT${key}`);
+    changeTillCharBackward(key);
+    return true;
   } else if (operator === "yi" || operator === "di" || operator === "ci") {
     // Handle inner text objects
     switch (key) {
