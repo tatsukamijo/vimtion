@@ -436,8 +436,8 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       deleteCharacter();
       return true;
     default:
-      // Don't block unhandled keys - let browser/Notion handle them
-      return false;
+      // Block all other keys in normal mode (including space, numbers, etc.)
+      return true;
   }
 };
 
