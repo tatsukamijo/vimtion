@@ -622,6 +622,9 @@ const visualReducer = (e: KeyboardEvent): boolean => {
     case "x":
       deleteVisualSelection();
       return true;
+    case "y":
+      yankVisualSelection();
+      return true;
     default:
       return true; // Block other keys
   }
@@ -645,6 +648,9 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
     case "d":
     case "x":
       deleteVisualLineSelection();
+      return true;
+    case "y":
+      yankVisualLineSelection();
       return true;
     default:
       return true; // Block other keys in visual-line mode
@@ -682,6 +688,61 @@ const deleteVisualLineSelection = () => {
   vim_info.mode = "normal";
   window.getSelection()?.removeAllRanges();
   updateInfoContainer();
+};
+
+const yankVisualSelection = () => {
+  const { vim_info } = window;
+
+  // Use execCommand('copy') to copy to clipboard without deleting
+  document.execCommand('copy');
+
+  vim_info.mode = "normal";
+  window.getSelection()?.removeAllRanges();
+  updateInfoContainer();
+};
+
+const yankVisualLineSelection = () => {
+  const { vim_info } = window;
+
+  // Use execCommand('copy') to copy to clipboard without deleting
+  document.execCommand('copy');
+
+  vim_info.mode = "normal";
+  window.getSelection()?.removeAllRanges();
+  updateInfoContainer();
+};
+
+const pasteAfterCursor = async () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const lineLength = currentElement.textContent?.length || 0;
+
+  // Move cursor one position forward (unless at end of line)
+  let pastePosition = currentCursorPosition;
+  if (currentCursorPosition < lineLength) {
+    pastePosition = currentCursorPosition + 1;
+  }
+
+  // Set cursor to paste position
+  setCursorPosition(currentElement, pastePosition);
+
+  // Try to read from clipboard and insert
+  try {
+    const clipboardText = await navigator.clipboard.readText();
+
+    // Insert text at cursor position
+    const text = currentElement.textContent || "";
+    const newText = text.slice(0, pastePosition) + clipboardText + text.slice(pastePosition);
+    currentElement.textContent = newText;
+
+    // Move cursor to end of pasted text
+    const newCursorPosition = pastePosition + clipboardText.length - 1;
+    setCursorPosition(currentElement, newCursorPosition);
+    vim_info.desired_column = newCursorPosition;
+  } catch (err) {
+    console.error('[Vim-Notion] Failed to paste:', err);
+  }
 };
 
 const visualMoveCursorBackwards = () => {
@@ -1006,6 +1067,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "V":
       startVisualLineMode();
+      return true;
+    case "p":
+      pasteAfterCursor();
       return true;
     default:
       // Block all other keys in normal mode (including space, numbers, etc.)
