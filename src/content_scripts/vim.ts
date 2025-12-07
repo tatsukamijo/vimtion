@@ -284,6 +284,11 @@ const openLineBelow = () => {
       cancelable: true,
     });
     currentElement.dispatchEvent(enterEvent);
+
+    // Wait for new line to be created, then refresh
+    setTimeout(() => {
+      refreshLines();
+    }, 100);
   }, 0);
 };
 
@@ -323,6 +328,11 @@ const openLineAbove = () => {
         cancelable: true,
       });
       document.activeElement?.dispatchEvent(arrowUpEvent);
+
+      // Wait for arrow up to take effect, then refresh
+      setTimeout(() => {
+        refreshLines();
+      }, 50);
     }, 50);
   }, 0);
 };
@@ -1720,6 +1730,9 @@ const refreshLines = () => {
     document.querySelectorAll("[contenteditable=true]")
   ) as HTMLDivElement[];
 
+  // Store the current active element to find its new index later
+  const currentActiveElement = vim_info.lines[vim_info.active_line]?.element;
+
   // Find new elements that aren't in our lines array yet
   const existingElements = new Set(vim_info.lines.map(line => line.element));
   const newElements = allEditableElements.filter(elem => !existingElements.has(elem));
@@ -1727,24 +1740,30 @@ const refreshLines = () => {
   if (newElements.length > 0) {
     console.log(`[Vim-Notion] Found ${newElements.length} new editable elements`);
 
-    // Add new elements to lines array
+    // Add event listeners to new elements
     newElements.forEach(elem => {
-      vim_info.lines.push({
-        cursor_position: 0,
-        element: elem,
-      });
       elem.addEventListener("keydown", handleKeydown, true);
       elem.addEventListener("click", handleClick, true);
       console.log(`[Vim-Notion] Added event listeners to new line`);
     });
-
-    console.log(`[Vim-Notion] Total lines: ${vim_info.lines.length}`);
   }
 
-  // Remove elements that no longer exist in the DOM
-  vim_info.lines = vim_info.lines.filter(line =>
-    document.body.contains(line.element)
-  );
+  // Rebuild lines array in DOM order
+  vim_info.lines = allEditableElements.map(elem => ({
+    cursor_position: 0,
+    element: elem,
+  }));
+
+  // Update active line index to match the current active element
+  if (currentActiveElement) {
+    const newIndex = vim_info.lines.findIndex(line => line.element === currentActiveElement);
+    if (newIndex !== -1) {
+      vim_info.active_line = newIndex;
+      console.log(`[Vim-Notion] Updated active_line to ${newIndex} after refresh`);
+    }
+  }
+
+  console.log(`[Vim-Notion] Total lines: ${vim_info.lines.length}`);
 };
 
 const setLines = (f: HTMLDivElement[]) => {
