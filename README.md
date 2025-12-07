@@ -186,42 +186,23 @@ When you yank multiple lines using Visual line mode (`V` + selection + `y`), the
 
 This will correctly create separate Notion blocks for each line. Single-line paste with `p` works as expected.
 
-### No Support Planned
+## Notes
 
-**Note**: `r` is used for redo instead of replace character (vim's default behavior).
+### Feature Limitations
 
-The following commands are not planned for support:
+**Search functionality** (`/`, `?`, `n`, `N`, `*`, `#`): Not planned due to complexity and Notion's built-in search.
 
-| Command | Vim Function | Reason                                                                                         |
-| :-----: | :----------- | :--------------------------------------------------------------------------------------------- |
-| `r{char}` | Replace character | Conflicting with redo functionality                                                      |
-| `m{char}` | Set mark | Marks are complex and not essential for basic editing                                          |
-| `'{char}` | Jump to mark | Marks not supported                                                                         |
-| `` `{char} `` | Jump to mark position | Marks not supported                                                              |
-| `n`     | Repeat search | Search functionality not planned                                                               |
-| `N`     | Repeat search backward | Search functionality not planned                                                      |
-| `/`     | Search forward | Search functionality not planned                                                             |
-| `?`     | Search backward | Search functionality not planned                                                            |
-| `*`     | Search word under cursor | Search functionality not planned                                                   |
-| `#`     | Search word under cursor backward | Search functionality not planned                                      |
-| `q{char}` | Record macro | Macros are complex and not essential                                                        |
-| `@{char}` | Play macro | Macros not supported                                                                        |
-| `z{command}` | Folding commands | Notion doesn't have folding                                                       |
-| `H`     | Jump to top of screen | Not meaningful in Notion's context                                                |
-| `M`     | Jump to middle of screen | Not meaningful in Notion's context                                             |
-| `L`     | Jump to bottom of screen | Not meaningful in Notion's context                                             |
-| `J`     | Join lines | Complex in Notion's block-based structure                                                     |
-| `K`     | Lookup | Not applicable                                                                                  |
-| `Q`     | Ex mode | Not applicable                                                                                  |
-| `R`     | Replace mode | Not essential for basic editing                                                               |
-| `S`     | Substitute line | Similar to `cc`                                                                             |
-| `Y`     | Yank line | Similar to `yy`                                                                                 |
-| `Z{command}` | Save and quit | Not applicable in browser extension                                                |
-| `.`     | Repeat last command | Complex to implement, not essential                                                   |
-| `~`     | Toggle case | Not essential for basic editing                                                                |
-| `<`/`>` | Indent/dedent | Notion has its own indent system                                                              |
-| `%`     | Jump to matching bracket | Complex to implement in Notion                                                  |
-| Ctrl+r  | Redo (vim default) | Conflicting with browser shortcuts, using `r` instead                                |
+**Marks** (`m`, `'`, `` ` ``): Not essential for basic editing workflow.
+
+**Macros** (`q`, `@`): Complex to implement and not essential for most users.
+
+**Screen-based motions** (`H`, `M`, `L`): Not meaningful in Notion's infinite scroll context.
+
+**Block operations** (`J` join lines, `<`/`>` indent): Notion's block-based structure has its own system.
+
+**Advanced features** (`.` repeat, `~` toggle case, `%` bracket matching, `R` replace mode): Not essential for core editing.
+
+**Special note**: `r` is used for **redo** instead of vim's default "replace character" to provide undo/redo functionality. Use `Ctrl+r` for vim's traditional redo if needed.
 
 ## Development
 
