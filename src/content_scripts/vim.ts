@@ -130,6 +130,24 @@ const insertAtLineStart = () => {
   updateInfoContainer();
 };
 
+const deleteCharacter = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  // Don't delete if at end of line
+  if (currentCursorPosition >= text.length) return;
+
+  // Delete character by reconstructing text
+  const newText = text.slice(0, currentCursorPosition) + text.slice(currentCursorPosition + 1);
+  currentElement.textContent = newText;
+
+  // Keep cursor at same position
+  setCursorPosition(currentElement, currentCursorPosition);
+  vim_info.desired_column = currentCursorPosition;
+};
+
 const getActiveLine = () => {
   return window.vim_info.active_line;
 };
@@ -368,6 +386,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "$":
       jumpToLineEnd();
+      return true;
+    case "x":
+      deleteCharacter();
       return true;
     default:
       // Don't block unhandled keys - let browser/Notion handle them

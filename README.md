@@ -50,6 +50,7 @@ This fork has been updated to:
 | `a` |    ✅     | Enter insert mode (same as `i` for now)                                                                                            |
 | `A` |    ✅     | Insert at end of line                                                                                                              |
 | `I` |    ✅     | Insert at beginning of line                                                                                                        |
+| `x` |    ✅     | Delete character under cursor                                                                                                      |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
 
 ### Planned Support
@@ -60,7 +61,6 @@ This fork has been updated to:
 | `E` |     🗓     | Jump to end of WORD                                                                                             |
 | `g` |     🗓     | Limited support planned. Will only support gg.                                                                  |
 | `G` |     🗓     | Jump to last line                                                                                               |
-| `x` |     🗓     | Delete character                                                                                                |
 | `d` |     🗓     | Delete operator                                                                                                 |
 | `c` |     🗓     | Change operator                                                                                                 |
 | `y` |     🗓     | Yank (copy) operator                                                                                            |
