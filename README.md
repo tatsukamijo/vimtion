@@ -49,6 +49,8 @@ This fork has been updated to:
 | `E` |    ✅     | Jump to end of WORD                                                                                                                |
 | `0` |    ✅     | Jump to beginning of line                                                                                                          |
 | `$` |    ✅     | Jump to end of line                                                                                                                |
+| `gg` |   ✅     | Jump to first line                                                                                                                 |
+| `G` |    ✅     | Jump to last line                                                                                                                  |
 
 #### Mode Commands
 | Key | Supported | Comments                                                                                                                           |
@@ -147,8 +149,6 @@ In visual mode (`v` or `V`), you can use motions to extend selection and operato
 
 | Command | Supported | Comments                                                                                                        |
 | :-----: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
-| `gg`    |     🗓     | Jump to first line                                                                                              |
-| `G`     |     🗓     | Jump to last line                                                                                               |
 | `o`     |     🗓     | Open new line below and enter insert mode                                                                       |
 | `O`     |     🗓     | Open new line above and enter insert mode                                                                       |
 | `f{char}` |   🗓     | Find character forward in line                                                                                  |

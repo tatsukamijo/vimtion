@@ -531,7 +531,7 @@ const initVimInfo = () => {
     mode: "normal" as "normal" | "insert" | "visual" | "visual-line",
     visual_start_line: 0,
     visual_start_pos: 0,
-    pending_operator: null as "y" | "d" | "c" | null, // For commands like yy, dd, etc.
+    pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "g" | null, // For commands like yy, dd, gg, etc.
   };
   window.vim_info = vim_info;
 };
@@ -1390,7 +1390,19 @@ const handlePendingOperator = (key: string): boolean => {
   // Clear pending operator
   vim_info.pending_operator = null;
 
-  if (operator === "y") {
+  if (operator === "g") {
+    // Handle g commands
+    switch (key) {
+      case "g":
+        console.log('[Vim-Notion] Executing gg (jump to first line)');
+        setActiveLine(0);
+        jumpToLineStart();
+        return true;
+      default:
+        console.log('[Vim-Notion] Invalid g command, canceling');
+        return true;
+    }
+  } else if (operator === "y") {
     // Handle yank operations
     switch (key) {
       case "y":
@@ -1583,6 +1595,15 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "c":
       window.vim_info.pending_operator = "c";
+      return true;
+    case "g":
+      window.vim_info.pending_operator = "g";
+      return true;
+    case "G":
+      // Jump to last line
+      console.log('[Vim-Notion] Executing G (jump to last line)');
+      setActiveLine(vim_info.lines.length - 1);
+      jumpToLineStart();
       return true;
     case "u":
       undo();
