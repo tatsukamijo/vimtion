@@ -40,7 +40,17 @@ const updateBlockCursor = () => {
   const range = selection.getRangeAt(0);
   const rect = range.getBoundingClientRect();
 
+  // For empty lines, use the element's bounding rect
   if (rect.width === 0 && rect.height === 0) {
+    const currentElement = vim_info.lines[vim_info.active_line]?.element;
+    if (currentElement) {
+      const elementRect = currentElement.getBoundingClientRect();
+      blockCursor.style.display = "block";
+      blockCursor.style.left = `${elementRect.left + window.scrollX}px`;
+      blockCursor.style.top = `${elementRect.top + window.scrollY}px`;
+      blockCursor.style.height = `${elementRect.height || 20}px`;
+      return;
+    }
     blockCursor.style.display = "none";
     return;
   }
