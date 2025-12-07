@@ -262,6 +262,71 @@ const insertAtLineStart = () => {
   updateInfoContainer();
 };
 
+const openLineBelow = () => {
+  const { vim_info } = window;
+
+  // Move to end of current line
+  jumpToLineEnd();
+
+  // Switch to insert mode first
+  vim_info.mode = "insert";
+  updateInfoContainer();
+
+  // Then simulate Enter key (in insert mode, so it won't be blocked)
+  setTimeout(() => {
+    const currentElement = vim_info.lines[vim_info.active_line].element;
+    const enterEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true,
+    });
+    currentElement.dispatchEvent(enterEvent);
+  }, 0);
+};
+
+const openLineAbove = () => {
+  const { vim_info } = window;
+  const currentLine = vim_info.active_line;
+
+  // Move to beginning of current line
+  jumpToLineStart();
+
+  // Switch to insert mode first
+  vim_info.mode = "insert";
+  updateInfoContainer();
+
+  // Simulate Enter key
+  setTimeout(() => {
+    const currentElement = vim_info.lines[currentLine].element;
+    const enterEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true,
+    });
+    currentElement.dispatchEvent(enterEvent);
+
+    // After Enter, cursor is on the new line below
+    // We need to move the cursor back up to the empty line we just created
+    setTimeout(() => {
+      const arrowUpEvent = new KeyboardEvent('keydown', {
+        key: 'ArrowUp',
+        code: 'ArrowUp',
+        keyCode: 38,
+        which: 38,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.activeElement?.dispatchEvent(arrowUpEvent);
+    }, 50);
+  }, 0);
+};
+
 const insertAfterCursor = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -1535,6 +1600,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "I":
       insertAtLineStart();
+      return true;
+    case "o":
+      openLineBelow();
+      return true;
+    case "O":
+      openLineAbove();
       return true;
     case "h":
       moveCursorBackwards();

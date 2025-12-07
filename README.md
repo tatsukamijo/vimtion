@@ -71,6 +71,8 @@ This fork has been extensively rebuilt with:
 | `I` |    ✅     | Enter insert mode at beginning of line                                                                                             |
 | `a` |    ✅     | Enter insert mode after cursor                                                                                                     |
 | `A` |    ✅     | Enter insert mode at end of line                                                                                                   |
+| `o` |    ✅     | Open new line below and enter insert mode                                                                                          |
+| `O` |    ✅     | Open new line above and enter insert mode                                                                                          |
 | `v` |    ✅     | Enter visual mode (character-wise selection)                                                                                       |
 | `V` |    ✅     | Enter visual line mode (line-wise selection)                                                                                       |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
@@ -161,8 +163,6 @@ In visual mode (`v` or `V`), you can use motions to extend selection and operato
 
 | Command | Supported | Comments                                                                                                        |
 | :-----: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
-| `o`     |     🗓     | Open new line below and enter insert mode                                                                       |
-| `O`     |     🗓     | Open new line above and enter insert mode                                                                       |
 | `f{char}` |   🗓     | Find character forward in line                                                                                  |
 | `F{char}` |   🗓     | Find character backward in line                                                                                 |
 | `t{char}` |   🗓     | Till (before) character forward in line                                                                         |
