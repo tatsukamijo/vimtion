@@ -563,6 +563,12 @@ const visualReducer = (e: KeyboardEvent): boolean => {
     case "E":
       visualJumpToEndOfWORD();
       return true;
+    case "0":
+      visualJumpToBeginningOfLine();
+      return true;
+    case "$":
+      visualJumpToEndOfLine();
+      return true;
     case "d":
     case "x":
       deleteVisualSelection();
@@ -731,6 +737,20 @@ const visualJumpToEndOfWORD = () => {
   if (pos < vim_info.desired_column) pos = vim_info.desired_column; // Don't move backward
 
   vim_info.desired_column = pos;
+  updateVisualSelection();
+};
+
+const visualJumpToBeginningOfLine = () => {
+  const { vim_info } = window;
+  vim_info.desired_column = 0;
+  updateVisualSelection();
+};
+
+const visualJumpToEndOfLine = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const lineLength = currentElement.textContent?.length || 0;
+  vim_info.desired_column = lineLength;
   updateVisualSelection();
 };
 
