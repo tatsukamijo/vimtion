@@ -7,6 +7,10 @@
 
 A Chrome extension that brings Vim keybindings to Notion, updated for modern Chrome compatibility.
 
+
+https://github.com/user-attachments/assets/b4f2f922-dfe6-40ca-a4aa-6f7a3f89ebb3
+
+
 ## About This Project
 
 This project is based on [lukeingalls/vim-notion](https://github.com/lukeingalls/vim-notion), originally created by [Luke Ingalls](https://www.linkedin.com/in/luke-ingalls/). The original project stopped being maintained and became incompatible with modern Chrome versions due to the Manifest V2 to V3 migration.
