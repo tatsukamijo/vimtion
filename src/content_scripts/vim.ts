@@ -77,6 +77,30 @@ const jumpToNextWORD = () => {
   vim_info.desired_column = pos;
 };
 
+const jumpToPreviousWORD = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  if (currentCursorPosition === 0) return;
+
+  let pos = currentCursorPosition - 1;
+
+  // Skip whitespace backwards
+  while (pos > 0 && /\s/.test(text[pos])) {
+    pos--;
+  }
+
+  // Skip non-whitespace backwards to find WORD start
+  while (pos > 0 && !/\s/.test(text[pos - 1])) {
+    pos--;
+  }
+
+  setCursorPosition(currentElement, pos);
+  vim_info.desired_column = pos;
+};
+
 const getActiveLine = () => {
   return window.vim_info.active_line;
 };
@@ -300,6 +324,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "W":
       jumpToNextWORD();
+      return true;
+    case "B":
+      jumpToPreviousWORD();
       return true;
     default:
       // Don't block unhandled keys - let browser/Notion handle them
