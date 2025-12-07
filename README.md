@@ -1,5 +1,10 @@
 # Vimtion
 
+[![Chrome Web Store](https://img.shields.io/badge/chrome-extension-blue?logo=googlechrome&logoColor=white)](https://github.com/tatsuya/vim-notion)
+[![Manifest V3](https://img.shields.io/badge/manifest-v3-green)](https://developer.chrome.com/docs/extensions/mv3/intro/)
+[![TypeScript](https://img.shields.io/badge/typescript-5.3-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](LICENSE)
+
 A Chrome extension that brings Vim keybindings to Notion, updated for modern Chrome compatibility.
 
 ## About This Project
