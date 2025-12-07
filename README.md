@@ -4,12 +4,24 @@ A Chrome extension that brings Vim keybindings to Notion, updated for modern Chr
 
 ## About This Project
 
-This project is based on [lukeingalls/vim-notion](https://github.com/lukeingalls/vim-notion), originally created by [Luke Ingalls](https://www.linkedin.com/in/luke-ingalls/). The original project stopped being maintained around 4 years ago and became incompatible with modern Chrome versions due to the Manifest V2 to V3 migration.
+This project is based on [lukeingalls/vim-notion](https://github.com/lukeingalls/vim-notion), originally created by [Luke Ingalls](https://www.linkedin.com/in/luke-ingalls/). The original project stopped being maintained and became incompatible with modern Chrome versions due to the Manifest V2 to V3 migration.
 
-This fork has been updated to:
+This fork has been extensively rebuilt with:
+
+### Core Updates
 - **Chrome Manifest V3** compatibility
 - **Modern dependencies** (Parcel 2.x, TypeScript 5.x)
-- **Improved vim keybindings** with proper cursor position handling and column memory for j/k navigation
+- **Improved cursor handling** with proper position tracking and column memory for j/k navigation
+
+### New Features
+- **Enhanced motions**: Cross-line navigation (h/l/w/b wrap to previous/next lines)
+- **Line jumping**: `gg` (first line) and `G` (last line) support
+- **Visual modes**: Character-wise (`v`) and line-wise (`V`) visual selection with full operator support
+- **Operators with motions**: Comprehensive support for d/c/y with all motions (w/W/b/B/e/E/$0/iw)
+- **Undo/Redo**: `u` for undo, `r` for redo (using native Notion history)
+- **Mouse support**: Click to position cursor in normal mode
+- **Better cursor visibility**: Enhanced block cursor with improved opacity and visibility on empty lines
+- **Insert commands**: `a`, `A`, `I` for various insert positions
 
 ## Installation
 
