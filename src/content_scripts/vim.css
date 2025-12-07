@@ -1,7 +1,7 @@
 .vim-info-container {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   bottom: 16px;
-  right: 16px;
+  right: 80px;
   position: fixed;
   z-index: 10000;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
