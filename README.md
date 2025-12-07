@@ -67,8 +67,6 @@ This fork has been updated to:
 | `p` |     🗓     | Paste                                                                                                           |
 | `o` |     🗓     | Open new line below                                                                                             |
 | `O` |     🗓     | Open new line above                                                                                             |
-| `A` |     🗓     | Insert at end of line                                                                                           |
-| `I` |     🗓     | Insert at beginning of line                                                                                     |
 | `f` |     🗓     | Find character forward                                                                                          |
 | `F` |     🗓     | Find character backward                                                                                         |
 | `t` |     🗓     | Till character forward                                                                                          |

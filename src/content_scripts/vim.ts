@@ -118,6 +118,18 @@ const jumpToLineEnd = () => {
   vim_info.desired_column = lineLength;
 };
 
+const insertAtLineEnd = () => {
+  jumpToLineEnd();
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const insertAtLineStart = () => {
+  jumpToLineStart();
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
 const getActiveLine = () => {
   return window.vim_info.active_line;
 };
@@ -320,6 +332,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     case "i":
       window.vim_info.mode = "insert";
       updateInfoContainer();
+      return true;
+    case "A":
+      insertAtLineEnd();
+      return true;
+    case "I":
+      insertAtLineStart();
       return true;
     case "h":
       moveCursorBackwards();
