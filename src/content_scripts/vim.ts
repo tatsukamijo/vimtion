@@ -267,6 +267,32 @@ const deleteCharacter = () => {
   vim_info.desired_column = currentCursorPosition;
 };
 
+const substituteCharacter = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  // Don't substitute if at end of line
+  if (currentCursorPosition >= text.length) {
+    // Just enter insert mode at end of line
+    window.vim_info.mode = "insert";
+    updateInfoContainer();
+    return;
+  }
+
+  // Delete character by reconstructing text
+  const newText = text.slice(0, currentCursorPosition) + text.slice(currentCursorPosition + 1);
+  currentElement.textContent = newText;
+
+  // Keep cursor at same position and enter insert mode
+  setCursorPosition(currentElement, currentCursorPosition);
+  vim_info.desired_column = currentCursorPosition;
+
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
 const getActiveLine = () => {
   return window.vim_info.active_line;
 };
@@ -518,6 +544,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "x":
       deleteCharacter();
+      return true;
+    case "s":
+      substituteCharacter();
       return true;
     default:
       // Block all other keys in normal mode (including space, numbers, etc.)

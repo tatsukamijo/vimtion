@@ -53,6 +53,7 @@ This fork has been updated to:
 | `A` |    ✅     | Insert at end of line                                                                                                              |
 | `I` |    ✅     | Insert at beginning of line                                                                                                        |
 | `x` |    ✅     | Delete character under cursor                                                                                                      |
+| `s` |    ✅     | Substitute character (delete and enter insert mode)                                                                                |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
 
 ### Planned Support
