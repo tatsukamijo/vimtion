@@ -449,6 +449,25 @@ const deleteCharacter = () => {
   vim_info.desired_column = currentCursorPosition;
 };
 
+const deleteCharacterBefore = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  // Don't delete if at beginning of line
+  if (currentCursorPosition <= 0) return;
+
+  // Delete the character before cursor position
+  const newText = text.slice(0, currentCursorPosition - 1) + text.slice(currentCursorPosition);
+  currentElement.textContent = newText;
+
+  // Move cursor back one position
+  const newCursorPosition = currentCursorPosition - 1;
+  setCursorPosition(currentElement, newCursorPosition);
+  vim_info.desired_column = newCursorPosition;
+};
+
 const substituteCharacter = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -974,6 +993,31 @@ const pasteAfterCursor = async () => {
 
     // Move cursor to end of pasted text
     const newCursorPosition = pastePosition + clipboardText.length - 1;
+    setCursorPosition(currentElement, newCursorPosition);
+    vim_info.desired_column = newCursorPosition;
+  } catch (err) {
+    console.error('[Vim-Notion] Failed to paste:', err);
+  }
+};
+
+const pasteBeforeCursor = async () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+
+  // Paste at current cursor position (before cursor)
+  setCursorPosition(currentElement, currentCursorPosition);
+
+  try {
+    const clipboardText = await navigator.clipboard.readText();
+
+    // Insert text at cursor position
+    const text = currentElement.textContent || "";
+    const newText = text.slice(0, currentCursorPosition) + clipboardText + text.slice(currentCursorPosition);
+    currentElement.textContent = newText;
+
+    // Move cursor to end of pasted text
+    const newCursorPosition = currentCursorPosition + clipboardText.length - 1;
     setCursorPosition(currentElement, newCursorPosition);
     vim_info.desired_column = newCursorPosition;
   } catch (err) {
@@ -1918,6 +1962,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     case "x":
       deleteCharacter();
       return true;
+    case "X":
+      deleteCharacterBefore();
+      return true;
     case "s":
       substituteCharacter();
       return true;
@@ -1930,14 +1977,27 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     case "p":
       pasteAfterCursor();
       return true;
+    case "P":
+      pasteBeforeCursor();
+      return true;
     case "y":
       window.vim_info.pending_operator = "y";
       return true;
     case "d":
       window.vim_info.pending_operator = "d";
       return true;
+    case "D":
+      // Delete to end of line (same as d$)
+      console.log('[Vim-Notion] Executing D (delete to end of line)');
+      deleteToEndOfLine();
+      return true;
     case "c":
       window.vim_info.pending_operator = "c";
+      return true;
+    case "C":
+      // Change to end of line (same as c$)
+      console.log('[Vim-Notion] Executing C (change to end of line)');
+      changeToEndOfLine();
       return true;
     case "g":
       window.vim_info.pending_operator = "g";

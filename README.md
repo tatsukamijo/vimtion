@@ -85,10 +85,14 @@ This fork has been extensively rebuilt with:
 | Key | Supported | Comments                                                                                                                           |
 | :-: | :-------: | :--------------------------------------------------------------------------------------------------------------------------------- |
 | `x` |    ✅     | Delete character under cursor (copies to clipboard)                                                                                |
+| `X` |    ✅     | Delete character before cursor                                                                                                     |
 | `s` |    ✅     | Substitute character (delete and enter insert mode)                                                                                |
 | `u` |    ✅     | Undo                                                                                                                                |
 | `r` |    ✅     | Redo (Note: `r` is used for redo instead of replace character)                                                                     |
 | `p` |    ✅     | Paste from clipboard after cursor                                                                                                  |
+| `P` |    ✅     | Paste from clipboard before cursor                                                                                                 |
+| `D` |    ✅     | Delete to end of line (same as `d$`)                                                                                               |
+| `C` |    ✅     | Change to end of line (same as `c$`)                                                                                               |
 
 #### Operators with Motions
 
@@ -181,15 +185,6 @@ When you yank multiple lines using Visual line mode (`V` + selection + `y`), the
 - **Windows/Linux**: `Ctrl+V`
 
 This will correctly create separate Notion blocks for each line. Single-line paste with `p` works as expected.
-
-### Planned Support
-
-| Command | Supported | Comments                                                                                                        |
-| :-----: | :-------: | :-------------------------------------------------------------------------------------------------------------- |
-| `C`     |     🗓     | Change to end of line (same as `c$`)                                                                            |
-| `D`     |     🗓     | Delete to end of line (same as `d$`)                                                                            |
-| `P`     |     🗓     | Paste before cursor                                                                                             |
-| `X`     |     🗓     | Delete character before cursor                                                                                  |
 
 ### No Support Planned
 
