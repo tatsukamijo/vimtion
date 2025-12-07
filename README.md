@@ -48,6 +48,8 @@ This fork has been updated to:
 | `$` |    ✅     | Jump to end of line                                                                                                                |
 | `i` |    ✅     | Enter insert mode                                                                                                                  |
 | `a` |    ✅     | Enter insert mode (same as `i` for now)                                                                                            |
+| `A` |    ✅     | Insert at end of line                                                                                                              |
+| `I` |    ✅     | Insert at beginning of line                                                                                                        |
 | `Esc` |  ✅     | Return to normal mode                                                                                                              |
 
 ### Planned Support
