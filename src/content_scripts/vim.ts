@@ -1480,6 +1480,12 @@ const deleteInnerWord = () => {
   const text = currentElement.textContent || "";
 
   const [start, end] = getInnerWordBounds(text, currentCursorPosition);
+  const deletedText = text.slice(start, end);
+
+  // Copy to clipboard (Vim's delete yanks)
+  navigator.clipboard.writeText(deletedText).catch(err => {
+    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  });
 
   const newText = text.slice(0, start) + text.slice(end);
   currentElement.textContent = newText;
@@ -1555,6 +1561,13 @@ const deleteInnerBracket = (openChar: string, closeChar: string) => {
   if (!result) return;
 
   const [openIndex, closeIndex] = result;
+  const deletedText = text.slice(openIndex + 1, closeIndex);
+
+  // Copy to clipboard (Vim's delete yanks)
+  navigator.clipboard.writeText(deletedText).catch(err => {
+    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  });
+
   const newText = text.slice(0, openIndex + 1) + text.slice(closeIndex);
   currentElement.textContent = newText;
 
@@ -1572,6 +1585,13 @@ const deleteAroundBracket = (openChar: string, closeChar: string) => {
   if (!result) return;
 
   const [openIndex, closeIndex] = result;
+  const deletedText = text.slice(openIndex, closeIndex + 1);
+
+  // Copy to clipboard (Vim's delete yanks)
+  navigator.clipboard.writeText(deletedText).catch(err => {
+    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  });
+
   const newText = text.slice(0, openIndex) + text.slice(closeIndex + 1);
   currentElement.textContent = newText;
 
@@ -1727,6 +1747,12 @@ const deleteAroundWord = () => {
   const text = currentElement.textContent || "";
 
   const [start, end] = getAroundWordBounds(text, currentCursorPosition);
+  const deletedText = text.slice(start, end);
+
+  // Copy to clipboard (Vim's delete yanks)
+  navigator.clipboard.writeText(deletedText).catch(err => {
+    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  });
 
   const newText = text.slice(0, start) + text.slice(end);
   currentElement.textContent = newText;
