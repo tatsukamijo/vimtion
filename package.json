@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "A Chrome extension that brings Vim keybindings to Notion, updated for modern Chrome compatibility.",
   "scripts": {
-    "build": "parcel build src/content_scripts/{vim.ts,vim.css} --dist-dir dist/content_scripts && cp src/manifest.json dist/",
+    "build": "parcel build src/content_scripts/{vim.ts,vim.css} --dist-dir dist/content_scripts && cp src/manifest.json dist/ && cp -r src/icons dist/",
     "lint": "eslint"
   },
   "keywords": ["vim", "notion", "chrome-extension", "productivity"],
