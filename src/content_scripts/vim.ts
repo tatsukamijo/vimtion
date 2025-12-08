@@ -2195,8 +2195,40 @@ const handlePendingOperator = (key: string): boolean => {
 };
 
 const normalReducer = (e: KeyboardEvent): boolean => {
-  // Don't handle keys with modifiers (Command, Ctrl, Alt) - let browser handle them
-  if (e.metaKey || e.ctrlKey || e.altKey) {
+  // Handle specific Ctrl key combinations for page navigation
+  if (e.ctrlKey && !e.metaKey && !e.altKey) {
+    const key = e.key.toLowerCase();
+
+    // Ctrl+d - half page down
+    if (key === "d") {
+      scrollAndMoveCursor(0.5);
+      return true;
+    }
+
+    // Ctrl+u - half page up
+    if (key === "u") {
+      scrollAndMoveCursor(-0.5);
+      return true;
+    }
+
+    // Ctrl+f - full page down
+    if (key === "f") {
+      scrollAndMoveCursor(1.0);
+      return true;
+    }
+
+    // Ctrl+b - full page up
+    if (key === "b") {
+      scrollAndMoveCursor(-1.0);
+      return true;
+    }
+
+    // For other Ctrl combinations, let browser handle them
+    return false;
+  }
+
+  // Don't handle keys with modifiers (Command, Alt) - let browser handle them
+  if (e.metaKey || e.altKey) {
     return false;
   }
 
@@ -2333,6 +2365,106 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       // Block all other keys in normal mode (including space, numbers, etc.)
       return true;
   }
+};
+
+// Get the first visible line in the viewport
+const getFirstVisibleLine = (): number => {
+  const { vim_info } = window;
+
+  // Use getBoundingClientRect which gives position relative to viewport
+  // A line is visible if its top is within the reasonable viewing area
+  const viewportHeight = window.innerHeight;
+  const viewportTop = 100; // Account for header
+  const viewportBottom = viewportHeight - 100;
+
+  for (let i = 0; i < vim_info.lines.length; i++) {
+    const element = vim_info.lines[i].element;
+    const rect = element.getBoundingClientRect();
+
+    // Skip if element is too big (likely a container, not an individual line)
+    if (rect.height > viewportHeight * 0.8) {
+      continue;
+    }
+
+    // Check if element's top edge is visible in the middle portion of viewport
+    if (rect.top >= viewportTop && rect.top <= viewportBottom) {
+      return i;
+    }
+  }
+
+  return vim_info.active_line; // Fallback to current line if none found
+};
+
+// Find the actual scrollable element in Notion's DOM
+const findScrollableContainer = (): HTMLElement => {
+  // The main content scroller is inside .notion-frame
+  // We need to find the scroller that contains our editable elements
+  const { vim_info } = window;
+
+  // Get the current active element to find its scroll container
+  const activeElement = vim_info.lines[vim_info.active_line]?.element;
+
+  if (activeElement) {
+    // Walk up the DOM tree to find the scrollable container
+    let parent = activeElement.parentElement;
+    while (parent) {
+      if (parent.classList.contains('notion-scroller') &&
+          parent.scrollHeight > parent.clientHeight) {
+        return parent;
+      }
+      parent = parent.parentElement;
+    }
+  }
+
+  // Fallback: find .notion-scroller within .notion-frame (not in sidebar)
+  const frame = document.querySelector('.notion-frame');
+  if (frame) {
+    const scroller = frame.querySelector('.notion-scroller') as HTMLElement;
+    if (scroller && scroller.scrollHeight > scroller.clientHeight) {
+      return scroller;
+    }
+  }
+
+  return document.documentElement;
+};
+
+// Scroll by a fraction of the viewport height and move cursor to first visible line
+const scrollAndMoveCursor = (pageAmount: number) => {
+  const { vim_info } = window;
+
+  const scrollContainer = findScrollableContainer();
+  const scrollAmount = window.innerHeight * pageAmount;
+  const currentScroll = scrollContainer === document.documentElement ? window.scrollY : scrollContainer.scrollTop;
+  const newScroll = Math.max(0, currentScroll + scrollAmount);
+
+  // Perform smooth scroll on the correct container
+  if (scrollContainer === document.documentElement) {
+    window.scrollTo({
+      top: newScroll,
+      behavior: 'smooth'
+    });
+  } else {
+    scrollContainer.scrollTo({
+      top: newScroll,
+      behavior: 'smooth'
+    });
+  }
+
+  // Wait for scroll to complete, then update cursor position
+  setTimeout(() => {
+    refreshLines();
+    const firstVisibleLine = getFirstVisibleLine();
+
+    // Just update the active line index and cursor position without clicking
+    vim_info.active_line = firstVisibleLine;
+    vim_info.desired_column = 0;
+
+    const targetElement = vim_info.lines[firstVisibleLine]?.element;
+    if (targetElement) {
+      setCursorPosition(targetElement, 0);
+      targetElement.focus();
+    }
+  }, 150); // Slightly longer delay for smooth scroll to progress
 };
 
 const setActiveLine = (idx: number) => {

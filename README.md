@@ -25,6 +25,7 @@ This fork has been extensively rebuilt with:
 ### New Features
 - **Enhanced motions**: Cross-line navigation (h/l/w/b wrap to previous/next lines)
 - **Line jumping**: `gg` (first line) and `G` (last line) support
+- **Page navigation**: `Ctrl+d/u` (half page), `Ctrl+f/b` (full page) with smooth scrolling
 - **Visual modes**: Character-wise (`v`) and line-wise (`V`) visual selection with full operator support
 - **Operators with motions**: Comprehensive support for d/c/y with all motions (w/W/b/B/e/E/$0/iw)
 - **Text objects**: Full support for `i`(inner) and `a`(around) with brackets, quotes (e.g., `ci(`, `da"`, `yi{`)
@@ -51,6 +52,7 @@ This fork has been extensively rebuilt with:
 ### Motions
 **Basic**: `h` `j` `k` `l` (with line wrapping) • `w` `b` `e` `W` `B` `E` (word motions) • `0` `$` (line start/end) • `gg` `G` (document start/end)
 **Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character)
+**Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
 
 ### Modes
 **Insert**: `i` `I` `a` `A` `o` `O` • **Visual**: `v` (char) `V` (line) • **Normal**: `Esc`
