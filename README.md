@@ -11,7 +11,7 @@ A Chrome extension that brings Vim keybindings to Notion, updated for modern Chr
 https://github.com/user-attachments/assets/b4f2f922-dfe6-40ca-a4aa-6f7a3f89ebb3
 
 
-## About This Project
+## 📖 About This Project
 
 This project is based on [lukeingalls/vim-notion](https://github.com/lukeingalls/vim-notion), originally created by [Luke Ingalls](https://www.linkedin.com/in/luke-ingalls/). The original project stopped being maintained and became incompatible with modern Chrome versions due to the Manifest V2 to V3 migration.
 
@@ -34,7 +34,7 @@ This fork has been extensively rebuilt with:
 - **Better cursor visibility**: Enhanced block cursor with improved opacity and visibility on empty lines
 - **Insert commands**: `a`, `A`, `I` for various insert positions
 
-## Installation
+## 🚀 Installation
 
 **Local Installation**:
 1. Clone this repository
@@ -47,7 +47,7 @@ This fork has been extensively rebuilt with:
 
 [How to install unpacked extensions in Chrome](https://webkul.com/blog/how-to-install-the-unpacked-extension-in-chrome/)
 
-## Supported Commands
+## ✅ Supported Commands
 
 ### Motions
 **Basic**: `h` `j` `k` `l` (with line wrapping) • `w` `b` `e` `W` `B` `E` (word motions) • `0` `$` (line start/end) • `gg` `G` (document start/end)
@@ -99,7 +99,7 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) work 
 **Character-wise (`v`)**: Select with `h` `l` `w` `b` `e` `0` `$`, then `d` `y` `c`
 **Line-wise (`V`)**: Select with `j` `k` `gg` `G`, then `d` `y` `c`
 
-## Known Limitations
+## ⚠️ Known Limitations
 
 ### Multi-line Paste
 When you yank multiple lines using Visual line mode (`V` + selection + `y`), the text is correctly copied to your system clipboard with newlines preserved. However, the `p` command currently cannot properly paste multi-line content as separate Notion blocks.
@@ -110,35 +110,18 @@ When you yank multiple lines using Visual line mode (`V` + selection + `y`), the
 
 This will correctly create separate Notion blocks for each line. Single-line paste with `p` works as expected.
 
-## Notes
+### Unsupported Features
 
-### Feature Limitations
+The following Vim features are not implemented:
 
-**Search functionality** (`/`, `?`, `n`, `N`, `*`, `#`): Not planned due to complexity and Notion's built-in search.
+- **Search functionality** (`/`, `?`, `n`, `N`, `*`, `#`) - Not planned due to complexity and Notion's built-in search
+- **Marks** (`m`, `'`, `` ` ``) - Not essential for basic editing workflow
+- **Macros** (`q`, `@`) - Complex to implement and not essential for most users
+- **Screen-based motions** (`H`, `M`, `L`) - Not meaningful in Notion's infinite scroll context
+- **Block operations** (`J` join lines, `<`/`>` indent) - Notion's block-based structure has its own system
+- **Advanced features** (`.` repeat, `~` toggle case, `%` bracket matching, `R` replace mode) - Not essential for core editing
 
-**Marks** (`m`, `'`, `` ` ``): Not essential for basic editing workflow.
-
-**Macros** (`q`, `@`): Complex to implement and not essential for most users.
-
-**Screen-based motions** (`H`, `M`, `L`): Not meaningful in Notion's infinite scroll context.
-
-**Block operations** (`J` join lines, `<`/`>` indent): Notion's block-based structure has its own system.
-
-**Advanced features** (`.` repeat, `~` toggle case, `%` bracket matching, `R` replace mode): Not essential for core editing.
-
-**Special note**: `r` is used for **redo** instead of vim's default "replace character" to provide undo/redo functionality. Use `Ctrl+r` for vim's traditional redo if needed.
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Build the extension
-npm run build
-
-# The built extension will be in the dist/ folder
-```
+**Note**: `r` is used for **redo** instead of Vim's default "replace character" to provide undo/redo functionality.
 
 ## Credits
 
