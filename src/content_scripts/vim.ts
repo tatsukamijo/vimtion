@@ -989,62 +989,87 @@ const deleteVisualLineSelection = () => {
   // Clear background highlights from all elements before deletion
   clearAllBackgroundColors();
 
-  // Get the parent blocks (the selectable divs, not just contenteditable)
-  const firstElement = vim_info.lines[firstLine].element;
-  const lastElement = vim_info.lines[lastLine].element;
+  // Get all blocks to delete
+  const blocksToDelete: Element[] = [];
 
-  // Find the notion-selectable parent blocks
-  const firstBlock = firstElement.closest('[data-block-id]') || firstElement.parentElement?.parentElement;
-  const lastBlock = lastElement.closest('[data-block-id]') || lastElement.parentElement?.parentElement;
+  for (let i = firstLine; i <= lastLine; i++) {
+    const element = vim_info.lines[i].element;
+    const block = element.closest('[data-block-id]') || element.parentElement?.parentElement;
+    if (block && !blocksToDelete.includes(block)) {
+      blocksToDelete.push(block);
+    }
+  }
 
-  if (!firstBlock || !lastBlock) {
+  if (blocksToDelete.length === 0) {
     vim_info.mode = "normal";
     updateInfoContainer();
     return;
   }
 
-  // Create a range that selects the entire blocks
+  // Use DOM Range API but select content inside each block
   const range = document.createRange();
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+
+  const firstBlock = blocksToDelete[0];
+  const lastBlock = blocksToDelete[blocksToDelete.length - 1];
+
+  // Find the first and last contenteditable element within blocks
+  const firstEditable = firstBlock.querySelector('[contenteditable="true"]') || vim_info.lines[firstLine].element;
+  const lastEditable = lastBlock.querySelector('[contenteditable="true"]') || vim_info.lines[lastLine].element;
+
+  // Select the full content
+  range.setStart(firstEditable, 0);
+  range.setEnd(lastEditable, lastEditable.childNodes.length || 0);
+
+  // But we actually want to select the blocks themselves, not just the content
+  // So let's select from before the first block to after the last block's parent
   range.setStartBefore(firstBlock);
   range.setEndAfter(lastBlock);
 
-  // Set the selection
-  const selection = window.getSelection();
-  selection?.removeAllRanges();
   selection?.addRange(range);
 
-  // Switch to insert mode and dispatch Backspace to let Notion handle deletion
-  vim_info.mode = "insert";
+  // Proceed with deletion
+  proceedWithDeletion(firstLine);
 
-  setTimeout(() => {
-    // Dispatch Backspace to delete the selection
-    const backspaceEvent = new KeyboardEvent('keydown', {
-      key: 'Backspace',
-      code: 'Backspace',
-      keyCode: 8,
-      which: 8,
-      bubbles: true,
-      cancelable: true,
-    });
+  function proceedWithDeletion(firstLine: number) {
+    // Switch to insert mode and dispatch Delete to let Notion handle deletion
+    vim_info.mode = "insert";
 
-    document.activeElement?.dispatchEvent(backspaceEvent) ||
-      firstElement.dispatchEvent(backspaceEvent);
-
-    // Switch back to normal mode after deletion
     setTimeout(() => {
-      vim_info.mode = "normal";
-      window.getSelection()?.removeAllRanges();
+      // Try Delete key instead of Backspace - it works better with block selections
+      const deleteEvent = new KeyboardEvent('keydown', {
+        key: 'Delete',
+        code: 'Delete',
+        keyCode: 46,
+        which: 46,
+        bubbles: true,
+        cancelable: true,
+      });
 
+      // Dispatch to document or focused element
+      if (document.activeElement) {
+        document.activeElement.dispatchEvent(deleteEvent);
+      } else {
+        document.dispatchEvent(deleteEvent);
+      }
+
+      // Switch back to normal mode after deletion
       setTimeout(() => {
-        refreshLines();
-        const newActiveLine = Math.min(firstLine, vim_info.lines.length - 1);
-        if (newActiveLine >= 0) {
-          setActiveLine(newActiveLine);
-        }
-        updateInfoContainer();
+        vim_info.mode = "normal";
+        window.getSelection()?.removeAllRanges();
+
+        setTimeout(() => {
+          refreshLines();
+          const newActiveLine = Math.min(firstLine, vim_info.lines.length - 1);
+          if (newActiveLine >= 0) {
+            setActiveLine(newActiveLine);
+          }
+          updateInfoContainer();
+        }, 100);
       }, 100);
-    }, 100);
-  }, 50);
+    }, 50);
+  }
 };
 
 const yankVisualSelection = () => {
