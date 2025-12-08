@@ -929,6 +929,25 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
     case "k":
       visualLineMoveCursorUp();
       return true;
+    case "g":
+      // Handle gg command
+      if (vim_info.pending_operator === "g") {
+        // Second g pressed - jump to first line
+        vim_info.active_line = 0;
+        updateVisualLineSelection();
+        updateInfoContainer();
+        vim_info.pending_operator = null;
+      } else {
+        // First g pressed - wait for second g
+        vim_info.pending_operator = "g";
+      }
+      return true;
+    case "G":
+      // Jump to last line
+      vim_info.active_line = vim_info.lines.length - 1;
+      updateVisualLineSelection();
+      updateInfoContainer();
+      return true;
     case "d":
     case "x":
       deleteVisualLineSelection();

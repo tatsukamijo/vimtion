@@ -96,7 +96,7 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) work 
 ### Visual Mode
 
 **Character-wise (`v`)**: Select with `h` `l` `w` `b` `e` `0` `$`, then `d` `y` `c`
-**Line-wise (`V`)**: Select with `j` `k`, then `d` `y` `c`
+**Line-wise (`V`)**: Select with `j` `k` `gg` `G`, then `d` `y` `c`
 
 ## Known Limitations
 
