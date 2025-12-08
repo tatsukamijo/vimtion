@@ -1265,6 +1265,40 @@ const getInnerWordBounds = (text: string, pos: number): [number, number] => {
   return [start, end];
 };
 
+const getAroundWordBounds = (text: string, pos: number): [number, number] => {
+  let start = pos;
+  let end = pos;
+
+  // If not on a word character, return empty range
+  if (!/\w/.test(text[pos])) {
+    return [pos, pos];
+  }
+
+  // Find start of word
+  while (start > 0 && /\w/.test(text[start - 1])) {
+    start--;
+  }
+
+  // Find end of word
+  while (end < text.length && /\w/.test(text[end])) {
+    end++;
+  }
+
+  // Include trailing whitespace if present
+  while (end < text.length && /\s/.test(text[end])) {
+    end++;
+  }
+
+  // If no trailing whitespace, include leading whitespace instead
+  if (end === start + (pos - start) + (text.slice(pos).match(/^\w+/)?.[0].length || 0)) {
+    while (start > 0 && /\s/.test(text[start - 1])) {
+      start--;
+    }
+  }
+
+  return [start, end];
+};
+
 const yankInnerWord = async () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -1583,6 +1617,43 @@ const changeToBeginningOfLine = () => {
 
 const changeInnerWord = () => {
   deleteInnerWord();
+  window.vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+const yankAroundWord = async () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const [start, end] = getAroundWordBounds(text, currentCursorPosition);
+  const yankedText = text.slice(start, end);
+
+  try {
+    await navigator.clipboard.writeText(yankedText);
+  } catch (err) {
+    console.error('[Vim-Notion] Failed to yank:', err);
+  }
+};
+
+const deleteAroundWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const [start, end] = getAroundWordBounds(text, currentCursorPosition);
+
+  const newText = text.slice(0, start) + text.slice(end);
+  currentElement.textContent = newText;
+
+  setCursorPosition(currentElement, start);
+  vim_info.desired_column = start;
+};
+
+const changeAroundWord = () => {
+  deleteAroundWord();
   window.vim_info.mode = "insert";
   updateInfoContainer();
 };
@@ -2203,6 +2274,15 @@ const handlePendingOperator = (key: string): boolean => {
   } else if (operator === "ya" || operator === "da" || operator === "ca") {
     // Handle around text objects
     switch (key) {
+      case "w":
+        if (operator === "ya") {
+          yankAroundWord();
+        } else if (operator === "da") {
+          deleteAroundWord();
+        } else if (operator === "ca") {
+          changeAroundWord();
+        }
+        return true;
       case "(":
       case ")":
       case "b":

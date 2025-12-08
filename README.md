@@ -81,7 +81,8 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) work 
 - `ci'` `di'` `yi'` - inside `''`
 - `ci"` `di"` `yi"` - inside `""`
 
-**Around (`a`)**: Content + delimiters
+**Around (`a`)**: Content + delimiters/whitespace
+- `caw` `daw` `yaw` - word + surrounding whitespace
 - `ca(` `da(` `ya(` - including `()`
 - `ca[` `da[` `ya[` - including `[]`
 - `ca{` `da{` `ya{` - including `{}`
