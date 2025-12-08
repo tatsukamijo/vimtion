@@ -1,3 +1,13 @@
+/**
+ * Vimtion - Vim keybindings for Notion
+ *
+ * Copyright (c) 2024 Tatsuya Kamijo
+ * Copyright (c) 2020 Luke Ingalls
+ *
+ * Licensed under ISC License
+ * See LICENSE file for details
+ */
+
 const createInfoContainer = () => {
   const { vim_info } = window;
   const infoContainer = document.createElement("div");
@@ -261,9 +271,7 @@ const findCharForward = (char: string) => {
   if (foundIndex !== -1) {
     setCursorPosition(currentElement, foundIndex);
     vim_info.desired_column = foundIndex;
-    console.log(`[Vim-Notion] Found '${char}' at position ${foundIndex}`);
   } else {
-    console.log(`[Vim-Notion] Character '${char}' not found forward`);
   }
 };
 
@@ -278,9 +286,7 @@ const findCharBackward = (char: string) => {
   if (foundIndex !== -1) {
     setCursorPosition(currentElement, foundIndex);
     vim_info.desired_column = foundIndex;
-    console.log(`[Vim-Notion] Found '${char}' at position ${foundIndex}`);
   } else {
-    console.log(`[Vim-Notion] Character '${char}' not found backward`);
   }
 };
 
@@ -296,9 +302,7 @@ const tillCharForward = (char: string) => {
     const targetPos = foundIndex - 1;
     setCursorPosition(currentElement, targetPos);
     vim_info.desired_column = targetPos;
-    console.log(`[Vim-Notion] Till '${char}' at position ${targetPos}`);
   } else {
-    console.log(`[Vim-Notion] Character '${char}' not found forward`);
   }
 };
 
@@ -314,9 +318,7 @@ const tillCharBackward = (char: string) => {
     const targetPos = foundIndex + 1;
     setCursorPosition(currentElement, targetPos);
     vim_info.desired_column = targetPos;
-    console.log(`[Vim-Notion] Till '${char}' at position ${targetPos}`);
   } else {
-    console.log(`[Vim-Notion] Character '${char}' not found backward`);
   }
 };
 
@@ -514,7 +516,6 @@ const getLines = () => {
 const getCursorIndex = () => {
   const selection = document.getSelection();
   if (!selection || selection.rangeCount === 0) {
-    console.log("[Vim-Notion] getCursorIndex: No selection");
     return 0;
   }
 
@@ -540,7 +541,6 @@ const getCursorIndex = () => {
   };
 
   checkElementNode(document.activeElement);
-  console.log(`[Vim-Notion] getCursorIndex: ${i}, activeElement:`, document.activeElement);
   return i;
 };
 
@@ -549,7 +549,6 @@ const getModeText = (mode: "insert" | "normal" | "visual" | "visual-line") => {
 };
 
 const setCursorPosition = (element: Element, index: number) => {
-  console.log(`[Vim-Notion] setCursorPosition: setting position ${index} on element:`, element);
 
   const childNodes = Array.from(element.childNodes);
 
@@ -563,7 +562,6 @@ const setCursorPosition = (element: Element, index: number) => {
     range.collapse(true);
     selection.removeAllRanges();
     selection.addRange(range);
-    console.log(`[Vim-Notion] Cursor set to empty element`);
     updateBlockCursor();
     return;
   }
@@ -583,7 +581,6 @@ const setCursorPosition = (element: Element, index: number) => {
       range.collapse(true);
       selection.removeAllRanges();
       selection.addRange(range);
-      console.log(`[Vim-Notion] Cursor set to position ${index}`);
       updateBlockCursor();
       break;
     }
@@ -614,7 +611,6 @@ const handleClick = (e: MouseEvent) => {
     return;
   }
 
-  console.log(`[Vim-Notion] Click detected on line ${lineIndex} in normal mode`);
 
   // Let the browser handle the click to position the cursor, then update our state
   setTimeout(() => {
@@ -646,7 +642,6 @@ const handleClick = (e: MouseEvent) => {
         vim_info.active_line = lineIndex;
         vim_info.desired_column = cursorPos;
         updateBlockCursor();
-        console.log(`[Vim-Notion] Cursor moved to position ${cursorPos} on line ${lineIndex}`);
       }
     }
   }, 0);
@@ -654,7 +649,6 @@ const handleClick = (e: MouseEvent) => {
 
 const handleKeydown = (e: KeyboardEvent) => {
   const { vim_info } = window;
-  console.log(`[Vim-Notion] handleKeydown called: key=${e.key}, mode=${vim_info.mode}`);
 
   if (vim_info.mode === "normal") {
     // Let normalReducer decide if this key should be handled
@@ -663,7 +657,6 @@ const handleKeydown = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      console.log(`[Vim-Notion] Blocked key in normal mode: ${e.key}`);
     }
   } else if (vim_info.mode === "visual") {
     const handled = visualReducer(e);
@@ -671,7 +664,6 @@ const handleKeydown = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      console.log(`[Vim-Notion] Blocked key in visual mode: ${e.key}`);
     }
   } else if (vim_info.mode === "visual-line") {
     const handled = visualLineReducer(e);
@@ -679,7 +671,6 @@ const handleKeydown = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      console.log(`[Vim-Notion] Blocked key in visual-line mode: ${e.key}`);
     }
   } else {
     insertReducer(e);
@@ -1440,9 +1431,7 @@ const deleteFindCharForward = (char: string) => {
     currentElement.textContent = newText;
     setCursorPosition(currentElement, currentPos);
     vim_info.desired_column = currentPos;
-    console.log(`[Vim-Notion] Deleted to f${char}`);
   } else {
-    console.log(`[Vim-Notion] Character '${char}' not found forward`);
   }
 };
 
@@ -1459,9 +1448,7 @@ const deleteFindCharBackward = (char: string) => {
     currentElement.textContent = newText;
     setCursorPosition(currentElement, foundIndex);
     vim_info.desired_column = foundIndex;
-    console.log(`[Vim-Notion] Deleted to F${char}`);
   } else {
-    console.log(`[Vim-Notion] Character '${char}' not found backward`);
   }
 };
 
@@ -1478,9 +1465,6 @@ const deleteTillCharForward = (char: string) => {
     currentElement.textContent = newText;
     setCursorPosition(currentElement, currentPos);
     vim_info.desired_column = currentPos;
-    console.log(`[Vim-Notion] Deleted till t${char}`);
-  } else {
-    console.log(`[Vim-Notion] Character '${char}' not found forward`);
   }
 };
 
@@ -1497,9 +1481,6 @@ const deleteTillCharBackward = (char: string) => {
     currentElement.textContent = newText;
     setCursorPosition(currentElement, foundIndex + 1);
     vim_info.desired_column = foundIndex + 1;
-    console.log(`[Vim-Notion] Deleted till T${char}`);
-  } else {
-    console.log(`[Vim-Notion] Character '${char}' not found backward`);
   }
 };
 
@@ -1833,7 +1814,6 @@ const deleteVisualSelection = () => {
 const getCursorIndexInElement = (element: Element): number => {
   const selection = document.getSelection();
   if (!selection || selection.rangeCount === 0) {
-    console.log("[Vim-Notion] getCursorIndexInElement: No selection");
     return 0;
   }
 
@@ -1866,7 +1846,6 @@ const moveCursorBackwards = () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
 
-  console.log(`[Vim-Notion] moveCursorBackwards on line ${vim_info.active_line}, pos ${currentCursorPosition}`);
 
   // If at beginning of line, move to end of previous line
   if (currentCursorPosition === 0) {
@@ -1891,7 +1870,6 @@ const moveCursorForwards = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const lineLength = currentElement.textContent?.length || 0;
 
-  console.log(`[Vim-Notion] moveCursorForwards on line ${vim_info.active_line}, pos ${currentCursorPosition}`);
 
   // If at end of line, move to next line
   if (currentCursorPosition >= lineLength) {
@@ -1913,11 +1891,9 @@ const handlePendingOperator = (key: string): boolean => {
   const { vim_info } = window;
   const operator = vim_info.pending_operator;
 
-  console.log(`[Vim-Notion] handlePendingOperator: operator=${operator}, key=${key}`);
 
   // Ignore modifier keys - don't clear pending_operator
   if (key === "Shift" || key === "Control" || key === "Alt" || key === "Meta") {
-    console.log('[Vim-Notion] Ignoring modifier key');
     return true;
   }
 
@@ -1926,53 +1902,43 @@ const handlePendingOperator = (key: string): boolean => {
 
   if (operator === "f") {
     // Handle f{char} - find character forward
-    console.log(`[Vim-Notion] Executing f${key}`);
     findCharForward(key);
     return true;
   } else if (operator === "F") {
     // Handle F{char} - find character backward
-    console.log(`[Vim-Notion] Executing F${key}`);
     findCharBackward(key);
     return true;
   } else if (operator === "t") {
     // Handle t{char} - till character forward
-    console.log(`[Vim-Notion] Executing t${key}`);
     tillCharForward(key);
     return true;
   } else if (operator === "T") {
     // Handle T{char} - till character backward
-    console.log(`[Vim-Notion] Executing T${key}`);
     tillCharBackward(key);
     return true;
   } else if (operator === "g") {
     // Handle g commands
     switch (key) {
       case "g":
-        console.log('[Vim-Notion] Executing gg (jump to first line)');
         setActiveLine(0);
         jumpToLineStart();
         return true;
       default:
-        console.log('[Vim-Notion] Invalid g command, canceling');
         return true;
     }
   } else if (operator === "y") {
     // Handle yank operations
     switch (key) {
       case "y":
-        console.log('[Vim-Notion] Executing yy');
         yankCurrentLine();
         return true;
       case "w":
-        console.log('[Vim-Notion] Executing yw');
         yankToNextWord();
         return true;
       case "$":
-        console.log('[Vim-Notion] Executing y$');
         yankToEndOfLine();
         return true;
       case "0":
-        console.log('[Vim-Notion] Executing y0');
         yankToBeginningOfLine();
         return true;
       case "i":
@@ -1984,26 +1950,21 @@ const handlePendingOperator = (key: string): boolean => {
         vim_info.pending_operator = "ya";
         return true;
       default:
-        console.log('[Vim-Notion] Invalid motion, canceling');
         return true;
     }
   } else if (operator === "d") {
     // Handle delete operations
     switch (key) {
       case "d":
-        console.log('[Vim-Notion] Executing dd');
         deleteCurrentLine();
         return true;
       case "w":
-        console.log('[Vim-Notion] Executing dw');
         deleteToNextWord();
         return true;
       case "$":
-        console.log('[Vim-Notion] Executing d$');
         deleteToEndOfLine();
         return true;
       case "0":
-        console.log('[Vim-Notion] Executing d0');
         deleteToBeginningOfLine();
         return true;
       case "f":
@@ -2031,26 +1992,21 @@ const handlePendingOperator = (key: string): boolean => {
         vim_info.pending_operator = "da";
         return true;
       default:
-        console.log('[Vim-Notion] Invalid motion, canceling');
         return true;
     }
   } else if (operator === "c") {
     // Handle change operations (delete and enter insert mode)
     switch (key) {
       case "c":
-        console.log('[Vim-Notion] Executing cc');
         changeCurrentLine();
         return true;
       case "w":
-        console.log('[Vim-Notion] Executing cw');
         changeToNextWord();
         return true;
       case "$":
-        console.log('[Vim-Notion] Executing c$');
         changeToEndOfLine();
         return true;
       case "0":
-        console.log('[Vim-Notion] Executing c0');
         changeToBeginningOfLine();
         return true;
       case "f":
@@ -2078,54 +2034,44 @@ const handlePendingOperator = (key: string): boolean => {
         vim_info.pending_operator = "ca";
         return true;
       default:
-        console.log('[Vim-Notion] Invalid motion, canceling');
         return true;
     }
   } else if (operator === "df") {
     // Handle df{char} - delete find character forward
-    console.log(`[Vim-Notion] Executing df${key}`);
     deleteFindCharForward(key);
     return true;
   } else if (operator === "dF") {
     // Handle dF{char} - delete find character backward
-    console.log(`[Vim-Notion] Executing dF${key}`);
     deleteFindCharBackward(key);
     return true;
   } else if (operator === "dt") {
     // Handle dt{char} - delete till character forward
-    console.log(`[Vim-Notion] Executing dt${key}`);
     deleteTillCharForward(key);
     return true;
   } else if (operator === "dT") {
     // Handle dT{char} - delete till character backward
-    console.log(`[Vim-Notion] Executing dT${key}`);
     deleteTillCharBackward(key);
     return true;
   } else if (operator === "cf") {
     // Handle cf{char} - change find character forward
-    console.log(`[Vim-Notion] Executing cf${key}`);
     changeFindCharForward(key);
     return true;
   } else if (operator === "cF") {
     // Handle cF{char} - change find character backward
-    console.log(`[Vim-Notion] Executing cF${key}`);
     changeFindCharBackward(key);
     return true;
   } else if (operator === "ct") {
     // Handle ct{char} - change till character forward
-    console.log(`[Vim-Notion] Executing ct${key}`);
     changeTillCharForward(key);
     return true;
   } else if (operator === "cT") {
     // Handle cT{char} - change till character backward
-    console.log(`[Vim-Notion] Executing cT${key}`);
     changeTillCharBackward(key);
     return true;
   } else if (operator === "yi" || operator === "di" || operator === "ci") {
     // Handle inner text objects
     switch (key) {
       case "w":
-        console.log(`[Vim-Notion] Executing ${operator}w`);
         if (operator === "yi") {
           yankInnerWord();
         } else if (operator === "di") {
@@ -2185,7 +2131,6 @@ const handlePendingOperator = (key: string): boolean => {
         }
         return true;
       default:
-        console.log('[Vim-Notion] Invalid text object, canceling');
         return true;
     }
   } else if (operator === "ya" || operator === "da" || operator === "ca") {
@@ -2242,7 +2187,6 @@ const handlePendingOperator = (key: string): boolean => {
         }
         return true;
       default:
-        console.log('[Vim-Notion] Invalid text object, canceling');
         return true;
     }
   }
@@ -2259,11 +2203,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
   const { vim_info } = window;
   const { active_line, pending_operator } = vim_info;
 
-  console.log(`[Vim-Notion] normalReducer: key=${e.key}, pending_operator=${pending_operator}`);
 
   // If we have a pending operator, handle it
   if (pending_operator) {
-    console.log(`[Vim-Notion] Handling pending operator: ${pending_operator}${e.key}`);
     return handlePendingOperator(e.key);
   }
 
@@ -2352,7 +2294,6 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "D":
       // Delete to end of line (same as d$)
-      console.log('[Vim-Notion] Executing D (delete to end of line)');
       deleteToEndOfLine();
       return true;
     case "c":
@@ -2360,7 +2301,6 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "C":
       // Change to end of line (same as c$)
-      console.log('[Vim-Notion] Executing C (change to end of line)');
       changeToEndOfLine();
       return true;
     case "g":
@@ -2368,7 +2308,6 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "G":
       // Jump to last line
-      console.log('[Vim-Notion] Executing G (jump to last line)');
       setActiveLine(vim_info.lines.length - 1);
       jumpToLineStart();
       return true;
@@ -2405,7 +2344,6 @@ const setActiveLine = (idx: number) => {
   if (idx >= lines.length) i = lines.length - 1;
   if (i < 0) i = 0;
 
-  console.log(`[Vim-Notion] setActiveLine: moving to ${i}`);
 
   // Update the active line index
   window.vim_info.active_line = i;
@@ -2419,7 +2357,6 @@ const setActiveLine = (idx: number) => {
   const targetColumn = Math.min(desired_column, lineLength);
   setCursorPosition(lines[i].element, targetColumn);
 
-  console.log(`[Vim-Notion] Active line is now: ${i}, cursor at column ${targetColumn}`);
 };
 
 const refreshLines = () => {
@@ -2436,13 +2373,11 @@ const refreshLines = () => {
   const newElements = allEditableElements.filter(elem => !existingElements.has(elem));
 
   if (newElements.length > 0) {
-    console.log(`[Vim-Notion] Found ${newElements.length} new editable elements`);
 
     // Add event listeners to new elements
     newElements.forEach(elem => {
       elem.addEventListener("keydown", handleKeydown, true);
       elem.addEventListener("click", handleClick, true);
-      console.log(`[Vim-Notion] Added event listeners to new line`);
     });
   }
 
@@ -2457,16 +2392,13 @@ const refreshLines = () => {
     const newIndex = vim_info.lines.findIndex(line => line.element === currentActiveElement);
     if (newIndex !== -1) {
       vim_info.active_line = newIndex;
-      console.log(`[Vim-Notion] Updated active_line to ${newIndex} after refresh`);
     }
   }
 
-  console.log(`[Vim-Notion] Total lines: ${vim_info.lines.length}`);
 };
 
 const setLines = (f: HTMLDivElement[]) => {
   const { vim_info } = window;
-  console.log(`[Vim-Notion] Setting up ${f.length} lines`);
 
   vim_info.lines = f.map((elem) => ({
     cursor_position: 0,
@@ -2477,12 +2409,10 @@ const setLines = (f: HTMLDivElement[]) => {
   vim_info.lines.forEach((line, index) => {
     line.element.addEventListener("keydown", handleKeydown, true);
     line.element.addEventListener("click", handleClick, true);
-    console.log(`[Vim-Notion] Added event listeners to line ${index}`);
   });
 
   // Set initial active line
   setActiveLine(vim_info.active_line || 0);
-  console.log(`[Vim-Notion] Lines setup complete, active line: ${vim_info.active_line}`);
 
   // Set up MutationObserver to detect new lines
   const observer = new MutationObserver(() => {
@@ -2494,7 +2424,6 @@ const setLines = (f: HTMLDivElement[]) => {
     subtree: true,
   });
 
-  console.log("[Vim-Notion] MutationObserver set up to detect new lines");
 };
 
 const updateInfoContainer = () => {
@@ -2525,7 +2454,6 @@ const updateInfoContainer = () => {
   createInfoContainer();
   // Set initial cursor style for normal mode
   document.body.classList.add("vim-normal-mode");
-  console.log("[Vim-Notion] Info container created");
 
   let attempts = 0;
   const poll = setInterval(() => {
@@ -2533,11 +2461,9 @@ const updateInfoContainer = () => {
     const f = Array.from(
       document.querySelectorAll("[contenteditable=true]")
     );
-    console.log(`[Vim-Notion] Attempt ${attempts}: Found ${f.length} editable elements`);
 
     if (f.length > 0) {
       clearInterval(poll);
-      console.log("[Vim-Notion] Setting up lines...");
       setLines(f as HTMLDivElement[]);
       console.log("[Vim-Notion] Setup complete!");
     }
