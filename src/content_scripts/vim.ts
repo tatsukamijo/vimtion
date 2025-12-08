@@ -1944,8 +1944,7 @@ const handlePendingOperator = (key: string): boolean => {
     // Handle g commands
     switch (key) {
       case "g":
-        setActiveLine(0);
-        jumpToLineStart();
+        jumpToTop();
         return true;
       default:
         return true;
@@ -2364,8 +2363,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "G":
       // Jump to last line
-      setActiveLine(vim_info.lines.length - 1);
-      jumpToLineStart();
+      jumpToBottom();
       return true;
     case "f":
       window.vim_info.pending_operator = "f";
@@ -2489,6 +2487,75 @@ const scrollAndMoveCursor = (pageAmount: number) => {
       targetElement.focus();
     }
   }, 150); // Slightly longer delay for smooth scroll to progress
+};
+
+// Jump to top of document (gg)
+const jumpToTop = () => {
+  const { vim_info } = window;
+  const scrollContainer = findScrollableContainer();
+
+  // Scroll to top
+  if (scrollContainer === document.documentElement) {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  } else {
+    scrollContainer.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  }
+
+  // Wait for scroll, then set cursor to first line
+  setTimeout(() => {
+    refreshLines();
+    vim_info.active_line = 0;
+    vim_info.desired_column = 0;
+
+    const targetElement = vim_info.lines[0]?.element;
+    if (targetElement) {
+      setCursorPosition(targetElement, 0);
+      targetElement.focus();
+    }
+  }, 150);
+};
+
+// Jump to bottom of document (G)
+const jumpToBottom = () => {
+  const { vim_info } = window;
+  const scrollContainer = findScrollableContainer();
+
+  // Scroll to bottom
+  const maxScroll = scrollContainer === document.documentElement
+    ? document.documentElement.scrollHeight - window.innerHeight
+    : scrollContainer.scrollHeight - scrollContainer.clientHeight;
+
+  if (scrollContainer === document.documentElement) {
+    window.scrollTo({
+      top: maxScroll,
+      behavior: 'smooth'
+    });
+  } else {
+    scrollContainer.scrollTo({
+      top: maxScroll,
+      behavior: 'smooth'
+    });
+  }
+
+  // Wait for scroll, then set cursor to last line
+  setTimeout(() => {
+    refreshLines();
+    const lastLine = vim_info.lines.length - 1;
+    vim_info.active_line = lastLine;
+    vim_info.desired_column = 0;
+
+    const targetElement = vim_info.lines[lastLine]?.element;
+    if (targetElement) {
+      setCursorPosition(targetElement, 0);
+      targetElement.focus();
+    }
+  }, 150);
 };
 
 const setActiveLine = (idx: number) => {
