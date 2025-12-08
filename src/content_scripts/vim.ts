@@ -686,7 +686,7 @@ const initVimInfo = () => {
     mode: "normal" as "normal" | "insert" | "visual" | "visual-line",
     visual_start_line: 0,
     visual_start_pos: 0,
-    pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "g" | "f" | "F" | "t" | "T" | "df" | "dF" | "dt" | "dT" | "cf" | "cF" | "ct" | "cT" | null, // For commands like yy, dd, gg, ff, df, etc.
+    pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "ya" | "da" | "ca" | "vi" | "va" | "g" | "f" | "F" | "t" | "T" | "df" | "dF" | "dt" | "dT" | "cf" | "cF" | "ct" | "cT" | null, // For commands like yy, dd, gg, ff, df, etc.
   };
   window.vim_info = vim_info;
 };
@@ -792,6 +792,40 @@ const updateVisualLineSelection = () => {
   selection?.addRange(range);
 };
 
+// Helper function to set range in an element
+const setRangeInElement = (range: Range, element: Node, start: number, end: number) => {
+  let textOffset = 0;
+  let startSet = false;
+  let endSet = false;
+
+  for (const node of Array.from(element.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const nodeLength = node.textContent?.length || 0;
+      const nodeEnd = textOffset + nodeLength;
+
+      if (!startSet && start >= textOffset && start <= nodeEnd) {
+        range.setStart(node, Math.min(start - textOffset, nodeLength));
+        startSet = true;
+      }
+      if (!endSet && end >= textOffset && end <= nodeEnd) {
+        range.setEnd(node, Math.min(end - textOffset, nodeLength));
+        endSet = true;
+      }
+
+      textOffset += nodeLength;
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const childLength = node.textContent?.length || 0;
+
+      if (!startSet && start < textOffset + childLength) {
+        setRangeInElement(range, node, start - textOffset, end - textOffset);
+        return;
+      }
+
+      textOffset += childLength;
+    }
+  }
+};
+
 const updateVisualSelection = () => {
   const { vim_info } = window;
 
@@ -811,47 +845,55 @@ const updateVisualSelection = () => {
   const selection = window.getSelection();
   const range = document.createRange();
 
-  // Find the text node and set range
-  const setRangeInElement = (element: Node, start: number, end: number) => {
-    let textOffset = 0;
-    let startSet = false;
-    let endSet = false;
-
-    for (const node of Array.from(element.childNodes)) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const nodeLength = node.textContent?.length || 0;
-        const nodeEnd = textOffset + nodeLength;
-
-        if (!startSet && start >= textOffset && start <= nodeEnd) {
-          range.setStart(node, Math.min(start - textOffset, nodeLength));
-          startSet = true;
-        }
-        if (!endSet && end >= textOffset && end <= nodeEnd) {
-          range.setEnd(node, Math.min(end - textOffset, nodeLength));
-          endSet = true;
-        }
-
-        textOffset += nodeLength;
-      } else if (node.nodeType === Node.ELEMENT_NODE) {
-        const childLength = node.textContent?.length || 0;
-
-        if (!startSet && start < textOffset + childLength) {
-          setRangeInElement(node, start - textOffset, end - textOffset);
-          return;
-        }
-
-        textOffset += childLength;
-      }
-    }
-  };
-
   const lineLength = currentElement.textContent?.length || 0;
 
   const [selStart, selEnd] = startPos <= currentPos
     ? [startPos, Math.min(currentPos + 1, lineLength)]  // Include character under cursor, but don't exceed line length
     : [currentPos, Math.min(startPos + 1, lineLength)];
 
-  setRangeInElement(currentElement, selStart, selEnd);
+  setRangeInElement(range, currentElement, selStart, selEnd);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+};
+
+const visualSelectInnerWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const [start, end] = getInnerWordBounds(text, currentCursorPosition);
+
+  // Update visual selection to cover the word
+  vim_info.visual_start_pos = start;
+  vim_info.desired_column = end - 1; // Position cursor at end of word (inclusive)
+
+  // Update the visual selection
+  const range = document.createRange();
+  const selection = window.getSelection();
+
+  setRangeInElement(range, currentElement, start, end);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+};
+
+const visualSelectAroundWord = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  const [start, end] = getAroundWordBounds(text, currentCursorPosition);
+
+  // Update visual selection to cover the word and surrounding whitespace
+  vim_info.visual_start_pos = start;
+  vim_info.desired_column = end - 1; // Position cursor at end of selection (inclusive)
+
+  // Update the visual selection
+  const range = document.createRange();
+  const selection = window.getSelection();
+
+  setRangeInElement(range, currentElement, start, end);
   selection?.removeAllRanges();
   selection?.addRange(range);
 };
@@ -863,6 +905,27 @@ const visualReducer = (e: KeyboardEvent): boolean => {
   // Note: Ctrl is reserved for Vim shortcuts (Ctrl+d, Ctrl+u, etc.)
   if (e.metaKey || e.altKey) {
     return false;
+  }
+
+  // Handle pending text object operators
+  if (vim_info.pending_operator === "vi") {
+    // Visual inner text object
+    if (e.key === "w") {
+      visualSelectInnerWord();
+      vim_info.pending_operator = null;
+      return true;
+    }
+    vim_info.pending_operator = null;
+    return true;
+  } else if (vim_info.pending_operator === "va") {
+    // Visual around text object
+    if (e.key === "w") {
+      visualSelectAroundWord();
+      vim_info.pending_operator = null;
+      return true;
+    }
+    vim_info.pending_operator = null;
+    return true;
   }
 
   switch (e.key) {
@@ -905,6 +968,14 @@ const visualReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "$":
       visualJumpToEndOfLine();
+      return true;
+    case "i":
+      // Set pending operator for inner text object
+      vim_info.pending_operator = "vi";
+      return true;
+    case "a":
+      // Set pending operator for around text object
+      vim_info.pending_operator = "va";
       return true;
     case "d":
     case "x":

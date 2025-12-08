@@ -96,8 +96,14 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) work 
 
 ### Visual Mode
 
-**Character-wise (`v`)**: Select with `h` `l` `w` `b` `e` `0` `$`, then `d` `y` `c`
+**Character-wise (`v`)**:
+- Navigate: `h` `l` `w` `b` `e` `0` `$`
+- Text objects: `iw` (inner word) `aw` (around word)
+- Operate: `d` `y` `c` or use Notion shortcuts (Cmd+B, Cmd+I, etc.)
+
 **Line-wise (`V`)**: Select with `j` `k` `gg` `G`, then `d` `y` `c`
+
+**Note**: Notion's native formatting shortcuts (Cmd+B, Cmd+I, Cmd+U, etc.) work on visual selections.
 
 ## ⚠️ Known Limitations
 
