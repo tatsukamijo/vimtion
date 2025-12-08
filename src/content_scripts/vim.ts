@@ -1584,6 +1584,8 @@ const yankAroundBracket = (openChar: string, closeChar: string) => {
 };
 
 const undo = () => {
+  const { vim_info } = window;
+
   // Simulate Cmd+Z / Ctrl+Z to trigger Notion's undo
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const event = new KeyboardEvent('keydown', {
@@ -1598,9 +1600,21 @@ const undo = () => {
   });
 
   document.dispatchEvent(event);
+
+  // Wait for Notion to process the undo, then update cursor position
+  setTimeout(() => {
+    const currentElement = vim_info.lines[vim_info.active_line]?.element;
+    if (currentElement) {
+      const cursorIndex = getCursorIndexInElement(currentElement);
+      vim_info.desired_column = cursorIndex;
+      updateBlockCursor();
+    }
+  }, 50);
 };
 
 const redo = () => {
+  const { vim_info } = window;
+
   // Simulate Cmd+Shift+Z / Ctrl+Shift+Z to trigger Notion's redo
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const event = new KeyboardEvent('keydown', {
@@ -1616,6 +1630,16 @@ const redo = () => {
   });
 
   document.dispatchEvent(event);
+
+  // Wait for Notion to process the redo, then update cursor position
+  setTimeout(() => {
+    const currentElement = vim_info.lines[vim_info.active_line]?.element;
+    if (currentElement) {
+      const cursorIndex = getCursorIndexInElement(currentElement);
+      vim_info.desired_column = cursorIndex;
+      updateBlockCursor();
+    }
+  }, 50);
 };
 
 const visualMoveCursorBackwards = () => {
