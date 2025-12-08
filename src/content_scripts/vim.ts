@@ -859,6 +859,12 @@ const updateVisualSelection = () => {
 const visualReducer = (e: KeyboardEvent): boolean => {
   const { vim_info } = window;
 
+  // Allow Notion shortcuts with Cmd (macOS) or Alt modifier keys
+  // Note: Ctrl is reserved for Vim shortcuts (Ctrl+d, Ctrl+u, etc.)
+  if (e.metaKey || e.altKey) {
+    return false;
+  }
+
   switch (e.key) {
     case "Escape":
       vim_info.mode = "normal";
@@ -914,6 +920,12 @@ const visualReducer = (e: KeyboardEvent): boolean => {
 
 const visualLineReducer = (e: KeyboardEvent): boolean => {
   const { vim_info } = window;
+
+  // Allow Notion shortcuts with Cmd (macOS) or Alt modifier keys
+  // Note: Ctrl is reserved for Vim shortcuts (Ctrl+d, Ctrl+u, etc.)
+  if (e.metaKey || e.altKey) {
+    return false;
+  }
 
   switch (e.key) {
     case "Escape":
