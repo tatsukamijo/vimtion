@@ -29,7 +29,7 @@ This fork has been extensively rebuilt with:
 - **Visual modes**: Character-wise (`v`) and line-wise (`V`) visual selection with full operator support
 - **Operators with motions**: Comprehensive support for d/c/y with all motions (w/W/b/B/e/E/$0/iw)
 - **Text objects**: Full support for `i`(inner) and `a`(around) with brackets, quotes (e.g., `ci(`, `da"`, `yi{`)
-- **Undo/Redo**: `u` for undo, `r` for redo (using native Notion history)
+- **Undo/Redo**: `u` for undo, `r` for redo with intelligent grouping for multi-line operations
 - **Mouse support**: Click to position cursor in normal mode
 - **Better cursor visibility**: Enhanced block cursor with improved opacity and visibility on empty lines
 - **Insert commands**: `a`, `A`, `I` for various insert positions
@@ -58,7 +58,7 @@ This fork has been extensively rebuilt with:
 **Insert**: `i` `I` `a` `A` `o` `O` • **Visual**: `v` (char) `V` (line) • **Normal**: `Esc`
 
 ### Editing
-**Delete**: `x` `X` `s` `D` • **Undo/Redo**: `u` `r` • **Paste**: `p` `P`
+**Delete**: `x` `X` `s` `D` `dd` (delete line with block) • **Undo/Redo**: `u` `r` (grouped undo for multi-line operations) • **Paste**: `p` `P`
 
 ### Operators with Motions
 All operators (`d` delete, `c` change, `y` yank) work with all motions:

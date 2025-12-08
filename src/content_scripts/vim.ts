@@ -687,6 +687,8 @@ const initVimInfo = () => {
     visual_start_line: 0,
     visual_start_pos: 0,
     pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "ya" | "da" | "ca" | "vi" | "va" | "g" | "f" | "F" | "t" | "T" | "df" | "dF" | "dt" | "dT" | "cf" | "cF" | "ct" | "cT" | null, // For commands like yy, dd, gg, ff, df, etc.
+    undo_count: 0, // Track number of native undo operations in current group
+    in_undo_group: false, // Whether we're currently in a grouped operation
   };
   window.vim_info = vim_info;
 };
@@ -1108,38 +1110,55 @@ const deleteVisualLineSelection = () => {
     return;
   }
 
-  // Use DOM Range API but select content inside each block
-  const range = document.createRange();
-  const selection = window.getSelection();
-  selection?.removeAllRanges();
+  // Switch to insert mode temporarily
+  vim_info.mode = "insert";
 
-  const firstBlock = blocksToDelete[0];
-  const lastBlock = blocksToDelete[blocksToDelete.length - 1];
+  // Start undo group for multi-line deletion
+  vim_info.in_undo_group = true;
+  vim_info.undo_count = blocksToDelete.length;
 
-  // Find the first and last contenteditable element within blocks
-  const firstEditable = firstBlock.querySelector('[contenteditable="true"]') || vim_info.lines[firstLine].element;
-  const lastEditable = lastBlock.querySelector('[contenteditable="true"]') || vim_info.lines[lastLine].element;
+  // Delete each block one by one from last to first to maintain indices
+  deleteBlocksSequentially(blocksToDelete.slice().reverse(), firstLine);
 
-  // Select the full content
-  range.setStart(firstEditable, 0);
-  range.setEnd(lastEditable, lastEditable.childNodes.length || 0);
+  function deleteBlocksSequentially(blocks: Element[], targetLine: number) {
+    if (blocks.length === 0) {
+      // All blocks deleted, restore normal mode and update cursor
+      vim_info.mode = "normal";
+      vim_info.in_undo_group = false;
+      window.getSelection()?.removeAllRanges();
 
-  // But we actually want to select the blocks themselves, not just the content
-  // So let's select from before the first block to after the last block's parent
-  range.setStartBefore(firstBlock);
-  range.setEndAfter(lastBlock);
+      setTimeout(() => {
+        refreshLines();
+        const newActiveLine = Math.max(0, Math.min(targetLine, vim_info.lines.length - 1));
+        if (vim_info.lines.length > 0) {
+          setActiveLine(newActiveLine);
+        }
+        updateInfoContainer();
+      }, 100);
+      return;
+    }
 
-  selection?.addRange(range);
+    const block = blocks[0];
+    const element = block.querySelector('[contenteditable="true"]') as HTMLElement;
 
-  // Proceed with deletion
-  proceedWithDeletion(firstLine);
+    if (!element) {
+      // Skip this block and continue
+      deleteBlocksSequentially(blocks.slice(1), targetLine);
+      return;
+    }
 
-  function proceedWithDeletion(firstLine: number) {
-    // Switch to insert mode and dispatch Delete to let Notion handle deletion
-    vim_info.mode = "insert";
+    // Select the content
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    // Focus and delete
+    element.focus();
 
     setTimeout(() => {
-      // Try Delete key instead of Backspace - it works better with block selections
+      // Delete content
       const deleteEvent = new KeyboardEvent('keydown', {
         key: 'Delete',
         code: 'Delete',
@@ -1148,29 +1167,26 @@ const deleteVisualLineSelection = () => {
         bubbles: true,
         cancelable: true,
       });
+      element.dispatchEvent(deleteEvent);
 
-      // Dispatch to document or focused element
-      if (document.activeElement) {
-        document.activeElement.dispatchEvent(deleteEvent);
-      } else {
-        document.dispatchEvent(deleteEvent);
-      }
-
-      // Switch back to normal mode after deletion
+      // Delete empty block
       setTimeout(() => {
-        vim_info.mode = "normal";
-        window.getSelection()?.removeAllRanges();
+        const backspaceEvent = new KeyboardEvent('keydown', {
+          key: 'Backspace',
+          code: 'Backspace',
+          keyCode: 8,
+          which: 8,
+          bubbles: true,
+          cancelable: true,
+        });
+        element.dispatchEvent(backspaceEvent);
 
+        // Continue with next block
         setTimeout(() => {
-          refreshLines();
-          const newActiveLine = Math.min(firstLine, vim_info.lines.length - 1);
-          if (newActiveLine >= 0) {
-            setActiveLine(newActiveLine);
-          }
-          updateInfoContainer();
-        }, 100);
-      }, 100);
-    }, 50);
+          deleteBlocksSequentially(blocks.slice(1), targetLine);
+        }, 10);
+      }, 10);
+    }, 10);
   }
 };
 
@@ -1457,9 +1473,9 @@ const deleteCurrentLine = async () => {
         if (vim_info.lines.length > 0) {
           setActiveLine(newActiveLine);
         }
-      }, 100);
-    }, 50);
-  }, 50);
+      }, 50);
+    }, 20);
+  }, 10);
 };
 
 const deleteToNextWord = () => {
@@ -1859,60 +1875,96 @@ const yankAroundBracket = (openChar: string, closeChar: string) => {
 const undo = () => {
   const { vim_info } = window;
 
-  // Simulate Cmd+Z / Ctrl+Z to trigger Notion's undo
-  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-  const event = new KeyboardEvent('keydown', {
-    key: 'z',
-    code: 'KeyZ',
-    keyCode: 90,
-    which: 90,
-    metaKey: isMac,
-    ctrlKey: !isMac,
-    bubbles: true,
-    cancelable: true,
-  });
+  // Check if we need to undo multiple operations (from grouped deletions)
+  const count = vim_info.undo_count > 0 ? vim_info.undo_count : 1;
 
-  document.dispatchEvent(event);
+  // Perform undo operations
+  performUndoOperations(count);
 
-  // Wait for Notion to process the undo, then update cursor position
-  setTimeout(() => {
-    const currentElement = vim_info.lines[vim_info.active_line]?.element;
-    if (currentElement) {
-      const cursorIndex = getCursorIndexInElement(currentElement);
-      vim_info.desired_column = cursorIndex;
-      updateBlockCursor();
+  function performUndoOperations(remaining: number) {
+    if (remaining <= 0) {
+      // All undos complete, reset counter and update cursor
+      vim_info.undo_count = 0;
+
+      setTimeout(() => {
+        const currentElement = vim_info.lines[vim_info.active_line]?.element;
+        if (currentElement) {
+          const cursorIndex = getCursorIndexInElement(currentElement);
+          vim_info.desired_column = cursorIndex;
+          updateBlockCursor();
+        }
+      }, 50);
+      return;
     }
-  }, 50);
+
+    // Simulate Cmd+Z / Ctrl+Z to trigger Notion's undo
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const event = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      keyCode: 90,
+      which: 90,
+      metaKey: isMac,
+      ctrlKey: !isMac,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    document.dispatchEvent(event);
+
+    // Wait and perform next undo
+    setTimeout(() => {
+      performUndoOperations(remaining - 1);
+    }, 20);
+  }
 };
 
 const redo = () => {
   const { vim_info } = window;
 
-  // Simulate Cmd+Shift+Z / Ctrl+Shift+Z to trigger Notion's redo
-  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-  const event = new KeyboardEvent('keydown', {
-    key: 'z',
-    code: 'KeyZ',
-    keyCode: 90,
-    which: 90,
-    shiftKey: true,
-    metaKey: isMac,
-    ctrlKey: !isMac,
-    bubbles: true,
-    cancelable: true,
-  });
+  // Check if we need to redo multiple operations (from grouped deletions)
+  const count = vim_info.undo_count > 0 ? vim_info.undo_count : 1;
 
-  document.dispatchEvent(event);
+  // Perform redo operations
+  performRedoOperations(count);
 
-  // Wait for Notion to process the redo, then update cursor position
-  setTimeout(() => {
-    const currentElement = vim_info.lines[vim_info.active_line]?.element;
-    if (currentElement) {
-      const cursorIndex = getCursorIndexInElement(currentElement);
-      vim_info.desired_column = cursorIndex;
-      updateBlockCursor();
+  function performRedoOperations(remaining: number) {
+    if (remaining <= 0) {
+      // All redos complete, reset counter and update cursor
+      vim_info.undo_count = 0;
+
+      setTimeout(() => {
+        const currentElement = vim_info.lines[vim_info.active_line]?.element;
+        if (currentElement) {
+          const cursorIndex = getCursorIndexInElement(currentElement);
+          vim_info.desired_column = cursorIndex;
+          updateBlockCursor();
+        }
+      }, 50);
+      return;
     }
-  }, 50);
+
+    // Simulate Cmd+Shift+Z / Ctrl+Shift+Z to trigger Notion's redo
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const event = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      keyCode: 90,
+      which: 90,
+      shiftKey: true,
+      metaKey: isMac,
+      ctrlKey: !isMac,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    document.dispatchEvent(event);
+
+    // Wait and perform next redo
+    setTimeout(() => {
+      performRedoOperations(remaining - 1);
+    }, 20);
+  }
 };
 
 const visualMoveCursorBackwards = () => {
