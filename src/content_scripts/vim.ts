@@ -1199,6 +1199,10 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
     case "x":
       deleteVisualLineSelection();
       return true;
+    case "c":
+    case "s":
+      changeVisualLineSelection();
+      return true;
     case "y":
       yankVisualLineSelection();
       return true;
@@ -1346,6 +1350,131 @@ const deleteVisualLineSelection = () => {
         // Continue with next block
         setTimeout(() => {
           deleteBlocksSequentially(blocks.slice(1), targetLine);
+        }, 10);
+      }, 10);
+    }, 10);
+  }
+};
+
+const changeVisualLineSelection = () => {
+  const { vim_info } = window;
+
+  const startLine = vim_info.visual_start_line;
+  const endLine = vim_info.active_line;
+
+  // Determine the range of lines to change
+  const [firstLine, lastLine] = startLine <= endLine
+    ? [startLine, endLine]
+    : [endLine, startLine];
+
+  // Collect text from all lines for clipboard
+  const textLines: string[] = [];
+  for (let i = firstLine; i <= lastLine; i++) {
+    textLines.push(vim_info.lines[i].element.textContent || '');
+  }
+  const clipboardText = textLines.join('\n');
+
+  // Copy to clipboard
+  navigator.clipboard.writeText(clipboardText).catch(err => {
+    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  });
+
+  // Clear background highlights from all elements before deletion
+  clearAllBackgroundColors();
+
+  // Get all blocks to delete
+  const blocksToDelete: Element[] = [];
+
+  for (let i = firstLine; i <= lastLine; i++) {
+    const element = vim_info.lines[i].element;
+    const block = element.closest('[data-block-id]') || element.parentElement?.parentElement;
+    if (block && !blocksToDelete.includes(block)) {
+      blocksToDelete.push(block);
+    }
+  }
+
+  if (blocksToDelete.length === 0) {
+    vim_info.mode = "insert";
+    updateInfoContainer();
+    return;
+  }
+
+  // Switch to insert mode temporarily
+  vim_info.mode = "insert";
+
+  // Start undo group for multi-line deletion
+  vim_info.in_undo_group = true;
+  vim_info.undo_count = blocksToDelete.length;
+
+  // Delete each block one by one from last to first to maintain indices
+  changeBlocksSequentially(blocksToDelete.slice().reverse(), firstLine);
+
+  function changeBlocksSequentially(blocks: Element[], targetLine: number) {
+    if (blocks.length === 0) {
+      // All blocks deleted, stay in insert mode
+      vim_info.in_undo_group = false;
+      window.getSelection()?.removeAllRanges();
+
+      setTimeout(() => {
+        refreshLines();
+        const newActiveLine = Math.max(0, Math.min(targetLine, vim_info.lines.length - 1));
+        if (vim_info.lines.length > 0) {
+          setActiveLine(newActiveLine);
+          // Focus the element to enter insert mode
+          const element = vim_info.lines[newActiveLine].element as HTMLElement;
+          element.focus();
+        }
+        updateInfoContainer();
+      }, 100);
+      return;
+    }
+
+    const block = blocks[0];
+    const element = block.querySelector('[contenteditable="true"]') as HTMLElement;
+
+    if (!element) {
+      // Skip this block and continue
+      changeBlocksSequentially(blocks.slice(1), targetLine);
+      return;
+    }
+
+    // Select the content
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    // Focus and delete
+    element.focus();
+
+    setTimeout(() => {
+      // Delete content
+      const deleteEvent = new KeyboardEvent('keydown', {
+        key: 'Delete',
+        code: 'Delete',
+        keyCode: 46,
+        which: 46,
+        bubbles: true,
+        cancelable: true,
+      });
+      element.dispatchEvent(deleteEvent);
+
+      // Delete empty block
+      setTimeout(() => {
+        const backspaceEvent = new KeyboardEvent('keydown', {
+          key: 'Backspace',
+          code: 'Backspace',
+          keyCode: 8,
+          which: 8,
+          bubbles: true,
+          cancelable: true,
+        });
+        element.dispatchEvent(backspaceEvent);
+
+        // Continue with next block
+        setTimeout(() => {
+          changeBlocksSequentially(blocks.slice(1), targetLine);
         }, 10);
       }, 10);
     }, 10);
