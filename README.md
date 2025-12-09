@@ -26,9 +26,9 @@ This fork has been extensively rebuilt with:
 - **Enhanced motions**: Cross-line navigation (h/l/w/b wrap to previous/next lines)
 - **Line jumping**: `gg` (first line) and `G` (last line) support
 - **Page navigation**: `Ctrl+d/u` (half page), `Ctrl+f/b` (full page) with smooth scrolling
-- **Visual modes**: Character-wise (`v`) and line-wise (`V`) visual selection with full operator support
+- **Visual modes**: Character-wise (`v`) and line-wise (`V`) visual selection with full operator and text object support
 - **Operators with motions**: Comprehensive support for d/c/y with all motions (w/W/b/B/e/E/$0/iw)
-- **Text objects**: Full support for `i`(inner) and `a`(around) with brackets, quotes (e.g., `ci(`, `da"`, `yi{`)
+- **Text objects**: Full support for `i`(inner) and `a`(around) in both normal and visual modes with brackets, quotes, and more (e.g., `ci(`, `da"`, `yi{`, `vi(`, `va'`)
 - **Undo/Redo**: `u` for undo, `r` for redo with intelligent grouping for multi-line operations
 - **Mouse support**: Click to position cursor in normal mode
 - **Better cursor visibility**: Enhanced block cursor with improved opacity and visibility on empty lines
@@ -69,25 +69,33 @@ All operators (`d` delete, `c` change, `y` yank) work with all motions:
 
 ### Text Objects
 
-Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) work with text objects:
+Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) and visual mode work with text objects:
 
-**Supported delimiters**: `w` (word) • `(` `)` `b` (parentheses) • `[` `]` (brackets) • `{` `}` `B` (braces) • `'` `"` (quotes)
+**Supported delimiters**: `w` (word) • `(` `)` `b` (parentheses) • `[` `]` (brackets) • `{` `}` `B` (braces) • `<` `>` (angle brackets) • `'` `"` `` ` `` (quotes) • `/` `*` (slashes/asterisks)
 
 **Inner (`i`)**: Content only
 - `ciw` `diw` `yiw` - word under cursor
 - `ci(` `di(` `yi(` - inside `()`
 - `ci[` `di[` `yi[` - inside `[]`
 - `ci{` `di{` `yi{` - inside `{}`
+- `ci<` `di<` `yi<` - inside `<>`
 - `ci'` `di'` `yi'` - inside `''`
 - `ci"` `di"` `yi"` - inside `""`
+- `` ci` di` yi` `` - inside `` `` ``
+- `ci/` `di/` `yi/` - inside `//`
+- `ci*` `di*` `yi*` - inside `**`
 
 **Around (`a`)**: Content + delimiters/whitespace
 - `caw` `daw` `yaw` - word + surrounding whitespace
 - `ca(` `da(` `ya(` - including `()`
 - `ca[` `da[` `ya[` - including `[]`
 - `ca{` `da{` `ya{` - including `{}`
+- `ca<` `da<` `ya<` - including `<>`
 - `ca'` `da'` `ya'` - including `''`
 - `ca"` `da"` `ya"` - including `""`
+- `` ca` da` ya` `` - including `` `` ``
+- `ca/` `da/` `ya/` - including `//`
+- `ca*` `da*` `ya*` - including `**`
 
 **Example**: In `text (example) text` with cursor on `example`:
 - `ci(` → leaves `()`, enters insert mode
@@ -97,11 +105,20 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) work 
 ### Visual Mode
 
 **Character-wise (`v`)**:
-- Navigate: `h` `l` `w` `b` `e` `0` `$`
-- Text objects: `iw` (inner word) `aw` (around word)
-- Operate: `d` `y` `c` or use Notion shortcuts (Cmd+B, Cmd+I, etc.)
+- **Navigate**: `h` `l` `w` `b` `e` `0` `$`
+- **Text objects**: All `i` (inner) and `a` (around) text objects work in visual mode
+  - Words: `viw` `vaw`
+  - Brackets: `vi(` `va(` `vi[` `va[` `vi{` `va{` `vi<` `va<`
+  - Quotes: `vi'` `va'` `vi"` `va"` `` vi` va` ``
+  - Other: `vi/` `va/` `vi*` `va*`
+- **Operate**: `d` `y` `c` or use Notion shortcuts (Cmd+B, Cmd+I, etc.)
 
 **Line-wise (`V`)**: Select with `j` `k` `gg` `G`, then `d` `y` `c`
+
+**Example**: With cursor inside `(example text)`:
+- `vi(` → selects `example text`
+- `va(` → selects `(example text)`
+- Then `d` to delete, `y` to yank, or `c` to change
 
 **Note**: Notion's native formatting shortcuts (Cmd+B, Cmd+I, Cmd+U, etc.) work on visual selections.
 
