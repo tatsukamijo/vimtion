@@ -900,6 +900,66 @@ const visualSelectAroundWord = () => {
   selection?.addRange(range);
 };
 
+const visualSelectInnerBracket = (openChar: string, closeChar: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  // Use different function for quotes (where open === close)
+  const result = openChar === closeChar
+    ? findMatchingQuotes(text, currentCursorPosition, openChar)
+    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+
+  if (!result) {
+    return;
+  }
+
+  const [openIndex, closeIndex] = result;
+
+  // Select inner content (excluding brackets)
+  vim_info.visual_start_pos = openIndex + 1;
+  vim_info.desired_column = closeIndex - 1;
+
+  // Update the visual selection
+  const range = document.createRange();
+  const selection = window.getSelection();
+
+  setRangeInElement(range, currentElement, openIndex + 1, closeIndex);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+};
+
+const visualSelectAroundBracket = (openChar: string, closeChar: string) => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const currentCursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
+
+  // Use different function for quotes (where open === close)
+  const result = openChar === closeChar
+    ? findMatchingQuotes(text, currentCursorPosition, openChar)
+    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+
+  if (!result) {
+    return;
+  }
+
+  const [openIndex, closeIndex] = result;
+
+  // Select including brackets
+  vim_info.visual_start_pos = openIndex;
+  vim_info.desired_column = closeIndex;
+
+  // Update the visual selection
+  const range = document.createRange();
+  const selection = window.getSelection();
+
+  setRangeInElement(range, currentElement, openIndex, closeIndex + 1);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+};
+
 const visualReducer = (e: KeyboardEvent): boolean => {
   const { vim_info } = window;
 
@@ -911,20 +971,116 @@ const visualReducer = (e: KeyboardEvent): boolean => {
 
   // Handle pending text object operators
   if (vim_info.pending_operator === "vi") {
-    // Visual inner text object
-    if (e.key === "w") {
-      visualSelectInnerWord();
-      vim_info.pending_operator = null;
+    // Ignore modifier keys (Shift, Ctrl, Alt, Meta)
+    if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta") {
       return true;
+    }
+
+    // Visual inner text object
+    switch (e.key) {
+      case "w":
+        visualSelectInnerWord();
+        vim_info.pending_operator = null;
+        return true;
+      case "(":
+      case ")":
+      case "b":
+        visualSelectInnerBracket("(", ")");
+        vim_info.pending_operator = null;
+        return true;
+      case "[":
+      case "]":
+        visualSelectInnerBracket("[", "]");
+        vim_info.pending_operator = null;
+        return true;
+      case "{":
+      case "}":
+      case "B":
+        visualSelectInnerBracket("{", "}");
+        vim_info.pending_operator = null;
+        return true;
+      case "'":
+        visualSelectInnerBracket("'", "'");
+        vim_info.pending_operator = null;
+        return true;
+      case '"':
+        visualSelectInnerBracket('"', '"');
+        vim_info.pending_operator = null;
+        return true;
+      case "<":
+      case ">":
+        visualSelectInnerBracket("<", ">");
+        vim_info.pending_operator = null;
+        return true;
+      case "`":
+        visualSelectInnerBracket("`", "`");
+        vim_info.pending_operator = null;
+        return true;
+      case "/":
+        visualSelectInnerBracket("/", "/");
+        vim_info.pending_operator = null;
+        return true;
+      case "*":
+        visualSelectInnerBracket("*", "*");
+        vim_info.pending_operator = null;
+        return true;
     }
     vim_info.pending_operator = null;
     return true;
   } else if (vim_info.pending_operator === "va") {
-    // Visual around text object
-    if (e.key === "w") {
-      visualSelectAroundWord();
-      vim_info.pending_operator = null;
+    // Ignore modifier keys (Shift, Ctrl, Alt, Meta)
+    if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta") {
       return true;
+    }
+
+    // Visual around text object
+    switch (e.key) {
+      case "w":
+        visualSelectAroundWord();
+        vim_info.pending_operator = null;
+        return true;
+      case "(":
+      case ")":
+      case "b":
+        visualSelectAroundBracket("(", ")");
+        vim_info.pending_operator = null;
+        return true;
+      case "[":
+      case "]":
+        visualSelectAroundBracket("[", "]");
+        vim_info.pending_operator = null;
+        return true;
+      case "{":
+      case "}":
+      case "B":
+        visualSelectAroundBracket("{", "}");
+        vim_info.pending_operator = null;
+        return true;
+      case "'":
+        visualSelectAroundBracket("'", "'");
+        vim_info.pending_operator = null;
+        return true;
+      case '"':
+        visualSelectAroundBracket('"', '"');
+        vim_info.pending_operator = null;
+        return true;
+      case "<":
+      case ">":
+        visualSelectAroundBracket("<", ">");
+        vim_info.pending_operator = null;
+        return true;
+      case "`":
+        visualSelectAroundBracket("`", "`");
+        vim_info.pending_operator = null;
+        return true;
+      case "/":
+        visualSelectAroundBracket("/", "/");
+        vim_info.pending_operator = null;
+        return true;
+      case "*":
+        visualSelectAroundBracket("*", "*");
+        vim_info.pending_operator = null;
+        return true;
     }
     vim_info.pending_operator = null;
     return true;
