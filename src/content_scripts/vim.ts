@@ -1236,6 +1236,9 @@ const visualLineMoveCursorUp = () => {
 const deleteVisualLineSelection = () => {
   const { vim_info } = window;
 
+  // Switch to insert mode temporarily IMMEDIATELY to prevent updateVisualLineSelection from running
+  vim_info.mode = "insert";
+
   const startLine = vim_info.visual_start_line;
   const endLine = vim_info.active_line;
 
@@ -1256,8 +1259,10 @@ const deleteVisualLineSelection = () => {
     console.error('[Vim-Notion] Failed to copy to clipboard:', err);
   });
 
-  // Clear background highlights from all elements before deletion
+  // Clear background highlights from all elements IMMEDIATELY
   clearAllBackgroundColors();
+  // Clear selection to remove any browser highlighting
+  window.getSelection()?.removeAllRanges();
 
   // Get all blocks to delete
   const blocksToDelete: Element[] = [];
@@ -1276,8 +1281,7 @@ const deleteVisualLineSelection = () => {
     return;
   }
 
-  // Switch to insert mode temporarily
-  vim_info.mode = "insert";
+  // (mode is already set to "insert" above)
 
   // Start undo group for multi-line deletion
   vim_info.in_undo_group = true;
@@ -1295,9 +1299,15 @@ const deleteVisualLineSelection = () => {
 
       setTimeout(() => {
         refreshLines();
+        // Clear background colors again after refresh
+        clearAllBackgroundColors();
+
         const newActiveLine = Math.max(0, Math.min(targetLine, vim_info.lines.length - 1));
         if (vim_info.lines.length > 0) {
           setActiveLine(newActiveLine);
+          // Set cursor position to beginning of line
+          const element = vim_info.lines[newActiveLine].element;
+          setCursorPosition(element, 0);
         }
         updateInfoContainer();
       }, 100);
@@ -1359,6 +1369,9 @@ const deleteVisualLineSelection = () => {
 const changeVisualLineSelection = () => {
   const { vim_info } = window;
 
+  // Switch to insert mode IMMEDIATELY to prevent updateVisualLineSelection from running
+  vim_info.mode = "insert";
+
   const startLine = vim_info.visual_start_line;
   const endLine = vim_info.active_line;
 
@@ -1379,74 +1392,127 @@ const changeVisualLineSelection = () => {
     console.error('[Vim-Notion] Failed to copy to clipboard:', err);
   });
 
-  // Clear background highlights from all elements before deletion
+  // Clear background highlights from all elements IMMEDIATELY
   clearAllBackgroundColors();
+  // Clear selection to remove any browser highlighting
+  window.getSelection()?.removeAllRanges();
 
-  // Get all blocks to delete
-  const blocksToDelete: Element[] = [];
+  // Force another clear on next frame
+  requestAnimationFrame(() => {
+    clearAllBackgroundColors();
+  });
 
-  for (let i = firstLine; i <= lastLine; i++) {
-    const element = vim_info.lines[i].element;
-    const block = element.closest('[data-block-id]') || element.parentElement?.parentElement;
-    if (block && !blocksToDelete.includes(block)) {
-      blocksToDelete.push(block);
-    }
-  }
+  // For single line: just clear content and enter insert mode
+  if (firstLine === lastLine) {
+    const element = vim_info.lines[firstLine].element as HTMLElement;
 
-  if (blocksToDelete.length === 0) {
-    vim_info.mode = "insert";
-    updateInfoContainer();
-    return;
-  }
-
-  // Switch to insert mode temporarily
-  vim_info.mode = "insert";
-
-  // Start undo group for multi-line deletion
-  vim_info.in_undo_group = true;
-  vim_info.undo_count = blocksToDelete.length;
-
-  // Delete each block one by one from last to first to maintain indices
-  changeBlocksSequentially(blocksToDelete.slice().reverse(), firstLine);
-
-  function changeBlocksSequentially(blocks: Element[], targetLine: number) {
-    if (blocks.length === 0) {
-      // All blocks deleted, stay in insert mode
-      vim_info.in_undo_group = false;
-      window.getSelection()?.removeAllRanges();
-
-      setTimeout(() => {
-        refreshLines();
-        const newActiveLine = Math.max(0, Math.min(targetLine, vim_info.lines.length - 1));
-        if (vim_info.lines.length > 0) {
-          setActiveLine(newActiveLine);
-          // Focus the element to enter insert mode
-          const element = vim_info.lines[newActiveLine].element as HTMLElement;
-          element.focus();
-        }
-        updateInfoContainer();
-      }, 100);
-      return;
-    }
-
-    const block = blocks[0];
-    const element = block.querySelector('[contenteditable="true"]') as HTMLElement;
-
-    if (!element) {
-      // Skip this block and continue
-      changeBlocksSequentially(blocks.slice(1), targetLine);
-      return;
-    }
-
-    // Select the content
+    // Select all content
     const range = document.createRange();
     range.selectNodeContents(element);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
 
-    // Focus and delete
+    // Delete content
+    document.execCommand('delete');
+
+    // Clear selection to remove any remaining highlights
+    selection?.removeAllRanges();
+
+    // Focus to stay in insert mode (already set above)
     element.focus();
+
+    // Clear again after focus
+    requestAnimationFrame(() => {
+      clearAllBackgroundColors();
+    });
+
+    updateInfoContainer();
+    return;
+  }
+
+  // For multiple lines: delete all lines except the first, clear the first line
+  // (mode is already set to "insert" above)
+  vim_info.in_undo_group = true;
+  vim_info.undo_count = lastLine - firstLine;
+
+  // Delete lines from last to first (except the first line)
+  const linesToDelete: number[] = [];
+  for (let i = lastLine; i > firstLine; i--) {
+    linesToDelete.push(i);
+  }
+
+  deleteExtraLinesSequentially(linesToDelete, firstLine);
+
+  function deleteExtraLinesSequentially(lineIndices: number[], targetLine: number) {
+    if (lineIndices.length === 0) {
+      // All extra lines deleted, now clear the first line and enter insert mode
+      vim_info.in_undo_group = false;
+
+      setTimeout(() => {
+        refreshLines();
+        // Clear background colors again after refresh
+        clearAllBackgroundColors();
+
+        if (vim_info.lines.length > targetLine) {
+          const element = vim_info.lines[targetLine].element as HTMLElement;
+
+          // Select all content
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+
+          // Delete content
+          document.execCommand('delete');
+
+          // Clear selection to remove any remaining highlights
+          selection?.removeAllRanges();
+
+          // Focus to stay in insert mode
+          element.focus();
+          setActiveLine(targetLine);
+
+          // Clear again after all operations
+          requestAnimationFrame(() => {
+            clearAllBackgroundColors();
+          });
+        }
+        updateInfoContainer();
+      }, 100);
+      return;
+    }
+
+    const lineIndex = lineIndices[0];
+    if (lineIndex >= vim_info.lines.length) {
+      deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
+      return;
+    }
+
+    const element = vim_info.lines[lineIndex].element;
+    const block = element.closest('[data-block-id]') || element.parentElement?.parentElement;
+
+    if (!block) {
+      deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
+      return;
+    }
+
+    const editableElement = block.querySelector('[contenteditable="true"]') as HTMLElement;
+    if (!editableElement) {
+      deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
+      return;
+    }
+
+    // Select the content
+    const range = document.createRange();
+    range.selectNodeContents(editableElement);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    // Focus and delete
+    editableElement.focus();
 
     setTimeout(() => {
       // Delete content
@@ -1458,7 +1524,7 @@ const changeVisualLineSelection = () => {
         bubbles: true,
         cancelable: true,
       });
-      element.dispatchEvent(deleteEvent);
+      editableElement.dispatchEvent(deleteEvent);
 
       // Delete empty block
       setTimeout(() => {
@@ -1470,11 +1536,11 @@ const changeVisualLineSelection = () => {
           bubbles: true,
           cancelable: true,
         });
-        element.dispatchEvent(backspaceEvent);
+        editableElement.dispatchEvent(backspaceEvent);
 
-        // Continue with next block
+        // Continue with next line
         setTimeout(() => {
-          changeBlocksSequentially(blocks.slice(1), targetLine);
+          deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
         }, 10);
       }, 10);
     }, 10);
