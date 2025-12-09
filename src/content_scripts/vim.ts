@@ -1090,6 +1090,9 @@ const visualReducer = (e: KeyboardEvent): boolean => {
     case "Escape":
       vim_info.mode = "normal";
       window.getSelection()?.removeAllRanges();
+      // Restore cursor position when exiting visual mode
+      const currentElement = vim_info.lines[vim_info.active_line].element;
+      setCursorPosition(currentElement, vim_info.desired_column);
       updateInfoContainer();
       return true;
     case "h":
@@ -1162,6 +1165,9 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
       clearAllBackgroundColors();
       vim_info.mode = "normal";
       window.getSelection()?.removeAllRanges();
+      // Restore cursor position when exiting visual-line mode
+      const currentElement = vim_info.lines[vim_info.active_line].element;
+      setCursorPosition(currentElement, vim_info.desired_column);
       updateInfoContainer();
       return true;
     case "j":
