@@ -1412,6 +1412,8 @@ const yankInnerWord = async () => {
   } catch (err) {
     console.error('[Vim-Notion] Failed to yank:', err);
   }
+  vim_info.pending_operator = null;
+  updateInfoContainer();
 };
 
 const deleteCurrentLine = async () => {
@@ -1557,6 +1559,64 @@ const deleteInnerWord = () => {
 
   setCursorPosition(currentElement, start);
   vim_info.desired_column = start;
+  vim_info.pending_operator = null;
+  updateInfoContainer();
+};
+
+// Helper function to find matching quotes (where open and close are the same)
+const findMatchingQuotes = (text: string, cursorPos: number, quoteChar: string): [number, number] | null => {
+  // Support both regular quotes and smart quotes (typographic quotes)
+  // Notion uses various quote characters inconsistently
+  let allQuoteChars: string[];
+
+  if (quoteChar === '"') {
+    // All possible double quote characters
+    allQuoteChars = ['"', "\u201C", "\u201D"]; // " " "
+  } else if (quoteChar === "'") {
+    // All possible single quote characters
+    allQuoteChars = ["'", "\u2018", "\u2019"]; // ' ' '
+  } else {
+    allQuoteChars = [quoteChar];
+  }
+
+  // Find all quote positions in the text
+  const quotePositions: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (allQuoteChars.includes(text[i])) {
+      quotePositions.push(i);
+    }
+  }
+
+  if (quotePositions.length < 2) {
+    return null;
+  }
+
+  // Pair quotes sequentially: positions 0-1, 2-3, 4-5, etc.
+  // This mimics Vim's behavior where quotes toggle between open/close
+  const pairs: Array<[number, number]> = [];
+  for (let i = 0; i < quotePositions.length - 1; i += 2) {
+    pairs.push([quotePositions[i], quotePositions[i + 1]]);
+  }
+
+  if (pairs.length === 0) {
+    return null;
+  }
+
+  // Try to find an enclosing pair (cursor is inside quotes)
+  for (const [openIndex, closeIndex] of pairs) {
+    if (cursorPos > openIndex && cursorPos <= closeIndex) {
+      return [openIndex, closeIndex];
+    }
+  }
+
+  // If not inside a pair, find the next pair after cursor
+  for (const [openIndex, closeIndex] of pairs) {
+    if (openIndex >= cursorPos) {
+      return [openIndex, closeIndex];
+    }
+  }
+
+  return null;
 };
 
 // Helper function to find matching brackets/quotes
@@ -1622,8 +1682,16 @@ const deleteInnerBracket = (openChar: string, closeChar: string) => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const text = currentElement.textContent || "";
 
-  const result = findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-  if (!result) return;
+  // Use different function for quotes (where open === close)
+  const result = openChar === closeChar
+    ? findMatchingQuotes(text, currentCursorPosition, openChar)
+    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+
+  if (!result) {
+    vim_info.pending_operator = null;
+    updateInfoContainer();
+    return;
+  }
 
   const [openIndex, closeIndex] = result;
   const deletedText = text.slice(openIndex + 1, closeIndex);
@@ -1638,6 +1706,8 @@ const deleteInnerBracket = (openChar: string, closeChar: string) => {
 
   setCursorPosition(currentElement, openIndex + 1);
   vim_info.desired_column = openIndex + 1;
+  vim_info.pending_operator = null;
+  updateInfoContainer();
 };
 
 const deleteAroundBracket = (openChar: string, closeChar: string) => {
@@ -1646,8 +1716,16 @@ const deleteAroundBracket = (openChar: string, closeChar: string) => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const text = currentElement.textContent || "";
 
-  const result = findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-  if (!result) return;
+  // Use different function for quotes (where open === close)
+  const result = openChar === closeChar
+    ? findMatchingQuotes(text, currentCursorPosition, openChar)
+    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+
+  if (!result) {
+    vim_info.pending_operator = null;
+    updateInfoContainer();
+    return;
+  }
 
   const [openIndex, closeIndex] = result;
   const deletedText = text.slice(openIndex, closeIndex + 1);
@@ -1662,6 +1740,8 @@ const deleteAroundBracket = (openChar: string, closeChar: string) => {
 
   setCursorPosition(currentElement, openIndex);
   vim_info.desired_column = openIndex;
+  vim_info.pending_operator = null;
+  updateInfoContainer();
 };
 
 const deleteFindCharForward = (char: string) => {
@@ -1803,6 +1883,8 @@ const yankAroundWord = async () => {
   } catch (err) {
     console.error('[Vim-Notion] Failed to yank:', err);
   }
+  vim_info.pending_operator = null;
+  updateInfoContainer();
 };
 
 const deleteAroundWord = () => {
@@ -1824,6 +1906,8 @@ const deleteAroundWord = () => {
 
   setCursorPosition(currentElement, start);
   vim_info.desired_column = start;
+  vim_info.pending_operator = null;
+  updateInfoContainer();
 };
 
 const changeAroundWord = () => {
@@ -1850,12 +1934,22 @@ const yankInnerBracket = (openChar: string, closeChar: string) => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const text = currentElement.textContent || "";
 
-  const result = findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-  if (!result) return;
+  // Use different function for quotes (where open === close)
+  const result = openChar === closeChar
+    ? findMatchingQuotes(text, currentCursorPosition, openChar)
+    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+
+  if (!result) {
+    vim_info.pending_operator = null;
+    updateInfoContainer();
+    return;
+  }
 
   const [openIndex, closeIndex] = result;
   const textToYank = text.slice(openIndex + 1, closeIndex);
   navigator.clipboard.writeText(textToYank);
+  vim_info.pending_operator = null;
+  updateInfoContainer();
 };
 
 const yankAroundBracket = (openChar: string, closeChar: string) => {
@@ -1864,12 +1958,22 @@ const yankAroundBracket = (openChar: string, closeChar: string) => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const text = currentElement.textContent || "";
 
-  const result = findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-  if (!result) return;
+  // Use different function for quotes (where open === close)
+  const result = openChar === closeChar
+    ? findMatchingQuotes(text, currentCursorPosition, openChar)
+    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+
+  if (!result) {
+    vim_info.pending_operator = null;
+    updateInfoContainer();
+    return;
+  }
 
   const [openIndex, closeIndex] = result;
   const textToYank = text.slice(openIndex, closeIndex + 1);
   navigator.clipboard.writeText(textToYank);
+  vim_info.pending_operator = null;
+  updateInfoContainer();
 };
 
 const undo = () => {
@@ -2240,7 +2344,6 @@ const handlePendingOperator = (key: string): boolean => {
   const { vim_info } = window;
   const operator = vim_info.pending_operator;
 
-
   // Ignore modifier keys - don't clear pending_operator
   if (key === "Shift" || key === "Control" || key === "Alt" || key === "Meta") {
     return true;
@@ -2478,6 +2581,16 @@ const handlePendingOperator = (key: string): boolean => {
           changeInnerBracket('"', '"');
         }
         return true;
+      case "<":
+      case ">":
+        if (operator === "yi") {
+          yankInnerBracket("<", ">");
+        } else if (operator === "di") {
+          deleteInnerBracket("<", ">");
+        } else if (operator === "ci") {
+          changeInnerBracket("<", ">");
+        }
+        return true;
       default:
         return true;
     }
@@ -2541,6 +2654,16 @@ const handlePendingOperator = (key: string): boolean => {
           deleteAroundBracket('"', '"');
         } else if (operator === "ca") {
           changeAroundBracket('"', '"');
+        }
+        return true;
+      case "<":
+      case ">":
+        if (operator === "ya") {
+          yankAroundBracket("<", ">");
+        } else if (operator === "da") {
+          deleteAroundBracket("<", ">");
+        } else if (operator === "ca") {
+          changeAroundBracket("<", ">");
         }
         return true;
       default:
