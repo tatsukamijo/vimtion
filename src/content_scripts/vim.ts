@@ -2591,6 +2591,33 @@ const handlePendingOperator = (key: string): boolean => {
           changeInnerBracket("<", ">");
         }
         return true;
+      case "`":
+        if (operator === "yi") {
+          yankInnerBracket("`", "`");
+        } else if (operator === "di") {
+          deleteInnerBracket("`", "`");
+        } else if (operator === "ci") {
+          changeInnerBracket("`", "`");
+        }
+        return true;
+      case "/":
+        if (operator === "yi") {
+          yankInnerBracket("/", "/");
+        } else if (operator === "di") {
+          deleteInnerBracket("/", "/");
+        } else if (operator === "ci") {
+          changeInnerBracket("/", "/");
+        }
+        return true;
+      case "*":
+        if (operator === "yi") {
+          yankInnerBracket("*", "*");
+        } else if (operator === "di") {
+          deleteInnerBracket("*", "*");
+        } else if (operator === "ci") {
+          changeInnerBracket("*", "*");
+        }
+        return true;
       default:
         return true;
     }
@@ -2664,6 +2691,33 @@ const handlePendingOperator = (key: string): boolean => {
           deleteAroundBracket("<", ">");
         } else if (operator === "ca") {
           changeAroundBracket("<", ">");
+        }
+        return true;
+      case "`":
+        if (operator === "ya") {
+          yankAroundBracket("`", "`");
+        } else if (operator === "da") {
+          deleteAroundBracket("`", "`");
+        } else if (operator === "ca") {
+          changeAroundBracket("`", "`");
+        }
+        return true;
+      case "/":
+        if (operator === "ya") {
+          yankAroundBracket("/", "/");
+        } else if (operator === "da") {
+          deleteAroundBracket("/", "/");
+        } else if (operator === "ca") {
+          changeAroundBracket("/", "/");
+        }
+        return true;
+      case "*":
+        if (operator === "ya") {
+          yankAroundBracket("*", "*");
+        } else if (operator === "da") {
+          deleteAroundBracket("*", "*");
+        } else if (operator === "ca") {
+          changeAroundBracket("*", "*");
         }
         return true;
       default:
