@@ -1629,32 +1629,34 @@ const deleteBlockWithKeyboardEvents = (element: HTMLElement, delay: number = 0) 
     sel?.removeAllRanges();
     sel?.addRange(range);
 
-    // Focus and delete with Delete key
+    // Focus the element
     element.focus();
 
-    // Dispatch Delete key event to delete content
-    const deleteEvent = new KeyboardEvent('keydown', {
-      key: 'Delete',
-      code: 'Delete',
-      keyCode: 46,
-      which: 46,
-      bubbles: true,
-      cancelable: true,
-    });
-    element.dispatchEvent(deleteEvent);
-
-    // After deleting content, dispatch Backspace to delete the empty block
+    // Dispatch Delete key event after a small delay to ensure focus is set
     setTimeout(() => {
-      const backspaceEvent = new KeyboardEvent('keydown', {
-        key: 'Backspace',
-        code: 'Backspace',
-        keyCode: 8,
-        which: 8,
+      const deleteEvent = new KeyboardEvent('keydown', {
+        key: 'Delete',
+        code: 'Delete',
+        keyCode: 46,
+        which: 46,
         bubbles: true,
         cancelable: true,
       });
-      element.dispatchEvent(backspaceEvent);
-    }, 20);
+      element.dispatchEvent(deleteEvent);
+
+      // After deleting content, dispatch Backspace to delete the empty block
+      setTimeout(() => {
+        const backspaceEvent = new KeyboardEvent('keydown', {
+          key: 'Backspace',
+          code: 'Backspace',
+          keyCode: 8,
+          which: 8,
+          bubbles: true,
+          cancelable: true,
+        });
+        element.dispatchEvent(backspaceEvent);
+      }, 20);
+    }, 10);
   }, delay);
 };
 
