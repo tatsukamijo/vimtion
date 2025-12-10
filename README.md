@@ -36,7 +36,11 @@ This fork has been extensively rebuilt with:
 
 ## 🚀 Installation
 
-**Local Installation**:
+**Chrome Web Store** (Recommended):
+
+Add it directly from the Chrome Web Store: [Vimtion](https://chromewebstore.google.com/detail/vimtion/omcehhihhemhincacmandepjhhnjfeoo)
+
+**Local Installation** (For development):
 1. Clone this repository
 2. Run `npm install` (or `yarn install`)
 3. Run `npm run build` (or `yarn build`)
