@@ -48,20 +48,65 @@ const updateBlockCursor = () => {
   }
 
   const range = selection.getRangeAt(0);
-  const rect = range.getBoundingClientRect();
+  let rect = range.getBoundingClientRect();
 
-  // For empty lines, use the element's bounding rect
+  // For empty lines or lines with only newline, we need special handling
   if (rect.width === 0 && rect.height === 0) {
     const currentElement = vim_info.lines[vim_info.active_line]?.element;
-    if (currentElement) {
-      const elementRect = currentElement.getBoundingClientRect();
-      blockCursor.style.display = "block";
-      blockCursor.style.left = `${elementRect.left + window.scrollX}px`;
-      blockCursor.style.top = `${elementRect.top + window.scrollY}px`;
-      blockCursor.style.height = `${elementRect.height || 20}px`;
+    if (!currentElement) {
+      blockCursor.style.display = "none";
       return;
     }
-    blockCursor.style.display = "none";
+
+    // Check if inside a code block
+    const inCodeBlock = isInsideCodeBlock(currentElement);
+
+    if (inCodeBlock) {
+      // For code blocks on empty lines, temporarily insert a zero-width space to get the cursor position
+      try {
+        if (range.startContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+          const textNode = range.startContainer as Text;
+          const offset = range.startOffset;
+
+          // Insert a zero-width space temporarily
+          const zws = '\u200B';
+          const originalText = textNode.textContent || '';
+          textNode.textContent = originalText.slice(0, offset) + zws + originalText.slice(offset);
+
+          // Create a range around the zero-width space
+          const tempRange = document.createRange();
+          tempRange.setStart(textNode, offset);
+          tempRange.setEnd(textNode, offset + 1);
+
+          const tempRect = tempRange.getBoundingClientRect();
+
+          // Remove the zero-width space
+          textNode.textContent = originalText;
+
+          // Restore the selection
+          range.setStart(textNode, offset);
+          range.setEnd(textNode, offset);
+
+          // If we got a valid rect, use it
+          if (tempRect.height > 0) {
+            blockCursor.style.display = "block";
+            blockCursor.style.left = `${tempRect.left + window.scrollX}px`;
+            blockCursor.style.top = `${tempRect.top + window.scrollY}px`;
+            blockCursor.style.height = `${tempRect.height}px`;
+            return;
+          }
+        }
+      } catch (e) {
+        // Fall through to default handling
+      }
+    }
+
+    // Default: use element rect (for normal blocks or if code block handling failed)
+    const elementRect = currentElement.getBoundingClientRect();
+    blockCursor.style.display = "block";
+    blockCursor.style.left = `${elementRect.left + window.scrollX}px`;
+    blockCursor.style.top = `${elementRect.top + window.scrollY}px`;
+    blockCursor.style.height = `${elementRect.height || 20}px`;
     return;
   }
 
@@ -249,6 +294,155 @@ const jumpToLineStart = () => {
 
   setCursorPosition(currentElement, 0);
   vim_info.desired_column = 0;
+};
+
+// Move cursor down within a code block (handles multi-line code blocks)
+const moveCursorDownInCodeBlock = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  // Find current line start
+  let lineStart = text.lastIndexOf('\n', currentPos - 1);
+  if (lineStart === -1) lineStart = -1; // Before first character
+
+  // Find current line end (next newline)
+  let lineEnd = text.indexOf('\n', currentPos);
+  if (lineEnd === -1) {
+    // Already on last line of code block, move to next block
+    setActiveLine(vim_info.active_line + 1);
+    return;
+  }
+
+  // Column position in current line
+  const columnInLine = currentPos - lineStart - 1;
+
+  // Next line starts after the newline
+  const nextLineStart = lineEnd + 1;
+
+  // Find next line end
+  let nextLineEnd = text.indexOf('\n', nextLineStart);
+  if (nextLineEnd === -1) nextLineEnd = text.length;
+
+  // Calculate target position in next line
+  const nextLineLength = nextLineEnd - nextLineStart;
+  const targetColumn = Math.min(vim_info.desired_column, nextLineLength);
+  const targetPos = nextLineStart + targetColumn;
+
+  setCursorPosition(currentElement, targetPos);
+};
+
+// Move cursor up within a code block
+const moveCursorUpInCodeBlock = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  // Find current line start
+  let lineStart = text.lastIndexOf('\n', currentPos - 1);
+
+  if (lineStart === -1) {
+    // Already on first line of code block, move to previous block
+    setActiveLine(vim_info.active_line - 1);
+    return;
+  }
+
+  // Find previous line start
+  let prevLineStart = text.lastIndexOf('\n', lineStart - 1);
+  if (prevLineStart === -1) prevLineStart = -1; // Before first character
+
+  // Previous line is between prevLineStart and lineStart
+  const prevLineLength = lineStart - prevLineStart - 1;
+  const targetColumn = Math.min(vim_info.desired_column, prevLineLength);
+  const targetPos = prevLineStart + 1 + targetColumn;
+
+  setCursorPosition(currentElement, targetPos);
+};
+
+// Move cursor left within a code block, wrapping to previous line if at start
+const moveCursorBackwardsInCodeBlock = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  // If at very beginning of code block, can't go back
+  if (currentPos === 0) {
+    return;
+  }
+
+  // Just move back one character
+  const newPos = currentPos - 1;
+  setCursorPosition(currentElement, newPos);
+  vim_info.desired_column = newPos;
+};
+
+// Move cursor right within a code block, wrapping to next line if at end
+const moveCursorForwardsInCodeBlock = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+  const textLength = text.length;
+
+  // If at very end of code block, can't go forward
+  if (currentPos >= textLength) {
+    return;
+  }
+
+  // Just move forward one character
+  const newPos = currentPos + 1;
+  setCursorPosition(currentElement, newPos);
+  vim_info.desired_column = newPos;
+};
+
+// Open line below in code block (o command)
+const openLineBelowInCodeBlock = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  // Find the end of the current line (next \n or end of text)
+  let lineEnd = text.indexOf('\n', currentPos);
+  if (lineEnd === -1) lineEnd = text.length;
+
+  // Move cursor to end of current line
+  setCursorPosition(currentElement, lineEnd);
+
+  // Insert a newline character using execCommand (works better in contenteditable)
+  document.execCommand('insertText', false, '\n');
+
+  // Switch to insert mode
+  vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+// Open line above in code block (O command)
+const openLineAboveInCodeBlock = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const currentPos = getCursorIndexInElement(currentElement);
+
+  // Find the start of the current line (previous \n or start of text)
+  let lineStart = text.lastIndexOf('\n', currentPos - 1);
+  lineStart = lineStart === -1 ? 0 : lineStart + 1;
+
+  // Move cursor to start of current line
+  setCursorPosition(currentElement, lineStart);
+
+  // Insert a newline character
+  document.execCommand('insertText', false, '\n');
+
+  // Move cursor back to the newly created empty line
+  setCursorPosition(currentElement, lineStart);
+
+  // Switch to insert mode
+  vim_info.mode = "insert";
+  updateInfoContainer();
 };
 
 const jumpToLineEnd = () => {
@@ -732,7 +926,14 @@ const startVisualLineMode = () => {
 
   vim_info.mode = "visual-line";
   vim_info.visual_start_line = vim_info.active_line;
-  vim_info.visual_start_pos = 0; // Not used in line mode, but set for consistency
+
+  // For code blocks, save the cursor position within the element
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  if (isInsideCodeBlock(currentElement)) {
+    vim_info.visual_start_pos = getCursorIndexInElement(currentElement);
+  } else {
+    vim_info.visual_start_pos = 0; // Not used in line mode for normal blocks
+  }
 
   updateVisualLineSelection();
   updateInfoContainer();
@@ -757,37 +958,108 @@ const updateVisualLineSelection = () => {
     ? [startLine, endLine]
     : [endLine, startLine];
 
-  // Highlight all lines in range
-  for (let i = firstLine; i <= lastLine; i++) {
-    const element = vim_info.lines[i].element;
-    element.style.backgroundColor = 'rgba(102, 126, 234, 0.3)';
-  }
-
-  // Set range to cover all lines from first to last
+  // Check if we're in a code block
   const firstElement = vim_info.lines[firstLine].element;
-  const lastElement = vim_info.lines[lastLine].element;
+  const inCodeBlock = isInsideCodeBlock(firstElement);
 
-  // For empty lines, we need to select the element itself to show background
-  // Check if elements have content
-  const firstHasContent = firstElement.childNodes.length > 0;
-  const lastHasContent = lastElement.childNodes.length > 0;
+  if (inCodeBlock && firstLine === lastLine) {
+    // Special handling for code blocks: select lines from visual_start_pos to current cursor position
+    const currentElement = firstElement;
+    const text = currentElement.textContent || "";
+    const startPos = vim_info.visual_start_pos;
+    // Use visual_end_pos if it exists, otherwise get from cursor
+    const endPos = vim_info.visual_end_pos !== undefined ? vim_info.visual_end_pos : getCursorIndexInElement(currentElement);
 
-  if (firstHasContent && lastHasContent) {
-    // Both have content: select from start of first to end of last
-    range.setStartBefore(firstElement.firstChild!);
-    range.setEndAfter(lastElement.lastChild!);
-  } else if (!firstHasContent && !lastHasContent) {
-    // Both empty: select the elements themselves
-    range.setStart(firstElement, 0);
-    range.setEnd(lastElement, 0);
-  } else if (!firstHasContent) {
-    // First is empty: select first element and content of last
-    range.setStart(firstElement, 0);
-    range.setEndAfter(lastElement.lastChild!);
+    // Determine the range of positions to select
+    const [selStart, selEnd] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];
+
+    // Find the line boundaries for the start position
+    let lineStart = text.lastIndexOf('\n', selStart - 1);
+    lineStart = lineStart === -1 ? 0 : lineStart + 1;
+
+    // Find the line boundaries for the end position
+    let lineEnd = text.indexOf('\n', selEnd);
+    if (lineEnd === -1) lineEnd = text.length;
+
+    // Don't set background color for code blocks - we'll rely on the selection highlight only
+    // (setting backgroundColor would highlight the entire code block element)
+
+    // Use TreeWalker to find the correct text nodes and positions
+    // This handles the case where text is split across multiple nodes
+    const walker = document.createTreeWalker(
+      currentElement,
+      NodeFilter.SHOW_TEXT,
+      null
+    );
+
+    let currentNode: Text | null = null;
+    let currentOffset = 0;
+    let startNode: Text | null = null;
+    let startOffset = 0;
+    let endNode: Text | null = null;
+    let endOffset = 0;
+
+    // Walk through all text nodes to find the positions
+    while ((currentNode = walker.nextNode() as Text | null)) {
+      const nodeLength = currentNode.length;
+      const nodeEnd = currentOffset + nodeLength;
+
+      // Check if lineStart falls within this node
+      if (!startNode && lineStart >= currentOffset && lineStart <= nodeEnd) {
+        startNode = currentNode;
+        startOffset = lineStart - currentOffset;
+      }
+
+      // Check if lineEnd falls within this node
+      if (!endNode && lineEnd >= currentOffset && lineEnd <= nodeEnd) {
+        endNode = currentNode;
+        endOffset = lineEnd - currentOffset;
+      }
+
+      currentOffset = nodeEnd;
+
+      if (startNode && endNode) break;
+    }
+
+    if (startNode && endNode) {
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+    } else {
+      return; // Don't try to add an invalid range
+    }
   } else {
-    // Last is empty: select content of first and last element
-    range.setStartBefore(firstElement.firstChild!);
-    range.setEnd(lastElement, 0);
+    // Normal handling for regular blocks
+    // Highlight all lines in range
+    for (let i = firstLine; i <= lastLine; i++) {
+      const element = vim_info.lines[i].element;
+      element.style.backgroundColor = 'rgba(102, 126, 234, 0.3)';
+    }
+
+    // Set range to cover all lines from first to last
+    const lastElement = vim_info.lines[lastLine].element;
+
+    // For empty lines, we need to select the element itself to show background
+    // Check if elements have content
+    const firstHasContent = firstElement.childNodes.length > 0;
+    const lastHasContent = lastElement.childNodes.length > 0;
+
+    if (firstHasContent && lastHasContent) {
+      // Both have content: select from start of first to end of last
+      range.setStartBefore(firstElement.firstChild!);
+      range.setEndAfter(lastElement.lastChild!);
+    } else if (!firstHasContent && !lastHasContent) {
+      // Both empty: select the elements themselves
+      range.setStart(firstElement, 0);
+      range.setEnd(lastElement, 0);
+    } else if (!firstHasContent) {
+      // First is empty: select first element and content of last
+      range.setStart(firstElement, 0);
+      range.setEndAfter(lastElement.lastChild!);
+    } else {
+      // Last is empty: select content of first and last element
+      range.setStartBefore(firstElement.firstChild!);
+      range.setEnd(lastElement, 0);
+    }
   }
 
   selection?.removeAllRanges();
@@ -1165,9 +1437,17 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
       clearAllBackgroundColors();
       vim_info.mode = "normal";
       window.getSelection()?.removeAllRanges();
+      // Clear saved positions
+      delete vim_info.visual_end_pos;
       // Restore cursor position when exiting visual-line mode
       const currentElement = vim_info.lines[vim_info.active_line].element;
-      setCursorPosition(currentElement, vim_info.desired_column);
+      if (isInsideCodeBlock(currentElement)) {
+        // For code blocks, restore to the saved position
+        setCursorPosition(currentElement, vim_info.visual_start_pos);
+      } else {
+        // For normal blocks, restore to desired column
+        setCursorPosition(currentElement, vim_info.desired_column);
+      }
       updateInfoContainer();
       return true;
     case "j":
@@ -1213,24 +1493,206 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
 
 const visualLineMoveCursorDown = () => {
   const { vim_info } = window;
-  const nextLine = vim_info.active_line + 1;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const inCodeBlock = isInsideCodeBlock(currentElement);
 
-  if (nextLine >= vim_info.lines.length) return;
+  if (inCodeBlock) {
+    // Check if visual-line mode started outside this code block
+    const startElement = vim_info.lines[vim_info.visual_start_line].element;
+    const startInCodeBlock = isInsideCodeBlock(startElement);
+    const startedOutside = !startInCodeBlock || startElement !== currentElement;
 
-  vim_info.active_line = nextLine;
+    if (startedOutside) {
+      // Visual-line started outside this code block - treat entire block as one unit
+      // Move directly to next block
+      const nextLine = vim_info.active_line + 1;
+      if (nextLine < vim_info.lines.length) {
+        vim_info.active_line = nextLine;
+        delete vim_info.visual_end_pos; // Clear saved position when leaving code block
+      }
+    } else {
+      // Visual-line started inside this code block - navigate line by line
+      const text = currentElement.textContent || '';
+      // Use the saved visual_end_pos if it exists, otherwise get from cursor
+      const cursorPos = vim_info.visual_end_pos !== undefined ? vim_info.visual_end_pos : getCursorIndexInElement(currentElement);
+
+      // Find the next newline after current position
+      const nextNewline = text.indexOf('\n', cursorPos);
+
+      if (nextNewline === -1) {
+        // No next line in code block - try to move to next block
+        const nextLine = vim_info.active_line + 1;
+        if (nextLine < vim_info.lines.length) {
+          vim_info.active_line = nextLine;
+          delete vim_info.visual_end_pos; // Clear saved position when leaving code block
+        }
+      } else {
+        // Move to the beginning of the next line in the code block
+        const nextLineStart = nextNewline + 1;
+        // Save the new position
+        vim_info.visual_end_pos = nextLineStart;
+        setCursorPosition(currentElement, Math.min(nextLineStart, text.length));
+      }
+    }
+  } else {
+    // Normal block: move to next block
+    const nextLine = vim_info.active_line + 1;
+    if (nextLine >= vim_info.lines.length) return;
+    vim_info.active_line = nextLine;
+  }
+
   updateVisualLineSelection();
   updateInfoContainer();
 };
 
 const visualLineMoveCursorUp = () => {
   const { vim_info } = window;
-  const prevLine = vim_info.active_line - 1;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const inCodeBlock = isInsideCodeBlock(currentElement);
 
-  if (prevLine < 0) return;
+  if (inCodeBlock) {
+    // Check if visual-line mode started outside this code block
+    const startElement = vim_info.lines[vim_info.visual_start_line].element;
+    const startInCodeBlock = isInsideCodeBlock(startElement);
+    const startedOutside = !startInCodeBlock || startElement !== currentElement;
 
-  vim_info.active_line = prevLine;
+    if (startedOutside) {
+      // Visual-line started outside this code block - treat entire block as one unit
+      // Move directly to previous block
+      const prevLine = vim_info.active_line - 1;
+      if (prevLine >= 0) {
+        vim_info.active_line = prevLine;
+        delete vim_info.visual_end_pos; // Clear saved position when leaving code block
+      }
+    } else {
+      // Visual-line started inside this code block - navigate line by line
+      const text = currentElement.textContent || '';
+      // Use the saved visual_end_pos if it exists, otherwise get from cursor
+      const cursorPos = vim_info.visual_end_pos !== undefined ? vim_info.visual_end_pos : getCursorIndexInElement(currentElement);
+
+      // Find the current line's start
+      let currentLineStart = text.lastIndexOf('\n', cursorPos - 1);
+      currentLineStart = currentLineStart === -1 ? 0 : currentLineStart + 1;
+
+      // If we're at the first line of the code block, try to move to previous block
+      if (currentLineStart === 0 && cursorPos < text.indexOf('\n')) {
+        const prevLine = vim_info.active_line - 1;
+        if (prevLine >= 0) {
+          vim_info.active_line = prevLine;
+          delete vim_info.visual_end_pos; // Clear saved position when leaving code block
+          const prevElement = vim_info.lines[prevLine].element;
+          const prevInCodeBlock = isInsideCodeBlock(prevElement);
+          if (prevInCodeBlock) {
+            const prevText = prevElement.textContent || '';
+            // Move to the last line of the previous code block
+            const lastNewline = prevText.lastIndexOf('\n');
+            if (lastNewline !== -1) {
+              vim_info.visual_end_pos = lastNewline + 1;
+              setCursorPosition(prevElement, lastNewline + 1);
+            } else {
+              vim_info.visual_end_pos = 0;
+              setCursorPosition(prevElement, 0);
+            }
+          }
+        }
+      } else if (currentLineStart > 0) {
+        // Find the previous line's start
+        let prevLineStart = text.lastIndexOf('\n', currentLineStart - 2);
+        prevLineStart = prevLineStart === -1 ? 0 : prevLineStart + 1;
+        vim_info.visual_end_pos = prevLineStart;
+        setCursorPosition(currentElement, prevLineStart);
+      }
+    }
+  } else {
+    // Normal block: move to previous block
+    const prevLine = vim_info.active_line - 1;
+    if (prevLine < 0) return;
+    vim_info.active_line = prevLine;
+  }
+
   updateVisualLineSelection();
   updateInfoContainer();
+};
+
+// Helper function to dispatch Delete and Backspace events to delete a block
+const deleteBlockWithKeyboardEvents = (element: HTMLElement, delay: number = 0) => {
+  setTimeout(() => {
+    // Check if element is still in the document
+    if (!document.contains(element)) {
+      return;
+    }
+
+    // Select entire content
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    // Focus and delete with Delete key
+    element.focus();
+
+    // Dispatch Delete key event to delete content
+    const deleteEvent = new KeyboardEvent('keydown', {
+      key: 'Delete',
+      code: 'Delete',
+      keyCode: 46,
+      which: 46,
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(deleteEvent);
+
+    // After deleting content, dispatch Backspace to delete the empty block
+    setTimeout(() => {
+      const backspaceEvent = new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        code: 'Backspace',
+        keyCode: 8,
+        which: 8,
+        bubbles: true,
+        cancelable: true,
+      });
+      element.dispatchEvent(backspaceEvent);
+    }, 20);
+  }, delay);
+};
+
+// Helper function to change (delete and enter insert mode) lines within a code block
+const changeCodeBlockLines = (firstLine: number, lastLine: number) => {
+  const { vim_info } = window;
+
+  // Delete content of each line individually using Selection API
+  for (let i = lastLine; i >= firstLine; i--) {
+    const element = vim_info.lines[i].element as HTMLElement;
+
+    console.log('[changeCodeBlockLines] Changing line', i, element);
+
+    // Select all content in the line
+    const range = document.createRange();
+    range.selectNodeContents(element);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    // Delete the content
+    document.execCommand('delete');
+  }
+
+  // Clear selection
+  window.getSelection()?.removeAllRanges();
+
+  // Enter insert mode and move cursor to the first line
+  setTimeout(() => {
+    refreshLines();
+    if (vim_info.lines.length > firstLine) {
+      const element = vim_info.lines[firstLine].element as HTMLElement;
+      element.focus();
+      setCursorPosition(element, 0);
+    }
+    updateInfoContainer();
+  }, 50);
 };
 
 const deleteVisualLineSelection = () => {
@@ -1264,106 +1726,81 @@ const deleteVisualLineSelection = () => {
   // Clear selection to remove any browser highlighting
   window.getSelection()?.removeAllRanges();
 
-  // Get all blocks to delete
-  const blocksToDelete: Element[] = [];
+  // Group consecutive lines by their element (code blocks share the same element)
+  const lineGroups: { start: number; end: number; isCodeBlock: boolean; element: HTMLElement }[] = [];
+  let currentGroupStart = firstLine;
+  let currentGroupElement = vim_info.lines[firstLine].element;
+  let currentGroupIsCodeBlock = isInsideCodeBlock(currentGroupElement);
 
-  for (let i = firstLine; i <= lastLine; i++) {
-    const element = vim_info.lines[i].element;
-    const block = element.closest('[data-block-id]') || element.parentElement?.parentElement;
-    if (block && !blocksToDelete.includes(block)) {
-      blocksToDelete.push(block);
+  for (let i = firstLine + 1; i <= lastLine; i++) {
+    const currentElement = vim_info.lines[i].element;
+
+    // Group boundary: different element (even if both are in code blocks, they're different blocks)
+    if (currentElement !== currentGroupElement) {
+      lineGroups.push({
+        start: currentGroupStart,
+        end: i - 1,
+        isCodeBlock: currentGroupIsCodeBlock,
+        element: currentGroupElement
+      });
+      currentGroupStart = i;
+      currentGroupElement = currentElement;
+      currentGroupIsCodeBlock = isInsideCodeBlock(currentElement);
     }
   }
 
-  if (blocksToDelete.length === 0) {
-    vim_info.mode = "normal";
-    updateInfoContainer();
-    return;
-  }
-
-  // (mode is already set to "insert" above)
+  // Add the last group
+  lineGroups.push({
+    start: currentGroupStart,
+    end: lastLine,
+    isCodeBlock: currentGroupIsCodeBlock,
+    element: currentGroupElement
+  });
 
   // Start undo group for multi-line deletion
   vim_info.in_undo_group = true;
-  vim_info.undo_count = blocksToDelete.length;
+  vim_info.undo_count = lastLine - firstLine + 1;
 
-  // Delete each block one by one from last to first to maintain indices
-  deleteBlocksSequentially(blocksToDelete.slice().reverse(), firstLine);
+  // Delete content for each group (in reverse order to maintain indices)
+  // Use a sequential approach with delays for normal blocks to avoid DOM errors
+  let currentDelay = 10;
 
-  function deleteBlocksSequentially(blocks: Element[], targetLine: number) {
-    if (blocks.length === 0) {
-      // All blocks deleted, restore normal mode and update cursor
-      vim_info.mode = "normal";
-      vim_info.in_undo_group = false;
-      window.getSelection()?.removeAllRanges();
+  for (let groupIdx = lineGroups.length - 1; groupIdx >= 0; groupIdx--) {
+    const group = lineGroups[groupIdx];
 
-      setTimeout(() => {
-        refreshLines();
-        // Clear background colors again after refresh
-        clearAllBackgroundColors();
-
-        const newActiveLine = Math.max(0, Math.min(targetLine, vim_info.lines.length - 1));
-        if (vim_info.lines.length > 0) {
-          setActiveLine(newActiveLine);
-          // Set cursor position to beginning of line
-          const element = vim_info.lines[newActiveLine].element;
-          setCursorPosition(element, 0);
-        }
-        updateInfoContainer();
-      }, 100);
-      return;
+    if (group.isCodeBlock) {
+      // Code block - delete the entire code block element
+      deleteBlockWithKeyboardEvents(group.element, 0);
+    } else {
+      // Normal lines - delete content AND the blocks themselves
+      // Delete from last to first to maintain indices
+      for (let i = group.end; i >= group.start; i--) {
+        const element = vim_info.lines[i].element;
+        deleteBlockWithKeyboardEvents(element, currentDelay);
+        currentDelay += 50; // Add delay for next block
+      }
     }
-
-    const block = blocks[0];
-    const element = block.querySelector('[contenteditable="true"]') as HTMLElement;
-
-    if (!element) {
-      // Skip this block and continue
-      deleteBlocksSequentially(blocks.slice(1), targetLine);
-      return;
-    }
-
-    // Select the content
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-
-    // Focus and delete
-    element.focus();
-
-    setTimeout(() => {
-      // Delete content
-      const deleteEvent = new KeyboardEvent('keydown', {
-        key: 'Delete',
-        code: 'Delete',
-        keyCode: 46,
-        which: 46,
-        bubbles: true,
-        cancelable: true,
-      });
-      element.dispatchEvent(deleteEvent);
-
-      // Delete empty block
-      setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent('keydown', {
-          key: 'Backspace',
-          code: 'Backspace',
-          keyCode: 8,
-          which: 8,
-          bubbles: true,
-          cancelable: true,
-        });
-        element.dispatchEvent(backspaceEvent);
-
-        // Continue with next block
-        setTimeout(() => {
-          deleteBlocksSequentially(blocks.slice(1), targetLine);
-        }, 10);
-      }, 10);
-    }, 10);
   }
+
+  // Clear selection
+  window.getSelection()?.removeAllRanges();
+
+  // Return to normal mode after all deletions complete
+  setTimeout(() => {
+    vim_info.mode = "normal";
+    vim_info.in_undo_group = false;
+
+    refreshLines();
+    clearAllBackgroundColors();
+
+    const newActiveLine = Math.max(0, Math.min(firstLine, vim_info.lines.length - 1));
+    if (vim_info.lines.length > 0) {
+      setActiveLine(newActiveLine);
+      const element = vim_info.lines[newActiveLine].element;
+      setCursorPosition(element, 0);
+    }
+    updateInfoContainer();
+  }, currentDelay + 100);
 };
 
 const changeVisualLineSelection = () => {
@@ -1402,8 +1839,45 @@ const changeVisualLineSelection = () => {
     clearAllBackgroundColors();
   });
 
-  // For single line: just clear content and enter insert mode
-  if (firstLine === lastLine) {
+  // Group consecutive lines by their element (code blocks share the same element)
+  const lineGroups: { start: number; end: number; isCodeBlock: boolean; element: HTMLElement }[] = [];
+  let currentGroupStart = firstLine;
+  let currentGroupElement = vim_info.lines[firstLine].element;
+  let currentGroupIsCodeBlock = isInsideCodeBlock(currentGroupElement);
+
+  for (let i = firstLine + 1; i <= lastLine; i++) {
+    const currentElement = vim_info.lines[i].element;
+
+    // Group boundary: different element (even if both are in code blocks, they're different blocks)
+    if (currentElement !== currentGroupElement) {
+      lineGroups.push({
+        start: currentGroupStart,
+        end: i - 1,
+        isCodeBlock: currentGroupIsCodeBlock,
+        element: currentGroupElement
+      });
+      currentGroupStart = i;
+      currentGroupElement = currentElement;
+      currentGroupIsCodeBlock = isInsideCodeBlock(currentElement);
+    }
+  }
+
+  // Add the last group
+  lineGroups.push({
+    start: currentGroupStart,
+    end: lastLine,
+    isCodeBlock: currentGroupIsCodeBlock,
+    element: currentGroupElement
+  });
+
+  // If selection is entirely within a single code block, use changeCodeBlockLines
+  if (lineGroups.length === 1 && lineGroups[0].isCodeBlock) {
+    changeCodeBlockLines(firstLine, lastLine);
+    return;
+  }
+
+  // If selection is a single normal line, just clear and enter insert mode
+  if (lineGroups.length === 1 && !lineGroups[0].isCodeBlock && firstLine === lastLine) {
     const element = vim_info.lines[firstLine].element as HTMLElement;
 
     // Select all content
@@ -1431,12 +1905,38 @@ const changeVisualLineSelection = () => {
     return;
   }
 
-  // For multiple lines: delete all lines except the first, clear the first line
+  // For multiple lines or mixed selections: handle each group
   // (mode is already set to "insert" above)
   vim_info.in_undo_group = true;
   vim_info.undo_count = lastLine - firstLine;
 
-  // Delete lines from last to first (except the first line)
+  // Change content for each group, then delete all lines except the first
+  for (const group of lineGroups) {
+    if (group.isCodeBlock) {
+      // Code block lines - use changeCodeBlockLines but don't let it change mode
+      const savedMode: string = vim_info.mode;
+      changeCodeBlockLines(group.start, group.end);
+      vim_info.mode = savedMode as any;
+    } else {
+      // Normal lines - delete content from each line
+      for (let i = group.start; i <= group.end; i++) {
+        const element = vim_info.lines[i].element;
+
+        // Select all content in the line
+        const range = document.createRange();
+        range.selectNodeContents(element);
+
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        // Delete the content
+        document.execCommand('delete');
+      }
+    }
+  }
+
+  // Now delete all lines except the first
   const linesToDelete: number[] = [];
   for (let i = lastLine; i > firstLine; i--) {
     linesToDelete.push(i);
@@ -1778,63 +2278,158 @@ const deleteCurrentLine = async () => {
   const currentLineIndex = vim_info.active_line;
   const currentElement = vim_info.lines[currentLineIndex].element;
 
-  // Copy line content to clipboard
-  const lineText = currentElement.textContent || '';
-  navigator.clipboard.writeText(lineText).catch(err => {
-    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
-  });
+  // Check if we're inside a code block
+  const inCodeBlock = isInsideCodeBlock(currentElement);
 
-  // Temporarily switch to insert mode to allow deletion
-  const previousMode = vim_info.mode;
-  vim_info.mode = "insert";
+  if (inCodeBlock) {
+    // For code blocks, delete only the line content, not the block itself
+    const text = currentElement.textContent || '';
+    const cursorPos = getCursorIndexInElement(currentElement);
 
-  // Select entire line content
-  const range = document.createRange();
-  range.selectNodeContents(currentElement);
-  const sel = window.getSelection();
-  sel?.removeAllRanges();
-  sel?.addRange(range);
+    // Find the start and end of the current line
+    let lineStart = text.lastIndexOf('\n', cursorPos - 1);
+    lineStart = lineStart === -1 ? 0 : lineStart + 1;
 
-  // Focus and delete with Delete key
-  (currentElement as HTMLElement).focus();
+    let lineEnd = text.indexOf('\n', cursorPos);
+    // Include the newline character in deletion (if it exists)
+    if (lineEnd !== -1) {
+      lineEnd = lineEnd + 1; // Include the \n
+    } else {
+      // Last line - check if there's a newline before this line
+      if (lineStart > 0) {
+        // Delete the newline before this line instead
+        lineStart = lineStart - 1;
+      }
+      lineEnd = text.length;
+    }
 
-  setTimeout(() => {
-    const deleteEvent = new KeyboardEvent('keydown', {
-      key: 'Delete',
-      code: 'Delete',
-      keyCode: 46,
-      which: 46,
-      bubbles: true,
-      cancelable: true,
+    // Extract the line text for clipboard (without newlines for clipboard)
+    const originalLineStart = text.lastIndexOf('\n', cursorPos - 1);
+    const actualLineStart = originalLineStart === -1 ? 0 : originalLineStart + 1;
+    const originalLineEnd = text.indexOf('\n', cursorPos);
+    const actualLineEnd = originalLineEnd === -1 ? text.length : originalLineEnd;
+    const lineText = text.substring(actualLineStart, actualLineEnd);
+    navigator.clipboard.writeText(lineText).catch(err => {
+      console.error('[Vim-Notion] Failed to copy to clipboard:', err);
     });
 
-    currentElement.dispatchEvent(deleteEvent);
+    // Temporarily switch to insert mode
+    vim_info.mode = "insert";
 
-    // After deleting content, press Backspace to delete the empty block
+    // Select the line content using TreeWalker
+    const walker = document.createTreeWalker(
+      currentElement,
+      NodeFilter.SHOW_TEXT,
+      null
+    );
+
+    let currentNode: Text | null = null;
+    let currentOffset = 0;
+    let startNode: Text | null = null;
+    let startOffset = 0;
+    let endNode: Text | null = null;
+    let endOffset = 0;
+
+    while ((currentNode = walker.nextNode() as Text | null)) {
+      const nodeLength = currentNode.length;
+      const nodeEnd = currentOffset + nodeLength;
+
+      if (!startNode && lineStart >= currentOffset && lineStart <= nodeEnd) {
+        startNode = currentNode;
+        startOffset = lineStart - currentOffset;
+      }
+
+      if (!endNode && lineEnd >= currentOffset && lineEnd <= nodeEnd) {
+        endNode = currentNode;
+        endOffset = lineEnd - currentOffset;
+      }
+
+      currentOffset = nodeEnd;
+      if (startNode && endNode) break;
+    }
+
+    if (startNode && endNode) {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+
+      // Delete the selected content
+      setTimeout(() => {
+        document.execCommand('delete');
+
+        setTimeout(() => {
+          vim_info.mode = "normal";
+          // Position cursor at the start of the line (or end of previous line if we deleted content)
+          const newCursorPos = lineStart;
+          setCursorPosition(currentElement, newCursorPos);
+          updateInfoContainer();
+        }, 10);
+      }, 10);
+    }
+  } else {
+    // For normal blocks, delete the entire block as before
+    // Copy line content to clipboard
+    const lineText = currentElement.textContent || '';
+    navigator.clipboard.writeText(lineText).catch(err => {
+      console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+    });
+
+    // Temporarily switch to insert mode to allow deletion
+    const previousMode = vim_info.mode;
+    vim_info.mode = "insert";
+
+    // Select entire line content
+    const range = document.createRange();
+    range.selectNodeContents(currentElement);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    // Focus and delete with Delete key
+    (currentElement as HTMLElement).focus();
+
     setTimeout(() => {
-      const backspaceEvent = new KeyboardEvent('keydown', {
-        key: 'Backspace',
-        code: 'Backspace',
-        keyCode: 8,
-        which: 8,
+      const deleteEvent = new KeyboardEvent('keydown', {
+        key: 'Delete',
+        code: 'Delete',
+        keyCode: 46,
+        which: 46,
         bubbles: true,
         cancelable: true,
       });
 
-      currentElement.dispatchEvent(backspaceEvent);
+      currentElement.dispatchEvent(deleteEvent);
 
-      // Return to normal mode and update cursor
+      // After deleting content, press Backspace to delete the empty block
       setTimeout(() => {
-        vim_info.mode = "normal";
-        refreshLines();
+        const backspaceEvent = new KeyboardEvent('keydown', {
+          key: 'Backspace',
+          code: 'Backspace',
+          keyCode: 8,
+          which: 8,
+          bubbles: true,
+          cancelable: true,
+        });
 
-        const newActiveLine = Math.max(0, Math.min(currentLineIndex - 1, vim_info.lines.length - 1));
-        if (vim_info.lines.length > 0) {
-          setActiveLine(newActiveLine);
-        }
-      }, 50);
-    }, 20);
-  }, 10);
+        currentElement.dispatchEvent(backspaceEvent);
+
+        // Return to normal mode and update cursor
+        setTimeout(() => {
+          vim_info.mode = "normal";
+          refreshLines();
+
+          const newActiveLine = Math.max(0, Math.min(currentLineIndex - 1, vim_info.lines.length - 1));
+          if (vim_info.lines.length > 0) {
+            setActiveLine(newActiveLine);
+          }
+        }, 50);
+      }, 20);
+    }, 10);
+  }
 };
 
 const deleteToNextWord = () => {
@@ -2621,6 +3216,24 @@ const deleteVisualSelection = () => {
   updateInfoContainer();
 };
 
+// Helper function to check if an element is inside a code block
+const isInsideCodeBlock = (element: Element): boolean => {
+  // Notion code blocks typically have a specific structure
+  // Check if the element or its parents have code-related selectors
+  const codeContainer = element.closest('[class*="code"]') || element.closest('code') || element.closest('pre');
+  const isCodeBlock = !!codeContainer;
+
+  return isCodeBlock;
+};
+
+// Helper function to get all contenteditable lines within the same code block
+const getCodeBlockLines = (element: Element): Element[] => {
+  const codeContainer = element.closest('[class*="code"]') || element.closest('[data-block-id]');
+  if (!codeContainer) return [];
+
+  return Array.from(codeContainer.querySelectorAll('[contenteditable="true"]'));
+};
+
 const getCursorIndexInElement = (element: Element): number => {
   const selection = document.getSelection();
   if (!selection || selection.rangeCount === 0) {
@@ -3147,21 +3760,51 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       insertAtLineStart();
       return true;
     case "o":
+      // In code blocks, use custom line opening to stay within the block
+      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+        openLineBelowInCodeBlock();
+        return true;
+      }
       openLineBelow();
       return true;
     case "O":
+      // In code blocks, use custom line opening to stay within the block
+      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+        openLineAboveInCodeBlock();
+        return true;
+      }
       openLineAbove();
       return true;
     case "h":
+      // In code blocks, use custom navigation to stay within the block
+      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+        moveCursorBackwardsInCodeBlock();
+        return true;
+      }
       moveCursorBackwards();
       return true;
     case "j":
+      // In code blocks, move cursor down within the block
+      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+        moveCursorDownInCodeBlock();
+        return true;
+      }
       setActiveLine(active_line + 1);
       return true;
     case "k":
+      // In code blocks, move cursor up within the block
+      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+        moveCursorUpInCodeBlock();
+        return true;
+      }
       setActiveLine(active_line - 1);
       return true;
     case "l":
+      // In code blocks, use custom navigation to stay within the block
+      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+        moveCursorForwardsInCodeBlock();
+        return true;
+      }
       moveCursorForwards();
       return true;
     case "w":
@@ -3435,19 +4078,56 @@ const setActiveLine = (idx: number) => {
   if (idx >= lines.length) i = lines.length - 1;
   if (i < 0) i = 0;
 
+  // Save the old active_line BEFORE updating it
+  const previousActiveLine = window.vim_info.active_line;
 
   // Update the active line index
   window.vim_info.active_line = i;
 
-  // Click and focus the new line
-  lines[i].element.click();
-  lines[i].element.focus();
+  const targetElement = lines[i].element;
 
-  // Set cursor to desired column, or end of line if line is shorter
-  const lineLength = lines[i].element.textContent?.length || 0;
-  const targetColumn = Math.min(desired_column, lineLength);
-  setCursorPosition(lines[i].element, targetColumn);
+  // Check if we're inside a code block
+  const inCodeBlock = isInsideCodeBlock(targetElement);
 
+  // For code blocks, avoid .click() as it triggers Notion's internal logic
+  // that can cause cursor to jump outside the block
+  if (inCodeBlock) {
+    // Only use setCursorPosition() for code blocks - no click or focus
+    // Don't call focus() or click() - just set cursor position directly
+
+    // For code blocks, we need to position the cursor on the correct line
+    // If moving up (idx < previous active_line), go to the last line of the code block
+    // If moving down (idx > previous active_line), go to the first line
+    const text = targetElement.textContent || "";
+    const lines = text.split('\n');
+    const movingUp = i < previousActiveLine;
+
+    let cursorPosition = 0;
+    if (movingUp) {
+      // Moving up: go to the last line
+      for (let j = 0; j < lines.length - 1; j++) {
+        cursorPosition += lines[j].length + 1; // +1 for newline
+      }
+      // Add desired column on the last line
+      const lastLineLength = lines[lines.length - 1].length;
+      cursorPosition += Math.min(desired_column, lastLineLength);
+    } else {
+      // Moving down: go to the first line at desired column
+      const firstLineLength = lines[0].length;
+      cursorPosition = Math.min(desired_column, firstLineLength);
+    }
+
+    setCursorPosition(targetElement, cursorPosition);
+  } else {
+    // For normal blocks, use click() and focus() as before
+    targetElement.click();
+    targetElement.focus();
+
+    // Set cursor to desired column, or end of line if line is shorter
+    const lineLength = targetElement.textContent?.length || 0;
+    const targetColumn = Math.min(desired_column, lineLength);
+    setCursorPosition(targetElement, targetColumn);
+  }
 };
 
 const refreshLines = () => {
