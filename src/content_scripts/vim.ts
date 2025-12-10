@@ -1614,8 +1614,52 @@ const visualLineMoveCursorUp = () => {
   updateInfoContainer();
 };
 
-// Helper function to dispatch Delete and Backspace events to delete a block
-const deleteBlockWithKeyboardEvents = (element: HTMLElement, delay: number = 0) => {
+// Helper function to dispatch Delete and Backspace events to delete a code block
+const deleteCodeBlockWithKeyboardEvents = (element: HTMLElement, delay: number = 0) => {
+  setTimeout(() => {
+    // Check if element is still in the document
+    if (!document.contains(element)) {
+      return;
+    }
+
+    // Select entire content
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    // Focus and delete with Delete key
+    element.focus();
+
+    // Dispatch Delete key event immediately (no delay for code blocks)
+    const deleteEvent = new KeyboardEvent('keydown', {
+      key: 'Delete',
+      code: 'Delete',
+      keyCode: 46,
+      which: 46,
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(deleteEvent);
+
+    // After deleting content, dispatch Backspace to delete the empty block
+    setTimeout(() => {
+      const backspaceEvent = new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        code: 'Backspace',
+        keyCode: 8,
+        which: 8,
+        bubbles: true,
+        cancelable: true,
+      });
+      element.dispatchEvent(backspaceEvent);
+    }, 20);
+  }, delay);
+};
+
+// Helper function to dispatch Delete and Backspace events to delete a normal block
+const deleteNormalBlockWithKeyboardEvents = (element: HTMLElement, delay: number = 0) => {
   setTimeout(() => {
     // Check if element is still in the document
     if (!document.contains(element)) {
@@ -1772,13 +1816,14 @@ const deleteVisualLineSelection = () => {
 
     if (group.isCodeBlock) {
       // Code block - delete the entire code block element
-      deleteBlockWithKeyboardEvents(group.element, 0);
+      // Use delay 0 for code blocks - they need to be deleted immediately
+      deleteCodeBlockWithKeyboardEvents(group.element, 0);
     } else {
       // Normal lines - delete content AND the blocks themselves
       // Delete from last to first to maintain indices
       for (let i = group.end; i >= group.start; i--) {
         const element = vim_info.lines[i].element;
-        deleteBlockWithKeyboardEvents(element, currentDelay);
+        deleteNormalBlockWithKeyboardEvents(element, currentDelay);
         currentDelay += 50; // Add delay for next block
       }
     }
