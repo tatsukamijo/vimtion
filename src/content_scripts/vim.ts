@@ -1704,6 +1704,86 @@ const deleteNormalBlockWithKeyboardEvents = (element: HTMLElement, delay: number
   }, delay);
 };
 
+// Helper function to delete lines within a code block (Visual-line mode)
+const deleteCodeBlockLines = (firstLine: number, lastLine: number) => {
+  const { vim_info } = window;
+
+  const codeBlockElement = vim_info.lines[firstLine].element;
+  const text = codeBlockElement.textContent || '';
+
+  // Use visual_start_pos and visual_end_pos to determine the range
+  let startCursorPos = vim_info.visual_start_pos || 0;
+  let endCursorPos = vim_info.visual_end_pos !== undefined ? vim_info.visual_end_pos : getCursorIndexInElement(codeBlockElement);
+
+  // Ensure startCursorPos <= endCursorPos
+  if (startCursorPos > endCursorPos) {
+    [startCursorPos, endCursorPos] = [endCursorPos, startCursorPos];
+  }
+
+  // Find line boundaries for deletion
+  let deleteStart = text.lastIndexOf('\n', startCursorPos - 1);
+  deleteStart = deleteStart === -1 ? 0 : deleteStart + 1;
+
+  let deleteEnd = text.indexOf('\n', endCursorPos);
+  if (deleteEnd !== -1) {
+    deleteEnd = deleteEnd + 1; // Include the \n
+  } else {
+    // Last line - check if there's a newline before this line
+    if (deleteStart > 0) {
+      deleteStart = deleteStart - 1; // Delete the newline before this line instead
+    }
+    deleteEnd = text.length;
+  }
+
+  // Use TreeWalker to find text nodes
+  const walker = document.createTreeWalker(
+    codeBlockElement,
+    NodeFilter.SHOW_TEXT,
+    null
+  );
+
+  let currentNode: Text | null = null;
+  let currentOffset = 0;
+  let startNode: Text | null = null;
+  let startOffset = 0;
+  let endNode: Text | null = null;
+  let endOffset = 0;
+
+  while ((currentNode = walker.nextNode() as Text | null)) {
+    const nodeLength = currentNode.length;
+    const nodeEnd = currentOffset + nodeLength;
+
+    if (!startNode && deleteStart >= currentOffset && deleteStart <= nodeEnd) {
+      startNode = currentNode;
+      startOffset = deleteStart - currentOffset;
+    }
+
+    if (!endNode && deleteEnd >= currentOffset && deleteEnd <= nodeEnd) {
+      endNode = currentNode;
+      endOffset = deleteEnd - currentOffset;
+    }
+
+    currentOffset = nodeEnd;
+    if (startNode && endNode) break;
+  }
+
+  if (startNode && endNode) {
+    const range = document.createRange();
+    range.setStart(startNode, startOffset);
+    range.setEnd(endNode, endOffset);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    // Delete the content
+    document.execCommand('delete');
+  }
+
+  // Clear selection
+  window.getSelection()?.removeAllRanges();
+};
+
 // Helper function to change (delete and enter insert mode) lines within a code block
 const changeCodeBlockLines = (firstLine: number, lastLine: number) => {
   const { vim_info } = window;
@@ -1815,9 +1895,16 @@ const deleteVisualLineSelection = () => {
     const group = lineGroups[groupIdx];
 
     if (group.isCodeBlock) {
-      // Code block - delete the entire code block element
-      // Use delay 0 for code blocks - they need to be deleted immediately
-      deleteCodeBlockWithKeyboardEvents(group.element, 0);
+      // Check if selection extends beyond this group (selected from outside)
+      const selectionExtendsOutside = firstLine < group.start || lastLine > group.end;
+
+      if (selectionExtendsOutside) {
+        // Selection includes lines outside this code block - delete the whole block
+        deleteCodeBlockWithKeyboardEvents(group.element, 0);
+      } else {
+        // Selection is entirely within this code block - delete only selected lines
+        deleteCodeBlockLines(group.start, group.end);
+      }
     } else {
       // Normal lines - delete content AND the blocks themselves
       // Delete from last to first to maintain indices
