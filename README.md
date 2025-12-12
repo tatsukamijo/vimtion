@@ -146,7 +146,7 @@ The following Vim features are not implemented:
 - **Macros** (`q`, `@`) - Complex to implement and not essential for most users
 - **Screen-based motions** (`H`, `M`, `L`) - Not meaningful in Notion's infinite scroll context
 - **Block operations** (`J` join lines, `<`/`>` indent) - Notion's block-based structure has its own system
-- **Advanced features** (`.` repeat, `~` toggle case, `%` bracket matching, `R` replace mode) - Not essential for core editing
+- **Advanced features** (`.` repeat, `~` toggle case, `%` bracket matching, `R` replace mode) - Not essential for core editing (repeat will be implemented in the near future)
 
 **Note**: `r` is used for **redo** instead of Vim's default "replace character" to provide undo/redo functionality.
 
