@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vimtion",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A Chrome extension that brings Vim keybindings to Notion",
   "author": "Tatsuya Kamijo",
   "icons": {
@@ -10,11 +10,15 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "permissions": ["storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["*://*.notion.so/*"],
-      "js": ["content_scripts/vim.js"],
-      "css": ["content_scripts/vim.css"]
+      "js": ["content_scripts/vim.js", "content_scripts/update-notification.js"],
+      "css": ["content_scripts/vim.css", "content_scripts/update-notification.css"]
     }
   ]
 }
