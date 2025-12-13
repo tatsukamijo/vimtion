@@ -931,12 +931,8 @@ const startVisualLineMode = () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   if (isInsideCodeBlock(currentElement)) {
     vim_info.visual_start_pos = getCursorIndexInElement(currentElement);
-    console.log('[startVisualLineMode] Code block detected. visual_start_pos set to:', vim_info.visual_start_pos);
-    console.log('[startVisualLineMode] active_line:', vim_info.active_line);
-    console.log('[startVisualLineMode] Element text:', currentElement.textContent?.substring(0, 100));
   } else {
     vim_info.visual_start_pos = 0; // Not used in line mode for normal blocks
-    console.log('[startVisualLineMode] Normal block. visual_start_pos set to 0');
   }
 
   updateVisualLineSelection();
@@ -975,9 +971,6 @@ const updateVisualLineSelection = () => {
     const endPos = getCursorIndexInElement(currentElement);
     vim_info.visual_end_pos = endPos;
 
-    console.log('[updateVisualLineSelection] Code block single line');
-    console.log('[updateVisualLineSelection] startPos:', startPos, 'endPos:', endPos);
-
     // Determine the range of positions to select
     const [selStart, selEnd] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];
 
@@ -988,9 +981,6 @@ const updateVisualLineSelection = () => {
     // Find the line boundaries for the end position
     let lineEnd = text.indexOf('\n', selEnd);
     if (lineEnd === -1) lineEnd = text.length;
-
-    console.log('[updateVisualLineSelection] lineStart:', lineStart, 'lineEnd:', lineEnd);
-    console.log('[updateVisualLineSelection] Line text:', JSON.stringify(text.substring(lineStart, lineEnd)));
 
     // Don't set background color for code blocks - we'll rely on the selection highlight only
     // (setting backgroundColor would highlight the entire code block element)
@@ -1722,29 +1712,15 @@ const deleteCodeBlockLines = (firstLine: number, lastLine: number): number => {
 
   const codeBlockElement = vim_info.lines[firstLine].element;
   const text = codeBlockElement.textContent || '';
-  const currentCursorPos = getCursorIndexInElement(codeBlockElement);
-
-  console.log('[deleteCodeBlockLines] Starting deletion');
-  console.log('[deleteCodeBlockLines] firstLine:', firstLine, 'lastLine:', lastLine);
-  console.log('[deleteCodeBlockLines] visual_start_pos:', vim_info.visual_start_pos);
-  console.log('[deleteCodeBlockLines] visual_end_pos:', vim_info.visual_end_pos);
-  console.log('[deleteCodeBlockLines] current cursor pos:', currentCursorPos);
-  console.log('[deleteCodeBlockLines] text length:', text.length);
 
   // Use visual_start_pos and visual_end_pos to determine the range
   let startCursorPos = vim_info.visual_start_pos || 0;
   let endCursorPos = vim_info.visual_end_pos !== undefined ? vim_info.visual_end_pos : getCursorIndexInElement(codeBlockElement);
 
-  console.log('[deleteCodeBlockLines] startCursorPos (before swap):', startCursorPos);
-  console.log('[deleteCodeBlockLines] endCursorPos (before swap):', endCursorPos);
-
   // Ensure startCursorPos <= endCursorPos
   if (startCursorPos > endCursorPos) {
     [startCursorPos, endCursorPos] = [endCursorPos, startCursorPos];
   }
-
-  console.log('[deleteCodeBlockLines] startCursorPos (after swap):', startCursorPos);
-  console.log('[deleteCodeBlockLines] endCursorPos (after swap):', endCursorPos);
 
   // Find line boundaries for deletion
   let deleteStart = text.lastIndexOf('\n', startCursorPos - 1);
@@ -1760,9 +1736,6 @@ const deleteCodeBlockLines = (firstLine: number, lastLine: number): number => {
     }
     deleteEnd = text.length;
   }
-
-  console.log('[deleteCodeBlockLines] deleteStart:', deleteStart, 'deleteEnd:', deleteEnd);
-  console.log('[deleteCodeBlockLines] Text to delete:', JSON.stringify(text.substring(deleteStart, deleteEnd)));
 
   // Use TreeWalker to find text nodes
   const walker = document.createTreeWalker(
@@ -1811,8 +1784,6 @@ const deleteCodeBlockLines = (firstLine: number, lastLine: number): number => {
 
   // Clear selection
   window.getSelection()?.removeAllRanges();
-
-  console.log('[deleteCodeBlockLines] Deletion complete. deleteStart:', deleteStart, 'text length after:', codeBlockElement.textContent?.length);
 
   // Return the position where deletion started
   return deleteStart;
@@ -1963,18 +1934,14 @@ const deleteVisualLineSelection = () => {
     clearAllBackgroundColors();
 
     const newActiveLine = Math.max(0, Math.min(firstLine, vim_info.lines.length - 1));
-    console.log('[deleteVisualLine] Setting cursor. newActiveLine:', newActiveLine, 'firstLine:', firstLine, 'lastLine:', lastLine, 'codeBlockCursorPos:', codeBlockCursorPos);
 
     if (vim_info.lines.length > 0) {
       setActiveLine(newActiveLine);
       const element = vim_info.lines[newActiveLine].element;
-      const isCodeBlock = isInsideCodeBlock(element);
-      console.log('[deleteVisualLine] Element is code block:', isCodeBlock);
 
       // Use the stored cursor position for code block line deletion, otherwise use 0
       const cursorPos = codeBlockCursorPos !== null ? codeBlockCursorPos : 0;
       setCursorPosition(element, cursorPos);
-      console.log('[deleteVisualLine] Cursor set to position', cursorPos);
     }
     updateInfoContainer();
   }, currentDelay + 100);
