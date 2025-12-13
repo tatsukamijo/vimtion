@@ -8,6 +8,93 @@
  * See LICENSE file for details
  */
 
+// Settings interface
+interface VimtionSettings {
+  showStatusBar: boolean;
+  statusBarPosition: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  statusBarColor: string;
+  cursorBlink: boolean;
+  cursorColor: string;
+  visualHighlightColor: string;
+  showUpdateNotifications: boolean;
+}
+
+// Default settings
+const DEFAULT_SETTINGS: VimtionSettings = {
+  showStatusBar: true,
+  statusBarPosition: 'bottom-right',
+  statusBarColor: '#667eea',
+  cursorBlink: true,
+  cursorColor: '#667eea',
+  visualHighlightColor: '#667eea',
+  showUpdateNotifications: true,
+};
+
+// Current settings (loaded from storage)
+let currentSettings: VimtionSettings = { ...DEFAULT_SETTINGS };
+
+// Helper function to adjust color brightness
+function adjustColor(color: string, amount: number): string {
+  const hex = color.replace('#', '');
+  const r = Math.max(0, Math.min(255, parseInt(hex.substring(0, 2), 16) + amount));
+  const g = Math.max(0, Math.min(255, parseInt(hex.substring(2, 4), 16) + amount));
+  const b = Math.max(0, Math.min(255, parseInt(hex.substring(4, 6), 16) + amount));
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+// Load settings from storage
+function loadSettings(callback?: () => void) {
+  chrome.storage.sync.get(DEFAULT_SETTINGS, (settings: VimtionSettings) => {
+    currentSettings = settings;
+    applySettings();
+    if (callback) callback();
+  });
+}
+
+// Apply settings to the page
+function applySettings() {
+  // Apply status bar visibility and position
+  const infoContainer = document.querySelector('.vim-info-container') as HTMLElement;
+
+  if (infoContainer) {
+    if (currentSettings.showStatusBar) {
+      infoContainer.style.display = 'block';
+    } else {
+      infoContainer.style.display = 'none';
+    }
+
+    // Apply position
+    infoContainer.classList.remove('bottom-right', 'bottom-left', 'top-right', 'top-left');
+    infoContainer.classList.add(currentSettings.statusBarPosition);
+
+    // Apply status bar color with gradient
+    const gradientEnd = adjustColor(currentSettings.statusBarColor, -20);
+    infoContainer.style.background = `linear-gradient(135deg, ${currentSettings.statusBarColor} 0%, ${gradientEnd} 100%)`;
+  }
+
+  // Apply cursor color
+  const style = document.createElement('style');
+  style.id = 'vimtion-custom-styles';
+  const existingStyle = document.getElementById('vimtion-custom-styles');
+  if (existingStyle) {
+    existingStyle.remove();
+  }
+
+  style.textContent = `
+    .vim-block-cursor {
+      background-color: ${currentSettings.cursorColor} !important;
+      ${currentSettings.cursorBlink ? 'animation: blink 1s step-end infinite;' : 'animation: none;'}
+    }
+    .vim-normal-mode [contenteditable="true"]:focus::selection {
+      background-color: transparent !important;
+    }
+    ::selection {
+      background-color: ${currentSettings.visualHighlightColor}33 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 const createInfoContainer = () => {
   const { vim_info } = window;
   const infoContainer = document.createElement("div");
@@ -1797,7 +1884,6 @@ const changeCodeBlockLines = (firstLine: number, lastLine: number) => {
   for (let i = lastLine; i >= firstLine; i--) {
     const element = vim_info.lines[i].element as HTMLElement;
 
-    console.log('[changeCodeBlockLines] Changing line', i, element);
 
     // Select all content in the line
     const range = document.createRange();
@@ -4364,11 +4450,20 @@ const updateInfoContainer = () => {
 };
 
 (() => {
-  console.log("[Vim-Notion] Extension loading...");
-  initVimInfo();
+    initVimInfo();
   createInfoContainer();
   // Set initial cursor style for normal mode
   document.body.classList.add("vim-normal-mode");
+
+  // Load settings
+  loadSettings();
+
+  // Listen for settings changes
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'sync') {
+      loadSettings();
+    }
+  });
 
   let attempts = 0;
   const poll = setInterval(() => {
@@ -4380,7 +4475,6 @@ const updateInfoContainer = () => {
     if (f.length > 0) {
       clearInterval(poll);
       setLines(f as HTMLDivElement[]);
-      console.log("[Vim-Notion] Setup complete!");
     }
 
     if (attempts > 40) {

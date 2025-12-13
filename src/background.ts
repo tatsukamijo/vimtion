@@ -8,7 +8,6 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.storage.local.set({
       vimtion_version: version
     });
-    console.log('[Vimtion] Installed version:', version);
   } else if (details.reason === 'update') {
     // Extension was updated
     const oldVersion = details.previousVersion;
@@ -19,7 +18,5 @@ chrome.runtime.onInstalled.addListener((details) => {
       vimtion_version: newVersion,
       vimtion_previous_version: oldVersion
     });
-
-    console.log('[Vimtion] Updated from', oldVersion, 'to', newVersion);
   }
 });

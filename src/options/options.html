@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vimtion Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>⚙️ Vimtion Settings</h1>
+      <p class="subtitle">Customize your Vim experience in Notion</p>
+    </header>
+
+    <main>
+      <!-- Status Bar Settings -->
+      <section class="setting-section">
+        <h2>Status Bar</h2>
+
+        <div class="setting-item">
+          <label class="toggle-label">
+            <input type="checkbox" id="showStatusBar" class="toggle-input" checked>
+            <span class="toggle-slider"></span>
+            <span class="label-text">Show Status Bar</span>
+          </label>
+          <p class="setting-description">Display current mode and cursor position</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="statusBarPosition">Position</label>
+          <select id="statusBarPosition" class="select-input">
+            <option value="bottom-right">Bottom Right</option>
+            <option value="bottom-left">Bottom Left</option>
+            <option value="top-right">Top Right</option>
+            <option value="top-left">Top Left</option>
+          </select>
+          <p class="setting-description">Where to display the status bar</p>
+        </div>
+      </section>
+
+      <!-- Appearance Settings -->
+      <section class="setting-section">
+        <h2>Appearance</h2>
+
+        <div class="setting-item">
+          <label class="toggle-label">
+            <input type="checkbox" id="cursorBlink" class="toggle-input" checked>
+            <span class="toggle-slider"></span>
+            <span class="label-text">Cursor Blink</span>
+          </label>
+          <p class="setting-description">Enable blinking animation for the block cursor</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="statusBarColor">Status Bar Theme Color</label>
+          <div class="color-picker-wrapper">
+            <input type="color" id="statusBarColor" value="#667eea">
+            <input type="text" id="statusBarColorText" value="#667eea" class="color-text-input">
+          </div>
+          <p class="setting-description">Theme color for status bar and settings page</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="cursorColor">Cursor Color</label>
+          <div class="color-picker-wrapper">
+            <input type="color" id="cursorColor" value="#667eea">
+            <input type="text" id="cursorColorText" value="#667eea" class="color-text-input">
+          </div>
+          <p class="setting-description">Color of the block cursor in normal mode</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="visualHighlightColor">Visual Mode Highlight</label>
+          <div class="color-picker-wrapper">
+            <input type="color" id="visualHighlightColor" value="#667eea">
+            <input type="text" id="visualHighlightColorText" value="#667eea" class="color-text-input">
+          </div>
+          <p class="setting-description">Background color for visual mode selection</p>
+        </div>
+      </section>
+
+      <!-- Notification Settings -->
+      <section class="setting-section">
+        <h2>Notifications</h2>
+
+        <div class="setting-item">
+          <label class="toggle-label">
+            <input type="checkbox" id="showUpdateNotifications" class="toggle-input" checked>
+            <span class="toggle-slider"></span>
+            <span class="label-text">Show Update Notifications</span>
+          </label>
+          <p class="setting-description">(Recommended) Display a small popup notification when Vimtion is updated</p>
+        </div>
+      </section>
+
+    </main>
+
+    <footer>
+      <div class="button-group">
+        <button id="save" class="btn btn-primary">Save Settings</button>
+        <button id="reset" class="btn btn-secondary">Reset to Defaults</button>
+      </div>
+      <div id="status" class="status-message"></div>
+
+      <div class="footer-info">
+        <p>Vimtion v1.1.0 | <a href="https://github.com/tadeasf/vim-notion" target="_blank">GitHub</a></p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="options.ts"></script>
+</body>
+</html>

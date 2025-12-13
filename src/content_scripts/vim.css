@@ -1,7 +1,5 @@
 .vim-info-container {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  bottom: 16px;
-  right: 80px;
   position: fixed;
   z-index: 10000;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
@@ -10,6 +8,27 @@
   align-items: center;
   padding: 6px 12px;
   border-radius: 6px;
+}
+
+/* Position variants */
+.vim-info-container.bottom-right {
+  bottom: 16px;
+  right: 80px;
+}
+
+.vim-info-container.bottom-left {
+  bottom: 16px;
+  left: 260px;
+}
+
+.vim-info-container.top-right {
+  top: 45px;
+  right: 16px;
+}
+
+.vim-info-container.top-left {
+  top: 45px;
+  left: 260px;
 }
 
 .vim-mode {
