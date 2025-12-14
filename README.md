@@ -56,6 +56,7 @@ Add it directly from the Chrome Web Store: [Vimtion](https://chromewebstore.goog
 
 ### Motions
 **Basic**: `h` `j` `k` `l` (with line wrapping) • `w` `b` `e` `W` `B` `E` (word motions) • `0` `$` (line start/end) • `gg` `G` (document start/end)
+**History**: `H` (back) • `L` (forward)
 **Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character)
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
 
@@ -168,7 +169,7 @@ The following Vim features are not implemented:
 - **Search functionality** (`/`, `?`, `n`, `N`, `*`, `#`) - Not planned due to complexity and Notion's built-in search
 - **Marks** (`m`, `'`, `` ` ``) - Not essential for basic editing workflow
 - **Macros** (`q`, `@`) - Complex to implement and not essential for most users
-- **Screen-based motions** (`H`, `M`, `L`) - Not meaningful in Notion's infinite scroll context
+- **Screen-based motions** (`M`) - Not meaningful in Notion's infinite scroll context (note: `H`/`L` are repurposed for browser history navigation)
 - **Block operations** (`J` join lines, `<`/`>` indent) - Notion's block-based structure has its own system
 - **Advanced features** (`.` repeat, `~` toggle case, `%` bracket matching, `R` replace mode) - Not essential for core editing (repeat will be implemented in the near future)
 

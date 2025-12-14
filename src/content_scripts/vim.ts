@@ -4499,6 +4499,14 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       // Jump to last line
       jumpToBottom();
       return true;
+    case "H":
+      // Go back in browser history
+      window.history.back();
+      return true;
+    case "L":
+      // Go forward in browser history
+      window.history.forward();
+      return true;
     case "f":
       window.vim_info.pending_operator = "f";
       return true;
@@ -4843,7 +4851,7 @@ const updateInfoContainer = () => {
 };
 
 (() => {
-    initVimInfo();
+  initVimInfo();
   createInfoContainer();
   // Set initial cursor style for normal mode
   document.body.classList.add("vim-normal-mode");
@@ -4875,4 +4883,45 @@ const updateInfoContainer = () => {
       console.error("[Vim-Notion] Timed out waiting for editable elements");
     }
   }, 250);
+
+  // Function to reinitialize Vimtion after navigation
+  let isReinitializing = false;
+  const reinitializeAfterNavigation = () => {
+    if (isReinitializing) {
+      return;
+    }
+
+    isReinitializing = true;
+
+    // Wait a bit for Notion to render the new page
+    setTimeout(() => {
+      const editableElements = Array.from(
+        document.querySelectorAll("[contenteditable=true]")
+      ) as HTMLDivElement[];
+
+      if (editableElements.length > 0) {
+        setLines(editableElements);
+        isReinitializing = false;
+      } else {
+        // Retry after a longer delay if elements not found yet
+        isReinitializing = false;
+        setTimeout(reinitializeAfterNavigation, 500);
+      }
+    }, 300);
+  };
+
+  // Listen for browser history navigation (back/forward buttons, H/L keys)
+  window.addEventListener('popstate', () => {
+    reinitializeAfterNavigation();
+  });
+
+  // Monitor URL changes by polling (for SPA navigation like link clicks)
+  let lastUrl = window.location.href;
+  setInterval(() => {
+    const currentUrl = window.location.href;
+    if (currentUrl !== lastUrl) {
+      lastUrl = currentUrl;
+      reinitializeAfterNavigation();
+    }
+  }, 500);
 })();
