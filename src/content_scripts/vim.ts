@@ -33,6 +33,32 @@ const DEFAULT_SETTINGS: VimtionSettings = {
 // Current settings (loaded from storage)
 let currentSettings: VimtionSettings = { ...DEFAULT_SETTINGS };
 
+// Link selection mode state
+let linkSelectionMode = false;
+let availableLinks: HTMLAnchorElement[] = [];
+let selectedLinkIndex = 0;
+
+// Helper functions for link selection mode
+function highlightSelectedLink() {
+  if (availableLinks.length > 0 && selectedLinkIndex >= 0 && selectedLinkIndex < availableLinks.length) {
+    const visualHighlight = hexToRgba(currentSettings.visualHighlightColor, 0.3);
+    availableLinks[selectedLinkIndex].style.backgroundColor = visualHighlight;
+  }
+}
+
+function clearAllLinkHighlights() {
+  availableLinks.forEach(link => {
+    link.style.backgroundColor = '';
+  });
+}
+
+function exitLinkSelectionMode() {
+  clearAllLinkHighlights();
+  linkSelectionMode = false;
+  availableLinks = [];
+  selectedLinkIndex = 0;
+}
+
 // Helper function to adjust color brightness
 function adjustColor(color: string, amount: number): string {
   const hex = color.replace('#', '');
@@ -4010,6 +4036,45 @@ const normalReducer = (e: KeyboardEvent): boolean => {
   const { vim_info } = window;
   const { active_line, pending_operator } = vim_info;
 
+  // Handle link selection mode
+  if (linkSelectionMode) {
+    switch (e.key) {
+      case "j":
+        e.preventDefault();
+        e.stopPropagation();
+        clearAllLinkHighlights();
+        selectedLinkIndex = (selectedLinkIndex + 1) % availableLinks.length;
+        highlightSelectedLink();
+        return true;
+
+      case "k":
+        e.preventDefault();
+        e.stopPropagation();
+        clearAllLinkHighlights();
+        selectedLinkIndex = (selectedLinkIndex - 1 + availableLinks.length) % availableLinks.length;
+        highlightSelectedLink();
+        return true;
+
+      case "Enter":
+        e.preventDefault();
+        e.stopPropagation();
+        const selectedLink = availableLinks[selectedLinkIndex];
+        exitLinkSelectionMode();
+        selectedLink.click();
+        return true;
+
+      case "Escape":
+        e.preventDefault();
+        e.stopPropagation();
+        exitLinkSelectionMode();
+        return true;
+
+      default:
+        // Any other key exits link selection mode
+        exitLinkSelectionMode();
+        break;
+    }
+  }
 
   // If we have a pending operator, handle it
   if (pending_operator) {
@@ -4052,65 +4117,6 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       {
         const currentLine = vim_info.lines[vim_info.active_line];
         const cursorPos = vim_info.cursor_position;
-
-        // Helper function to find and open link in an element
-        const findAndOpenLink = (element: HTMLElement): boolean => {
-          const links = Array.from(element.querySelectorAll('a'));
-
-          for (const link of links) {
-            const href = (link as HTMLAnchorElement).href;
-
-            if (href) {
-              // Check if it's a block link (same page, different block)
-              const url = new URL(href);
-              const currentUrl = new URL(window.location.href);
-
-              // Extract page ID from pathname (format: /Title-PageID or /PageID)
-              const extractPageId = (pathname: string) => {
-                const parts = pathname.split('-');
-                return parts[parts.length - 1];
-              };
-
-              const linkPageId = extractPageId(url.pathname);
-              const currentPageId = extractPageId(currentUrl.pathname);
-
-              if (linkPageId === currentPageId && url.hash) {
-                // Same page block link - click and move cursor to target
-                link.click();
-
-                // Wait for Notion to scroll to the target
-                setTimeout(() => {
-                  const leafElements = vim_info.lines.filter(line =>
-                    line.element.getAttribute('data-content-editable-leaf') === 'true'
-                  );
-
-                  for (let i = 0; i < leafElements.length; i++) {
-                    const rect = leafElements[i].element.getBoundingClientRect();
-
-                    if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
-                      const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
-
-                      if (actualIndex !== -1) {
-                        vim_info.active_line = actualIndex;
-                        vim_info.cursor_position = 0;
-                        updateBlockCursor();
-                      }
-                      break;
-                    }
-                  }
-                }, 300);
-              } else if (href.includes('notion.so')) {
-                // Different page Notion link: click to navigate
-                link.click();
-              } else {
-                // External link: open in new tab
-                window.open(href, '_blank');
-              }
-              return true;
-            }
-          }
-          return false;
-        };
 
         // First, try to find link at cursor position in current line
         const walker = document.createTreeWalker(
@@ -4217,10 +4223,8 @@ const normalReducer = (e: KeyboardEvent): boolean => {
           const currentUrl = new URL(window.location.href);
           const currentPageId = extractPageId(currentUrl.pathname);
 
-          // Filter for Notion page links (different pages only, not block links) and find the closest one
-          let closestLink: HTMLAnchorElement | null = null;
-          let closestDistance = Infinity;
-          const maxDistance = 150; // Maximum pixels distance to consider "nearby"
+          // Collect all Notion page links (no distance limit)
+          const allNotionLinks: Array<{link: HTMLAnchorElement, distance: number, y: number}> = [];
 
           for (const link of allLinks) {
             const href = link.href;
@@ -4234,26 +4238,40 @@ const normalReducer = (e: KeyboardEvent): boolean => {
                   continue;
                 }
 
-                // Only consider links to different Notion pages
                 const linkRect = link.getBoundingClientRect();
                 const linkY = linkRect.top + linkRect.height / 2;
                 const distance = Math.abs(linkY - currentY);
 
-                if (distance < closestDistance && distance < maxDistance) {
-                  closestDistance = distance;
-                  closestLink = link;
-                }
+                allNotionLinks.push({ link, distance, y: linkY });
               } catch (e) {
-                // Invalid URL, skip
                 continue;
               }
             }
           }
 
-          if (closestLink) {
-            closestLink.click();
+          if (allNotionLinks.length === 0) {
             return true;
           }
+
+          // Sort by Y position (top to bottom) for j/k navigation
+          allNotionLinks.sort((a, b) => a.y - b.y);
+
+          // Find the link closest to current cursor position as initial selection
+          let closestIndex = 0;
+          let minDistance = Infinity;
+          for (let i = 0; i < allNotionLinks.length; i++) {
+            if (allNotionLinks[i].distance < minDistance) {
+              minDistance = allNotionLinks[i].distance;
+              closestIndex = i;
+            }
+          }
+
+          // Enter selection mode
+          linkSelectionMode = true;
+          availableLinks = allNotionLinks.map(item => item.link);
+          selectedLinkIndex = closestIndex;
+          highlightSelectedLink();
+          return true;
         }
       }
       return true;
