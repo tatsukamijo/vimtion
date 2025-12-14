@@ -4074,6 +4074,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       case "d":
         e.preventDefault();
         e.stopPropagation();
+
         // Delete the block containing the selected link
         const linkToDelete = availableLinks[selectedLinkIndex];
         let blockElement = linkToDelete.closest('[data-block-id]');
@@ -4123,63 +4124,68 @@ const normalReducer = (e: KeyboardEvent): boolean => {
             }, 10);
           } else if (focusableElement) {
             // Special block (like notion-page-block) without contenteditable
-            // Click the block to focus it and show the drag handle
-            (blockElement as HTMLElement).click();
+
+            // Clear any existing selection first (critical after tab switch)
+            const selection = window.getSelection();
+            if (selection) {
+              selection.removeAllRanges();
+            }
+
+            // Simulate complete mouse interaction to properly select the block
+            const blockEl = blockElement as HTMLElement;
+            const rect = blockEl.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+
+            // Mouse enter
+            blockEl.dispatchEvent(new MouseEvent('mouseenter', {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y
+            }));
+
+            // Mouse down
+            blockEl.dispatchEvent(new MouseEvent('mousedown', {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y,
+              button: 0
+            }));
+
+            // Mouse up
+            blockEl.dispatchEvent(new MouseEvent('mouseup', {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y,
+              button: 0
+            }));
+
+            // Click
+            blockEl.click();
 
             setTimeout(() => {
-              // Try multiple selectors to find the drag handle
-              let dragHandle = document.querySelector(`[data-block-id="${blockElement.getAttribute('data-block-id')}"]`)?.previousElementSibling?.querySelector('[role="button"][draggable="true"]') as HTMLElement;
+              // Dispatch Delete key to delete the selected block
+              const deleteEvent = new KeyboardEvent('keydown', {
+                key: 'Delete',
+                code: 'Delete',
+                keyCode: 46,
+                which: 46,
+                bubbles: true,
+                cancelable: true,
+              });
 
-              if (!dragHandle) {
-                dragHandle = blockElement.parentElement?.querySelector('[role="button"][draggable="true"]') as HTMLElement;
-              }
+              document.dispatchEvent(deleteEvent);
 
-              if (!dragHandle) {
-                // Find any visible draggable button on the page
-                const allDraggable = Array.from(document.querySelectorAll('[role="button"][draggable="true"]')) as HTMLElement[];
-                dragHandle = allDraggable.find(el => {
-                  const rect = el.getBoundingClientRect();
-                  return rect.width > 0 && rect.height > 0;
-                }) || null;
-              }
-
-              if (dragHandle) {
-                dragHandle.click();
-
-                setTimeout(() => {
-                  const deleteEvent = new KeyboardEvent('keydown', {
-                    key: 'Delete',
-                    code: 'Delete',
-                    keyCode: 46,
-                    which: 46,
-                    bubbles: true,
-                    cancelable: true,
-                  });
-
-                  document.dispatchEvent(deleteEvent);
-
-                  setTimeout(() => {
-                    exitLinkSelectionMode();
-                  }, 50);
-                }, 100);
-              } else {
-                // Fallback: try direct delete
-                const deleteEvent = new KeyboardEvent('keydown', {
-                  key: 'Delete',
-                  code: 'Delete',
-                  keyCode: 46,
-                  which: 46,
-                  bubbles: true,
-                  cancelable: true,
-                });
-
-                document.dispatchEvent(deleteEvent);
-
-                setTimeout(() => {
-                  exitLinkSelectionMode();
-                }, 50);
-              }
-            }, 200);
+              setTimeout(() => {
+                exitLinkSelectionMode();
+              }, 50);
+            }, 300);
           }
         }
 
@@ -4892,6 +4898,19 @@ const updateInfoContainer = () => {
     }
 
     isReinitializing = true;
+
+    // Exit link selection mode if active (old page's link references)
+    if (linkSelectionMode) {
+      exitLinkSelectionMode();
+    }
+
+    // Restore focus to Notion after navigation (fixes drag handle visibility)
+    const mouseEnterEvent = new MouseEvent('mouseenter', {
+      bubbles: true,
+      cancelable: true,
+      view: window
+    });
+    document.body.dispatchEvent(mouseEnterEvent);
 
     // Wait a bit for Notion to render the new page
     setTimeout(() => {
