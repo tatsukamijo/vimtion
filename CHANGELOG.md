@@ -5,6 +5,47 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-12-15
+
+### Added
+- **Link navigation**: Press `Enter` on links to open them
+  - External links: Open in new tab
+  - Same-page block links: Jump to block and update cursor position
+  - Notion page links: Enter link selection mode for choosing from multiple links
+- **Link selection mode**: When multiple Notion page links are near cursor
+  - `j`/`k`: Navigate between links (sorted top to bottom)
+  - `Enter`: Open selected link
+  - `d`: Delete block containing selected link
+  - `Esc`: Exit selection mode
+  - Auto-scroll: Selected links automatically scroll into view when off-screen
+- **Browser history navigation**: Vimium-compatible history navigation
+  - `H` (Shift+h): Go back in browser history
+  - `L` (Shift+l): Go forward in browser history
+  - Auto-reinitialize Vimtion after SPA navigation (URL polling every 500ms)
+- **Options page**: Customize Vimtion's appearance and behavior
+  - Mode indicator position and colors
+  - Cursor colors and blink settings
+  - Visual selection colors
+  - Access via right-click extension icon → Options
+- **Vimium conflict warning**: One-time notification on first install
+  - Centered modal with dark overlay
+  - Instructions to exclude `https://www.notion.so/*` in Vimium settings
+  - Copy button for easy URL copying
+  - Dismissible by clicking overlay, × button, or "Got it" button
+- **PR template**: Added pull request template for contributors
+
+### Fixed
+- **Notion page link deletion after tab switch**: Fixed deletion failure in link selection mode when returning from external URLs
+  - Clear stale selection with `removeAllRanges()` before block interaction
+  - Simulate complete mouse event sequence (mouseenter → mousedown → mouseup → click) with proper coordinates
+  - Ensures consistent deletion behavior across all scenarios (reload, H/L navigation, external URL tab switches)
+- **Visual-line mode color**: Fixed visual-line selection color to use correct theme color setting
+
+### Documentation
+- Updated README with link navigation instructions and examples
+- Added Options page section with customization details
+- Improved documentation for Notion page link selection and deletion
+
 ## [1.1.0] - 2025-12-13
 
 ### Added
