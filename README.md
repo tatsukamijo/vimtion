@@ -52,6 +52,19 @@ Add it directly from the Chrome Web Store: [Vimtion](https://chromewebstore.goog
 
 [How to install unpacked extensions in Chrome](https://webkul.com/blog/how-to-install-the-unpacked-extension-in-chrome/)
 
+## ⚙️ Options
+
+Vimtion can be customized through the Options page. You can configure:
+
+- Mode indicator position and colors
+- Cursor colors and blink settings
+- Visual selection colors
+- And more...
+
+To access the Options page:
+1. Right-click the Vimtion extension icon in Chrome
+2. Select "Options"
+
 ## ✅ Supported Commands
 
 ### Motions
