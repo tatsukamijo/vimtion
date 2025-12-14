@@ -109,6 +109,115 @@
   transform: scale(0.98);
 }
 
+.vimtion-notification-got-it {
+  background-color: #2383e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.vimtion-notification-got-it:hover {
+  background-color: #1a6ec2;
+}
+
+.vimtion-notification-got-it:active {
+  transform: scale(0.98);
+}
+
+/* Overlay for Vimium warning */
+.vimtion-notification-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999998;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+  backdrop-filter: blur(2px);
+}
+
+.vimtion-notification-overlay.vimtion-notification-overlay-visible {
+  opacity: 1;
+}
+
+/* Vimium warning specific styles */
+.vimtion-vimium-warning {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  max-width: 400px;
+}
+
+.vimtion-vimium-warning.vimtion-notification-visible {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+
+.vimtion-vimium-warning.vimtion-notification-hidden {
+  opacity: 0;
+  transform: translate(-50%, -50%) translateY(20px);
+}
+
+.vimtion-notification-url-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.vimtion-notification-url {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.05);
+  color: #37352f;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.9em;
+  font-weight: 500;
+  user-select: all;
+}
+
+.vimtion-notification-copy {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #6b6b6b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.vimtion-notification-copy:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+  color: #37352f;
+}
+
+.vimtion-notification-copy:active {
+  transform: scale(0.95);
+}
+
+.vimtion-vimium-warning .vimtion-notification-message strong {
+  font-weight: 600;
+  color: #37352f;
+}
+
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
   .vimtion-update-notification {
@@ -139,6 +248,37 @@
   .vimtion-notification-whats-new:hover {
     background-color: #1a6ec2;
   }
+
+  .vimtion-notification-got-it {
+    background-color: #2383e2;
+  }
+
+  .vimtion-notification-got-it:hover {
+    background-color: #1a6ec2;
+  }
+
+  .vimtion-notification-url-container {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .vimtion-notification-url {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e3e2e0;
+  }
+
+  .vimtion-notification-copy {
+    color: #9b9a97;
+  }
+
+  .vimtion-notification-copy:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #e3e2e0;
+  }
+
+  .vimtion-vimium-warning .vimtion-notification-message strong {
+    color: #e3e2e0;
+  }
 }
 
 /* Responsive design for smaller screens */
@@ -148,5 +288,14 @@
     right: 10px;
     left: 10px;
     max-width: none;
+  }
+
+  .vimtion-vimium-warning {
+    top: 50%;
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    max-width: calc(100% - 40px);
+    transform: translate(-50%, -50%);
   }
 }

@@ -6,7 +6,8 @@ chrome.runtime.onInstalled.addListener((details) => {
     // First time installation
     const version = chrome.runtime.getManifest().version;
     chrome.storage.local.set({
-      vimtion_version: version
+      vimtion_version: version,
+      vimtion_show_vimium_warning: true  // Show Vimium warning on first install
     });
   } else if (details.reason === 'update') {
     // Extension was updated
