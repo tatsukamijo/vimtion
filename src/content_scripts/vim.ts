@@ -4071,6 +4071,120 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         selectedLink.click();
         return true;
 
+      case "d":
+        e.preventDefault();
+        e.stopPropagation();
+        // Delete the block containing the selected link
+        const linkToDelete = availableLinks[selectedLinkIndex];
+        let blockElement = linkToDelete.closest('[data-block-id]');
+
+        if (blockElement) {
+          const editableElement = blockElement.querySelector('[contenteditable="true"]') as HTMLElement;
+          const focusableElement = blockElement.querySelector('[tabindex]') as HTMLElement;
+
+          if (editableElement) {
+            // Normal block with contenteditable
+            const range = document.createRange();
+            range.selectNodeContents(editableElement);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+
+            editableElement.focus();
+
+            setTimeout(() => {
+              const deleteEvent = new KeyboardEvent('keydown', {
+                key: 'Delete',
+                code: 'Delete',
+                keyCode: 46,
+                which: 46,
+                bubbles: true,
+                cancelable: true,
+              });
+
+              editableElement.dispatchEvent(deleteEvent);
+
+              setTimeout(() => {
+                const backspaceEvent = new KeyboardEvent('keydown', {
+                  key: 'Backspace',
+                  code: 'Backspace',
+                  keyCode: 8,
+                  which: 8,
+                  bubbles: true,
+                  cancelable: true,
+                });
+
+                editableElement.dispatchEvent(backspaceEvent);
+
+                setTimeout(() => {
+                  exitLinkSelectionMode();
+                }, 50);
+              }, 20);
+            }, 10);
+          } else if (focusableElement) {
+            // Special block (like notion-page-block) without contenteditable
+            // Click the block to focus it and show the drag handle
+            (blockElement as HTMLElement).click();
+
+            setTimeout(() => {
+              // Try multiple selectors to find the drag handle
+              let dragHandle = document.querySelector(`[data-block-id="${blockElement.getAttribute('data-block-id')}"]`)?.previousElementSibling?.querySelector('[role="button"][draggable="true"]') as HTMLElement;
+
+              if (!dragHandle) {
+                dragHandle = blockElement.parentElement?.querySelector('[role="button"][draggable="true"]') as HTMLElement;
+              }
+
+              if (!dragHandle) {
+                // Find any visible draggable button on the page
+                const allDraggable = Array.from(document.querySelectorAll('[role="button"][draggable="true"]')) as HTMLElement[];
+                dragHandle = allDraggable.find(el => {
+                  const rect = el.getBoundingClientRect();
+                  return rect.width > 0 && rect.height > 0;
+                }) || null;
+              }
+
+              if (dragHandle) {
+                dragHandle.click();
+
+                setTimeout(() => {
+                  const deleteEvent = new KeyboardEvent('keydown', {
+                    key: 'Delete',
+                    code: 'Delete',
+                    keyCode: 46,
+                    which: 46,
+                    bubbles: true,
+                    cancelable: true,
+                  });
+
+                  document.dispatchEvent(deleteEvent);
+
+                  setTimeout(() => {
+                    exitLinkSelectionMode();
+                  }, 50);
+                }, 100);
+              } else {
+                // Fallback: try direct delete
+                const deleteEvent = new KeyboardEvent('keydown', {
+                  key: 'Delete',
+                  code: 'Delete',
+                  keyCode: 46,
+                  which: 46,
+                  bubbles: true,
+                  cancelable: true,
+                });
+
+                document.dispatchEvent(deleteEvent);
+
+                setTimeout(() => {
+                  exitLinkSelectionMode();
+                }, 50);
+              }
+            }, 200);
+          }
+        }
+
+        return true;
+
       case "Escape":
         e.preventDefault();
         e.stopPropagation();
