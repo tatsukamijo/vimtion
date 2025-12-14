@@ -4046,6 +4046,108 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       }
       openLineAbove();
       return true;
+
+    case "Enter":
+      // Open link at cursor position
+      {
+        const currentLine = vim_info.lines[vim_info.active_line];
+        const cursorPos = vim_info.cursor_position;
+
+        // Get the text node at cursor position
+        const walker = document.createTreeWalker(
+          currentLine.element,
+          NodeFilter.SHOW_TEXT,
+          null
+        );
+
+        let charCount = 0;
+        let targetNode: Node | null = null;
+
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          const nodeLength = node.textContent?.length || 0;
+
+          if (charCount + nodeLength > cursorPos) {
+            targetNode = node;
+            break;
+          }
+          charCount += nodeLength;
+        }
+
+        if (targetNode) {
+          // Walk up the DOM tree to find links
+          let element = targetNode.parentElement;
+          let depth = 0;
+
+          while (element && depth < 5) {
+            // Check if it's a link
+            if (element.tagName === 'A') {
+              const link = element as HTMLAnchorElement;
+              const href = link.href;
+
+              if (href) {
+                // Check if it's a block link (same page, different block)
+                const url = new URL(href);
+                const currentUrl = new URL(window.location.href);
+
+                // Extract page ID from pathname (format: /Title-PageID or /PageID)
+                const extractPageId = (pathname: string) => {
+                  const parts = pathname.split('-');
+                  // Page ID is typically the last part (32 chars hex without dashes)
+                  return parts[parts.length - 1];
+                };
+
+                const linkPageId = extractPageId(url.pathname);
+                const currentPageId = extractPageId(currentUrl.pathname);
+
+                if (linkPageId === currentPageId && url.hash) {
+                  // Same page block link - click and move cursor to target
+                  link.click();
+
+                  // Wait for Notion to scroll to the target
+                  setTimeout(() => {
+                    // Find which contenteditable leaf is near the top of the viewport
+                    // Notion scrolls the target block to be visible near the top
+                    const leafElements = vim_info.lines.filter(line =>
+                      line.element.getAttribute('data-content-editable-leaf') === 'true'
+                    );
+
+                    // Find the first leaf element in the upper portion of the viewport
+                    for (let i = 0; i < leafElements.length; i++) {
+                      const rect = leafElements[i].element.getBoundingClientRect();
+
+                      // Check if this element is near the top of the viewport
+                      if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
+                        // Find this element's index in vim_info.lines
+                        const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
+
+                        if (actualIndex !== -1) {
+                          vim_info.active_line = actualIndex;
+                          vim_info.cursor_position = 0;
+                          updateBlockCursor();
+                        }
+                        break;
+                      }
+                    }
+                  }, 300);
+                } else if (href.includes('notion.so')) {
+                  // Different page Notion link: click to navigate
+                  link.click();
+                } else {
+                  // External link: open in new tab
+                  window.open(href, '_blank');
+                }
+              }
+              return true;
+            }
+
+            element = element.parentElement;
+            depth++;
+          }
+        }
+      }
+      return true;
+
     case "h":
       // In code blocks, use custom navigation to stay within the block
       if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
