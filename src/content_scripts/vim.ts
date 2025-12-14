@@ -33,6 +33,40 @@ const DEFAULT_SETTINGS: VimtionSettings = {
 // Current settings (loaded from storage)
 let currentSettings: VimtionSettings = { ...DEFAULT_SETTINGS };
 
+// Link selection mode state
+let linkSelectionMode = false;
+let availableLinks: HTMLAnchorElement[] = [];
+let selectedLinkIndex = 0;
+
+// Helper functions for link selection mode
+function highlightSelectedLink() {
+  if (availableLinks.length > 0 && selectedLinkIndex >= 0 && selectedLinkIndex < availableLinks.length) {
+    const visualHighlight = hexToRgba(currentSettings.visualHighlightColor, 0.3);
+    const selectedLink = availableLinks[selectedLinkIndex];
+    selectedLink.style.backgroundColor = visualHighlight;
+
+    // Scroll the selected link into view if it's outside the viewport
+    selectedLink.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest'
+    });
+  }
+}
+
+function clearAllLinkHighlights() {
+  availableLinks.forEach(link => {
+    link.style.backgroundColor = '';
+  });
+}
+
+function exitLinkSelectionMode() {
+  clearAllLinkHighlights();
+  linkSelectionMode = false;
+  availableLinks = [];
+  selectedLinkIndex = 0;
+}
+
 // Helper function to adjust color brightness
 function adjustColor(color: string, amount: number): string {
   const hex = color.replace('#', '');
@@ -4010,6 +4044,165 @@ const normalReducer = (e: KeyboardEvent): boolean => {
   const { vim_info } = window;
   const { active_line, pending_operator } = vim_info;
 
+  // Handle link selection mode
+  if (linkSelectionMode) {
+    switch (e.key) {
+      case "j":
+        e.preventDefault();
+        e.stopPropagation();
+        clearAllLinkHighlights();
+        selectedLinkIndex = (selectedLinkIndex + 1) % availableLinks.length;
+        highlightSelectedLink();
+        return true;
+
+      case "k":
+        e.preventDefault();
+        e.stopPropagation();
+        clearAllLinkHighlights();
+        selectedLinkIndex = (selectedLinkIndex - 1 + availableLinks.length) % availableLinks.length;
+        highlightSelectedLink();
+        return true;
+
+      case "Enter":
+        e.preventDefault();
+        e.stopPropagation();
+        const selectedLink = availableLinks[selectedLinkIndex];
+        exitLinkSelectionMode();
+        selectedLink.click();
+        return true;
+
+      case "d":
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Delete the block containing the selected link
+        const linkToDelete = availableLinks[selectedLinkIndex];
+        let blockElement = linkToDelete.closest('[data-block-id]');
+
+        if (blockElement) {
+          const editableElement = blockElement.querySelector('[contenteditable="true"]') as HTMLElement;
+          const focusableElement = blockElement.querySelector('[tabindex]') as HTMLElement;
+
+          if (editableElement) {
+            // Normal block with contenteditable
+            const range = document.createRange();
+            range.selectNodeContents(editableElement);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+
+            editableElement.focus();
+
+            setTimeout(() => {
+              const deleteEvent = new KeyboardEvent('keydown', {
+                key: 'Delete',
+                code: 'Delete',
+                keyCode: 46,
+                which: 46,
+                bubbles: true,
+                cancelable: true,
+              });
+
+              editableElement.dispatchEvent(deleteEvent);
+
+              setTimeout(() => {
+                const backspaceEvent = new KeyboardEvent('keydown', {
+                  key: 'Backspace',
+                  code: 'Backspace',
+                  keyCode: 8,
+                  which: 8,
+                  bubbles: true,
+                  cancelable: true,
+                });
+
+                editableElement.dispatchEvent(backspaceEvent);
+
+                setTimeout(() => {
+                  exitLinkSelectionMode();
+                }, 50);
+              }, 20);
+            }, 10);
+          } else if (focusableElement) {
+            // Special block (like notion-page-block) without contenteditable
+
+            // Clear any existing selection first (critical after tab switch)
+            const selection = window.getSelection();
+            if (selection) {
+              selection.removeAllRanges();
+            }
+
+            // Simulate complete mouse interaction to properly select the block
+            const blockEl = blockElement as HTMLElement;
+            const rect = blockEl.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+
+            // Mouse enter
+            blockEl.dispatchEvent(new MouseEvent('mouseenter', {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y
+            }));
+
+            // Mouse down
+            blockEl.dispatchEvent(new MouseEvent('mousedown', {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y,
+              button: 0
+            }));
+
+            // Mouse up
+            blockEl.dispatchEvent(new MouseEvent('mouseup', {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y,
+              button: 0
+            }));
+
+            // Click
+            blockEl.click();
+
+            setTimeout(() => {
+              // Dispatch Delete key to delete the selected block
+              const deleteEvent = new KeyboardEvent('keydown', {
+                key: 'Delete',
+                code: 'Delete',
+                keyCode: 46,
+                which: 46,
+                bubbles: true,
+                cancelable: true,
+              });
+
+              document.dispatchEvent(deleteEvent);
+
+              setTimeout(() => {
+                exitLinkSelectionMode();
+              }, 50);
+            }, 300);
+          }
+        }
+
+        return true;
+
+      case "Escape":
+        e.preventDefault();
+        e.stopPropagation();
+        exitLinkSelectionMode();
+        return true;
+
+      default:
+        // Any other key exits link selection mode
+        exitLinkSelectionMode();
+        break;
+    }
+  }
 
   // If we have a pending operator, handle it
   if (pending_operator) {
@@ -4046,6 +4239,171 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       }
       openLineAbove();
       return true;
+
+    case "Enter":
+      // Open link at cursor position or nearby (within +/- 1 line)
+      {
+        const currentLine = vim_info.lines[vim_info.active_line];
+        const cursorPos = vim_info.cursor_position;
+
+        // First, try to find link at cursor position in current line
+        const walker = document.createTreeWalker(
+          currentLine.element,
+          NodeFilter.SHOW_TEXT,
+          null
+        );
+
+        let charCount = 0;
+        let targetNode: Node | null = null;
+
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          const nodeLength = node.textContent?.length || 0;
+
+          if (charCount + nodeLength > cursorPos) {
+            targetNode = node;
+            break;
+          }
+          charCount += nodeLength;
+        }
+
+        if (targetNode) {
+          // Walk up the DOM tree to find links
+          let element = targetNode.parentElement;
+          let depth = 0;
+
+          while (element && depth < 5) {
+            if (element.tagName === 'A') {
+              const link = element as HTMLAnchorElement;
+              const href = link.href;
+
+              if (href) {
+                const url = new URL(href);
+                const currentUrl = new URL(window.location.href);
+
+                const extractPageId = (pathname: string) => {
+                  const parts = pathname.split('-');
+                  return parts[parts.length - 1];
+                };
+
+                const linkPageId = extractPageId(url.pathname);
+                const currentPageId = extractPageId(currentUrl.pathname);
+
+                if (linkPageId === currentPageId && url.hash) {
+                  link.click();
+
+                  setTimeout(() => {
+                    const leafElements = vim_info.lines.filter(line =>
+                      line.element.getAttribute('data-content-editable-leaf') === 'true'
+                    );
+
+                    for (let i = 0; i < leafElements.length; i++) {
+                      const rect = leafElements[i].element.getBoundingClientRect();
+
+                      if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
+                        const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
+
+                        if (actualIndex !== -1) {
+                          vim_info.active_line = actualIndex;
+                          vim_info.cursor_position = 0;
+                          updateBlockCursor();
+                        }
+                        break;
+                      }
+                    }
+                  }, 300);
+                } else if (href.includes('notion.so')) {
+                  link.click();
+                } else {
+                  window.open(href, '_blank');
+                }
+              }
+              return true;
+            }
+
+            element = element.parentElement;
+            depth++;
+          }
+        }
+
+        // If no link found at cursor position, check root element for Notion page links
+        // These links are not inside individual blocks but in the page root
+        const rootElement = vim_info.lines[0]?.element;
+        if (rootElement && rootElement.getAttribute('data-content-editable-root') === 'true') {
+          const currentLineElement = vim_info.lines[vim_info.active_line]?.element;
+          if (!currentLineElement) {
+            return true;
+          }
+
+          // Get current cursor position on the page
+          const currentRect = currentLineElement.getBoundingClientRect();
+          const currentY = currentRect.top + currentRect.height / 2;
+
+          // Find all links in root element
+          const allLinks = Array.from(rootElement.querySelectorAll('a'));
+
+          // Helper to extract page ID
+          const extractPageId = (pathname: string) => {
+            const parts = pathname.split('-');
+            return parts[parts.length - 1];
+          };
+
+          const currentUrl = new URL(window.location.href);
+          const currentPageId = extractPageId(currentUrl.pathname);
+
+          // Collect all Notion page links (no distance limit)
+          const allNotionLinks: Array<{link: HTMLAnchorElement, distance: number, y: number}> = [];
+
+          for (const link of allLinks) {
+            const href = link.href;
+            if (href && href.includes('notion.so')) {
+              try {
+                const url = new URL(href);
+                const linkPageId = extractPageId(url.pathname);
+
+                // Skip if it's a block link on the same page
+                if (linkPageId === currentPageId && url.hash) {
+                  continue;
+                }
+
+                const linkRect = link.getBoundingClientRect();
+                const linkY = linkRect.top + linkRect.height / 2;
+                const distance = Math.abs(linkY - currentY);
+
+                allNotionLinks.push({ link, distance, y: linkY });
+              } catch (e) {
+                continue;
+              }
+            }
+          }
+
+          if (allNotionLinks.length === 0) {
+            return true;
+          }
+
+          // Sort by Y position (top to bottom) for j/k navigation
+          allNotionLinks.sort((a, b) => a.y - b.y);
+
+          // Find the link closest to current cursor position as initial selection
+          let closestIndex = 0;
+          let minDistance = Infinity;
+          for (let i = 0; i < allNotionLinks.length; i++) {
+            if (allNotionLinks[i].distance < minDistance) {
+              minDistance = allNotionLinks[i].distance;
+              closestIndex = i;
+            }
+          }
+
+          // Enter selection mode
+          linkSelectionMode = true;
+          availableLinks = allNotionLinks.map(item => item.link);
+          selectedLinkIndex = closestIndex;
+          highlightSelectedLink();
+          return true;
+        }
+      }
+      return true;
+
     case "h":
       // In code blocks, use custom navigation to stay within the block
       if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
@@ -4146,6 +4504,14 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     case "G":
       // Jump to last line
       jumpToBottom();
+      return true;
+    case "H":
+      // Go back in browser history
+      window.history.back();
+      return true;
+    case "L":
+      // Go forward in browser history
+      window.history.forward();
       return true;
     case "f":
       window.vim_info.pending_operator = "f";
@@ -4491,7 +4857,7 @@ const updateInfoContainer = () => {
 };
 
 (() => {
-    initVimInfo();
+  initVimInfo();
   createInfoContainer();
   // Set initial cursor style for normal mode
   document.body.classList.add("vim-normal-mode");
@@ -4523,4 +4889,58 @@ const updateInfoContainer = () => {
       console.error("[Vim-Notion] Timed out waiting for editable elements");
     }
   }, 250);
+
+  // Function to reinitialize Vimtion after navigation
+  let isReinitializing = false;
+  const reinitializeAfterNavigation = () => {
+    if (isReinitializing) {
+      return;
+    }
+
+    isReinitializing = true;
+
+    // Exit link selection mode if active (old page's link references)
+    if (linkSelectionMode) {
+      exitLinkSelectionMode();
+    }
+
+    // Restore focus to Notion after navigation (fixes drag handle visibility)
+    const mouseEnterEvent = new MouseEvent('mouseenter', {
+      bubbles: true,
+      cancelable: true,
+      view: window
+    });
+    document.body.dispatchEvent(mouseEnterEvent);
+
+    // Wait a bit for Notion to render the new page
+    setTimeout(() => {
+      const editableElements = Array.from(
+        document.querySelectorAll("[contenteditable=true]")
+      ) as HTMLDivElement[];
+
+      if (editableElements.length > 0) {
+        setLines(editableElements);
+        isReinitializing = false;
+      } else {
+        // Retry after a longer delay if elements not found yet
+        isReinitializing = false;
+        setTimeout(reinitializeAfterNavigation, 500);
+      }
+    }, 300);
+  };
+
+  // Listen for browser history navigation (back/forward buttons, H/L keys)
+  window.addEventListener('popstate', () => {
+    reinitializeAfterNavigation();
+  });
+
+  // Monitor URL changes by polling (for SPA navigation like link clicks)
+  let lastUrl = window.location.href;
+  setInterval(() => {
+    const currentUrl = window.location.href;
+    if (currentUrl !== lastUrl) {
+      lastUrl = currentUrl;
+      reinitializeAfterNavigation();
+    }
+  }, 500);
 })();
