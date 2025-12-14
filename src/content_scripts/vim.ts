@@ -4048,12 +4048,71 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
 
     case "Enter":
-      // Open link at cursor position
+      // Open link at cursor position or nearby (within +/- 1 line)
       {
         const currentLine = vim_info.lines[vim_info.active_line];
         const cursorPos = vim_info.cursor_position;
 
-        // Get the text node at cursor position
+        // Helper function to find and open link in an element
+        const findAndOpenLink = (element: HTMLElement): boolean => {
+          const links = Array.from(element.querySelectorAll('a'));
+
+          for (const link of links) {
+            const href = (link as HTMLAnchorElement).href;
+
+            if (href) {
+              // Check if it's a block link (same page, different block)
+              const url = new URL(href);
+              const currentUrl = new URL(window.location.href);
+
+              // Extract page ID from pathname (format: /Title-PageID or /PageID)
+              const extractPageId = (pathname: string) => {
+                const parts = pathname.split('-');
+                return parts[parts.length - 1];
+              };
+
+              const linkPageId = extractPageId(url.pathname);
+              const currentPageId = extractPageId(currentUrl.pathname);
+
+              if (linkPageId === currentPageId && url.hash) {
+                // Same page block link - click and move cursor to target
+                link.click();
+
+                // Wait for Notion to scroll to the target
+                setTimeout(() => {
+                  const leafElements = vim_info.lines.filter(line =>
+                    line.element.getAttribute('data-content-editable-leaf') === 'true'
+                  );
+
+                  for (let i = 0; i < leafElements.length; i++) {
+                    const rect = leafElements[i].element.getBoundingClientRect();
+
+                    if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
+                      const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
+
+                      if (actualIndex !== -1) {
+                        vim_info.active_line = actualIndex;
+                        vim_info.cursor_position = 0;
+                        updateBlockCursor();
+                      }
+                      break;
+                    }
+                  }
+                }, 300);
+              } else if (href.includes('notion.so')) {
+                // Different page Notion link: click to navigate
+                link.click();
+              } else {
+                // External link: open in new tab
+                window.open(href, '_blank');
+              }
+              return true;
+            }
+          }
+          return false;
+        };
+
+        // First, try to find link at cursor position in current line
         const walker = document.createTreeWalker(
           currentLine.element,
           NodeFilter.SHOW_TEXT,
@@ -4080,20 +4139,16 @@ const normalReducer = (e: KeyboardEvent): boolean => {
           let depth = 0;
 
           while (element && depth < 5) {
-            // Check if it's a link
             if (element.tagName === 'A') {
               const link = element as HTMLAnchorElement;
               const href = link.href;
 
               if (href) {
-                // Check if it's a block link (same page, different block)
                 const url = new URL(href);
                 const currentUrl = new URL(window.location.href);
 
-                // Extract page ID from pathname (format: /Title-PageID or /PageID)
                 const extractPageId = (pathname: string) => {
                   const parts = pathname.split('-');
-                  // Page ID is typically the last part (32 chars hex without dashes)
                   return parts[parts.length - 1];
                 };
 
@@ -4101,24 +4156,17 @@ const normalReducer = (e: KeyboardEvent): boolean => {
                 const currentPageId = extractPageId(currentUrl.pathname);
 
                 if (linkPageId === currentPageId && url.hash) {
-                  // Same page block link - click and move cursor to target
                   link.click();
 
-                  // Wait for Notion to scroll to the target
                   setTimeout(() => {
-                    // Find which contenteditable leaf is near the top of the viewport
-                    // Notion scrolls the target block to be visible near the top
                     const leafElements = vim_info.lines.filter(line =>
                       line.element.getAttribute('data-content-editable-leaf') === 'true'
                     );
 
-                    // Find the first leaf element in the upper portion of the viewport
                     for (let i = 0; i < leafElements.length; i++) {
                       const rect = leafElements[i].element.getBoundingClientRect();
 
-                      // Check if this element is near the top of the viewport
                       if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
-                        // Find this element's index in vim_info.lines
                         const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
 
                         if (actualIndex !== -1) {
@@ -4131,10 +4179,8 @@ const normalReducer = (e: KeyboardEvent): boolean => {
                     }
                   }, 300);
                 } else if (href.includes('notion.so')) {
-                  // Different page Notion link: click to navigate
                   link.click();
                 } else {
-                  // External link: open in new tab
                   window.open(href, '_blank');
                 }
               }
@@ -4143,6 +4189,70 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
             element = element.parentElement;
             depth++;
+          }
+        }
+
+        // If no link found at cursor position, check root element for Notion page links
+        // These links are not inside individual blocks but in the page root
+        const rootElement = vim_info.lines[0]?.element;
+        if (rootElement && rootElement.getAttribute('data-content-editable-root') === 'true') {
+          const currentLineElement = vim_info.lines[vim_info.active_line]?.element;
+          if (!currentLineElement) {
+            return true;
+          }
+
+          // Get current cursor position on the page
+          const currentRect = currentLineElement.getBoundingClientRect();
+          const currentY = currentRect.top + currentRect.height / 2;
+
+          // Find all links in root element
+          const allLinks = Array.from(rootElement.querySelectorAll('a'));
+
+          // Helper to extract page ID
+          const extractPageId = (pathname: string) => {
+            const parts = pathname.split('-');
+            return parts[parts.length - 1];
+          };
+
+          const currentUrl = new URL(window.location.href);
+          const currentPageId = extractPageId(currentUrl.pathname);
+
+          // Filter for Notion page links (different pages only, not block links) and find the closest one
+          let closestLink: HTMLAnchorElement | null = null;
+          let closestDistance = Infinity;
+          const maxDistance = 150; // Maximum pixels distance to consider "nearby"
+
+          for (const link of allLinks) {
+            const href = link.href;
+            if (href && href.includes('notion.so')) {
+              try {
+                const url = new URL(href);
+                const linkPageId = extractPageId(url.pathname);
+
+                // Skip if it's a block link on the same page
+                if (linkPageId === currentPageId && url.hash) {
+                  continue;
+                }
+
+                // Only consider links to different Notion pages
+                const linkRect = link.getBoundingClientRect();
+                const linkY = linkRect.top + linkRect.height / 2;
+                const distance = Math.abs(linkY - currentY);
+
+                if (distance < closestDistance && distance < maxDistance) {
+                  closestDistance = distance;
+                  closestLink = link;
+                }
+              } catch (e) {
+                // Invalid URL, skip
+                continue;
+              }
+            }
+          }
+
+          if (closestLink) {
+            closestLink.click();
+            return true;
           }
         }
       }
