@@ -46,27 +46,27 @@ body.vim-normal-mode [contenteditable="true"] {
   caret-color: transparent !important;
 }
 
-/* Insert mode: thin purple cursor */
+/* Insert mode: thin cursor (color set dynamically via settings) */
 body.vim-insert-mode [contenteditable="true"] {
-  caret-color: #667eea !important;
+  /* caret-color set dynamically */
 }
 
-/* Visual mode: highlight selection */
+/* Visual mode: highlight selection (color set dynamically via settings) */
 body.vim-visual-mode [contenteditable="true"]::selection {
-  background-color: rgba(102, 126, 234, 0.3) !important;
+  /* background-color set dynamically */
 }
 
 body.vim-visual-mode [contenteditable="true"] {
-  caret-color: #667eea !important;
+  /* caret-color set dynamically */
 }
 
-/* Visual line mode: highlight selection */
+/* Visual line mode: highlight selection (color set dynamically via settings) */
 body.vim-visual-line-mode [contenteditable="true"]::selection {
-  background-color: rgba(102, 126, 234, 0.3) !important;
+  /* background-color set dynamically */
 }
 
 body.vim-visual-line-mode [contenteditable="true"] {
-  caret-color: #667eea !important;
+  /* caret-color set dynamically */
 }
 
 /* Visual line mode: highlight empty lines too */
@@ -76,21 +76,21 @@ body.vim-visual-line-mode [contenteditable="true"]:empty::before {
 }
 
 body.vim-visual-line-mode [contenteditable="true"]:empty::selection {
-  background-color: rgba(102, 126, 234, 0.3) !important;
+  /* background-color set dynamically */
   display: block;
   min-height: 1em;
 }
 
-/* Custom block cursor for normal mode */
+/* Custom block cursor for normal mode (color and animation set dynamically via settings) */
 .vim-block-cursor {
   position: absolute;
-  background-color: rgba(102, 126, 234, 0.8);
+  /* background-color set dynamically */
   width: 8px;
   height: 1.2em;
   pointer-events: none;
   z-index: 9999;
-  animation: blink 1s step-end infinite;
-  box-shadow: 0 0 4px rgba(102, 126, 234, 0.6);
+  /* animation set dynamically */
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
 }
 
 @keyframes blink {

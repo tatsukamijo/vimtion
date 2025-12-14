@@ -51,6 +51,14 @@ function loadSettings(callback?: () => void) {
   });
 }
 
+// Helper to convert hex to rgba
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // Apply settings to the page
 function applySettings() {
   // Apply status bar visibility and position
@@ -72,7 +80,7 @@ function applySettings() {
     infoContainer.style.background = `linear-gradient(135deg, ${currentSettings.statusBarColor} 0%, ${gradientEnd} 100%)`;
   }
 
-  // Apply cursor color
+  // Apply cursor color and visual highlight
   const style = document.createElement('style');
   style.id = 'vimtion-custom-styles';
   const existingStyle = document.getElementById('vimtion-custom-styles');
@@ -80,19 +88,51 @@ function applySettings() {
     existingStyle.remove();
   }
 
+  const visualHighlight = hexToRgba(currentSettings.visualHighlightColor, 0.3);
+
   style.textContent = `
     .vim-block-cursor {
       background-color: ${currentSettings.cursorColor} !important;
-      ${currentSettings.cursorBlink ? 'animation: blink 1s step-end infinite;' : 'animation: none;'}
+      box-shadow: 0 0 4px ${hexToRgba(currentSettings.cursorColor, 0.6)} !important;
+      ${currentSettings.cursorBlink ? 'animation: blink 1s step-end infinite !important;' : 'animation: none !important;'}
     }
-    .vim-normal-mode [contenteditable="true"]:focus::selection {
+    body.vim-normal-mode [contenteditable="true"]:focus::selection,
+    body.vim-normal-mode [contenteditable="true"]::selection {
       background-color: transparent !important;
     }
-    ::selection {
-      background-color: ${currentSettings.visualHighlightColor}33 !important;
+    body.vim-visual-mode [contenteditable="true"]::selection,
+    body.vim-visual-mode [contenteditable="true"] *::selection,
+    body.vim-visual-mode ::selection {
+      background-color: ${visualHighlight} !important;
+    }
+    body.vim-visual-line-mode [contenteditable="true"]::selection,
+    body.vim-visual-line-mode [contenteditable="true"] *::selection,
+    body.vim-visual-line-mode ::selection {
+      background-color: ${visualHighlight} !important;
+    }
+    body.vim-visual-line-mode [contenteditable="true"]:empty::selection {
+      background-color: ${visualHighlight} !important;
+      display: block;
+      min-height: 1em;
+    }
+    body.vim-insert-mode [contenteditable="true"] {
+      caret-color: ${currentSettings.cursorColor} !important;
+    }
+    body.vim-visual-mode [contenteditable="true"] {
+      caret-color: ${currentSettings.cursorColor} !important;
+    }
+    body.vim-visual-line-mode [contenteditable="true"] {
+      caret-color: ${currentSettings.cursorColor} !important;
     }
   `;
-  document.head.appendChild(style);
+
+  // Insert style at the end to ensure it overrides everything
+  const lastStyle = document.head.querySelector('style:last-of-type');
+  if (lastStyle) {
+    lastStyle.insertAdjacentElement('afterend', style);
+  } else {
+    document.head.appendChild(style);
+  }
 }
 
 const createInfoContainer = () => {
@@ -1118,9 +1158,10 @@ const updateVisualLineSelection = () => {
   } else {
     // Normal handling for regular blocks
     // Highlight all lines in range
+    const bgColor = hexToRgba(currentSettings.visualHighlightColor, 0.3);
     for (let i = firstLine; i <= lastLine; i++) {
       const element = vim_info.lines[i].element;
-      element.style.backgroundColor = 'rgba(102, 126, 234, 0.3)';
+      element.style.backgroundColor = bgColor;
     }
 
     // Set range to cover all lines from first to last
