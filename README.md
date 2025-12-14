@@ -62,6 +62,10 @@ Add it directly from the Chrome Web Store: [Vimtion](https://chromewebstore.goog
 
 ### Link Navigation
 
+
+https://github.com/user-attachments/assets/97d3f817-e582-4652-b373-e642e4ec3372
+
+
 Navigate and open links directly from normal mode:
 
 **Open links with Enter**:
