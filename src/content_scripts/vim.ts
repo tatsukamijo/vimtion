@@ -42,7 +42,15 @@ let selectedLinkIndex = 0;
 function highlightSelectedLink() {
   if (availableLinks.length > 0 && selectedLinkIndex >= 0 && selectedLinkIndex < availableLinks.length) {
     const visualHighlight = hexToRgba(currentSettings.visualHighlightColor, 0.3);
-    availableLinks[selectedLinkIndex].style.backgroundColor = visualHighlight;
+    const selectedLink = availableLinks[selectedLinkIndex];
+    selectedLink.style.backgroundColor = visualHighlight;
+
+    // Scroll the selected link into view if it's outside the viewport
+    selectedLink.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest'
+    });
   }
 }
 
