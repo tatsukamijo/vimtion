@@ -53,6 +53,7 @@ Add it directly from the Chrome Web Store: [Vimtion](https://chromewebstore.goog
 [How to install unpacked extensions in Chrome](https://webkul.com/blog/how-to-install-the-unpacked-extension-in-chrome/)
 
 ## ⚙️ Options
+<img width="1701" height="1052" alt="vimtion_options" src="https://github.com/user-attachments/assets/44926f70-819b-4ab8-8301-3c05db971e0c" />
 
 Vimtion can be customized through the Options page. You can configure:
 
