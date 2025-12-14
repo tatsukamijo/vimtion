@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/typescript-5.3-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](LICENSE)
 
-A Chrome extension that brings Vim keybindings to Notion, updated for modern Chrome compatibility.
+A Chrome extension that brings Vim keybindings to Notion.
 
 
 https://github.com/user-attachments/assets/b4f2f922-dfe6-40ca-a4aa-6f7a3f89ebb3
@@ -73,6 +73,7 @@ Navigate and open links directly from normal mode:
 - The closest link to your cursor is initially highlighted
 - Navigate: `j` (next link) • `k` (previous link) - cycle through all Notion page links on the page
 - Open: `Enter` opens the selected link
+- Delete: `d` deletes the block containing the selected link
 - Exit: `Esc` exits selection mode without opening
 
 **Example workflow**:
