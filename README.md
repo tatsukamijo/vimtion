@@ -23,6 +23,7 @@ This fork has been extensively rebuilt with:
 - **Improved cursor handling** with proper position tracking and column memory for j/k navigation
 
 ### New Features
+- **Link navigation**: Navigate and open links with `Enter` - supports external links, block links, and intelligent Notion page link selection with `j/k` navigation
 - **Enhanced motions**: Cross-line navigation (h/l/w/b wrap to previous/next lines)
 - **Line jumping**: `gg` (first line) and `G` (last line) support
 - **Page navigation**: `Ctrl+d/u` (half page), `Ctrl+f/b` (full page) with smooth scrolling
@@ -57,6 +58,28 @@ Add it directly from the Chrome Web Store: [Vimtion](https://chromewebstore.goog
 **Basic**: `h` `j` `k` `l` (with line wrapping) • `w` `b` `e` `W` `B` `E` (word motions) • `0` `$` (line start/end) • `gg` `G` (document start/end)
 **Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character)
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
+
+### Link Navigation
+
+Navigate and open links directly from normal mode:
+
+**Open links with Enter**:
+- **External links**: Press `Enter` on a link to open it in a new tab
+- **Block links** (same page): Press `Enter` on a block link to jump to that block and update cursor position
+- **Notion page links**: Press `Enter` near any Notion page link to enter link selection mode
+
+**Link Selection Mode** (for Notion page links):
+- When multiple Notion page links exist, pressing `Enter` enters selection mode
+- The closest link to your cursor is initially highlighted
+- Navigate: `j` (next link) • `k` (previous link) - cycle through all Notion page links on the page
+- Open: `Enter` opens the selected link
+- Exit: `Esc` exits selection mode without opening
+
+**Example workflow**:
+1. Position cursor anywhere on the page
+2. Press `Enter` to activate link selection
+3. Use `j`/`k` to browse through all Notion page links
+4. Press `Enter` to open the selected page, or `Esc` to cancel
 
 ### Modes
 **Insert**: `i` `I` `a` `A` `o` `O` • **Visual**: `v` (char) `V` (line) • **Normal**: `Esc`
