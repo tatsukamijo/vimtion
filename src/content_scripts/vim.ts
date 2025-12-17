@@ -4531,6 +4531,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     case "r":
       redo();
       return true;
+    case "Tab":
+      // Let Notion handle Tab/Shift+Tab for indenting/outdenting bullet points
+      return false;
     default:
       // Block all other keys in normal mode (including space, numbers, etc.)
       return true;
