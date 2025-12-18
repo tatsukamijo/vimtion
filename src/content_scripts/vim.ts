@@ -4938,11 +4938,26 @@ const updateInfoContainer = () => {
   });
 
   // Monitor URL changes by polling (for SPA navigation like link clicks)
-  let lastUrl = window.location.href;
+  // Extract page ID from URL (the part after the last dash before query/hash)
+  const extractPageId = (url: string): string | null => {
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      // Match pattern: /slug-[32 char hex ID] or /[32 char hex ID]
+      const match = pathname.match(/([a-f0-9]{32})$/i);
+      return match ? match[1] : pathname;
+    } catch {
+      return null;
+    }
+  };
+
+  let lastPageId = extractPageId(window.location.href);
   setInterval(() => {
-    const currentUrl = window.location.href;
-    if (currentUrl !== lastUrl) {
-      lastUrl = currentUrl;
+    const currentPageId = extractPageId(window.location.href);
+    // Only reinitialize if we actually navigated to a different page
+    // Ignore URL changes that are just slug updates (title edits)
+    if (currentPageId !== lastPageId) {
+      lastPageId = currentPageId;
       reinitializeAfterNavigation();
     }
   }, 500);
