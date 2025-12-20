@@ -5,6 +5,17 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2025-12-15
+
+### Added
+- **Tab key support**: `Tab` and `Shift+Tab` now work in normal mode for indenting/outdenting bullet points, toggle lists, and numbered lists
+
+### Fixed
+- **Page title editing cursor reset**: Fixed cursor jumping to the start when editing page titles
+  - URL polling now compares page IDs instead of full URLs
+  - Ignores URL slug changes caused by title edits (e.g., "Demo" → "My Demo" in URL)
+  - Prevents unnecessary reinitialization during title editing
+
 ## [1.2.0] - 2025-12-15
 
 ### Added
