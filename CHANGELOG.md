@@ -5,7 +5,7 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.1] - 2025-12-15
+## [1.2.1] - 2025-12-20
 
 ### Added
 - **Tab key support**: `Tab` and `Shift+Tab` now work in normal mode for indenting/outdenting bullet points, toggle lists, and numbered lists
