@@ -193,6 +193,13 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   setupColorPickers();
 
+  // Display version from manifest
+  const version = chrome.runtime.getManifest().version;
+  const versionElement = document.querySelector('.footer-info p');
+  if (versionElement) {
+    versionElement.innerHTML = `Vimtion v${version} | <a href="https://github.com/tatsukamijo/vimtion" target="_blank">GitHub</a>`;
+  }
+
   const saveButton = document.getElementById('save');
   const resetButton = document.getElementById('reset');
 
