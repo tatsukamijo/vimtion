@@ -193,6 +193,31 @@ The following Vim features are not implemented:
 
 **Note**: `r` is used for **redo** instead of Vim's default "replace character" to provide undo/redo functionality.
 
+## 🚧 Roadmap
+
+### Recently Completed ✅
+- Code block support with full Vim operations
+- Link navigation with `Enter` key (external links, block links, Notion page links)
+- Link selection mode with deletion support
+- Browser history navigation (`H`/`L` keys)
+- Tab key support for list indentation in normal mode
+- Page title editing cursor position fix
+
+### Planned Features
+- [ ] **Multiple links in same line**: Improved handling when multiple links exist on a single line
+- [ ] **Smart scrolling**: Keep cursor position stable after `j`/`k` navigation following scroll
+- [ ] **Help page** (`?`): Display Vimium-style help overlay showing all keybindings
+- [ ] **Visual block mode** (`Ctrl+v`): Rectangular/column selection
+- [ ] **Code block CLI mode**: Specify code block language from command
+- [ ] **Line movement**: Alt/Option key for moving lines up/down
+- [ ] **Visual-line performance**: Optimize `Shift+V` for better performance, currently a bit slow
+- [ ] **Scroll cursor positioning**: Maintain proper cursor position during/after `Ctrl+d`/`Ctrl+u` scrolling
+- [ ] **Todo toggle**: Press `Enter` to check/uncheck todo items
+- [ ] **Table navigation**: Vim-like navigation within Notion tables (similar to page link handling)
+- [ ] **Repeat command** (`.`): Repeat the last command
+
+Contributions and feature requests are welcome! Please open an issue on [GitHub](https://github.com/tatsukamijo/vimtion/issues).
+
 ## Credits
 
 Original implementation by [Luke Ingalls](https://github.com/lukeingalls) - [vim-notion](https://github.com/lukeingalls/vim-notion)
