@@ -1209,9 +1209,14 @@ const filterHintsByInput = (input: string) => {
       // Show this hint
       overlay.style.display = 'block';
 
-      // Change background color for matched portion
+      // Highlight only the matched portion
       if (input.length > 0) {
-        overlay.style.background = '#ff4458'; // Reddish pink for matched
+        const matched = hint.substring(0, input.length);
+        const remaining = hint.substring(input.length);
+        overlay.innerHTML = `<span style="color: #ff4458">${matched}</span><span style="color: #ffffff">${remaining}</span>`;
+      } else {
+        overlay.textContent = hint;
+        overlay.style.color = '#ffffff';
       }
 
       // Check for exact match
