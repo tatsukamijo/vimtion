@@ -23,7 +23,8 @@ This fork has been extensively rebuilt with:
 - **Improved cursor handling** with proper position tracking and column memory for j/k navigation
 
 ### New Features
-- **Link navigation**: Navigate and open links with `Enter` - supports external links, block links, and intelligent Notion page link selection with `j/k` navigation
+- **Link hint mode** (`gl`): Vimium-style link navigation with keyboard hints - type characters to filter and jump to any link instantly
+- **Link navigation** (`Enter`): Navigate and open links - supports external links, block links, and intelligent Notion page link selection with `j/k` navigation
 - **Enhanced motions**: Cross-line navigation (h/l/w/b wrap to previous/next lines)
 - **Line jumping**: `gg` (first line) and `G` (last line) support
 - **Page navigation**: `Ctrl+d/u` (half page), `Ctrl+f/b` (full page) with smooth scrolling
@@ -60,7 +61,7 @@ Vimtion can be customized through the Options page. You can configure:
 - Mode indicator position and colors
 - Cursor colors and blink settings
 - Visual selection colors
-- And more...
+- Vimium-style link hints colors/font size
 
 To access the Options page:
 1. Right-click the Vimtion extension icon in Chrome
@@ -80,25 +81,36 @@ To access the Options page:
 https://github.com/user-attachments/assets/97d3f817-e582-4652-b373-e642e4ec3372
 
 
-Navigate and open links directly from normal mode:
+Vimtion provides two methods for link navigation:
+
+#### Method 1: Link Hint Mode (`gl`)
+Vimium-style navigation with keyboard hints:
+- Press `gl` to show hints for all links on the page
+- Type hint characters to filter and navigate instantly
+- `Shift+hint` opens the link in a new tab
+- Cursor position is automatically saved and restored when navigating back with `Shift+H`
+
+#### Method 2: Enter Key Navigation
+Faster in-document navigation:
 
 **Open links with Enter**:
 - **External links**: Press `Enter` on a link to open it in a new tab
 - **Block links** (same page): Press `Enter` on a block link to jump to that block and update cursor position
 - **Notion page links**: Press `Enter` near any Notion page link to enter link selection mode
+- **Shift+Enter**: Open link in new tab
 
-**Link Selection Mode** (for Notion page links):
-- When multiple Notion page links exist, pressing `Enter` enters selection mode
+**Link Selection Mode** (for any in-document links):
+- Pressing `Enter` on empty space enters selection mode
 - The closest link to your cursor is initially highlighted
-- Navigate: `j` (next link) • `k` (previous link) - cycle through all Notion page links on the page
-- Open: `Enter` opens the selected link
+- Navigate: `j` (next link) • `k` (previous link) - cycle through all links on the page
+- Open: `Enter` opens the selected link, `Shift+Enter` opens in new tab
 - Delete: `d` deletes the block containing the selected link
 - Exit: `Esc` exits selection mode without opening
 
 **Example workflow**:
 1. Position cursor anywhere on the page
 2. Press `Enter` to activate link selection
-3. Use `j`/`k` to browse through all Notion page links
+3. Use `j`/`k` to browse through all links
 4. Press `Enter` to open the selected page, or `Esc` to cancel
 
 ### Modes
@@ -195,24 +207,12 @@ The following Vim features are not implemented:
 
 ## 🚧 Roadmap
 
-### Recently Completed ✅
-- Code block support with full Vim operations
-- Link navigation with `Enter` key (external links, block links, Notion page links)
-- Link selection mode with deletion support
-- Browser history navigation (`H`/`L` keys)
-- Tab key support for list indentation in normal mode
-- Page title editing cursor position fix
-
 ### Planned Features
-- [x] **Multiple links in same line**: Improved handling when multiple links exist on a single line
-- [x] **Enhanced scrolling**: Changed scrolling behavior same as Vim (instant, more responsive)
 - [ ] **Help page** (`?`): Display Vimium-style help overlay showing all keybindings
 - [ ] **Visual block mode** (`Ctrl+v`): Rectangular/column selection
 - [ ] **Code block CLI mode**: Specify code block language from command
 - [ ] **Line movement**: Alt/Option key for moving lines up/down
 - [ ] **Visual-line performance**: Optimize `Shift+V` for better performance, currently a bit slow
-- [ ] **Scroll cursor positioning**: Maintain proper cursor position during/after `Ctrl+d`/`Ctrl+u` scrolling
-- [x] **Todo toggle**: Press `Enter` to check/uncheck todo items
 - [ ] **Table navigation**: Vim-like navigation within Notion tables (similar to page link handling)
 - [ ] **Repeat command** (`.`): Repeat the last command
 
