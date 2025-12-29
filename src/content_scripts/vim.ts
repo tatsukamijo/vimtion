@@ -52,36 +52,56 @@ let availableLinks: HTMLAnchorElement[] = [];
 // Cursor position storage helpers
 const saveCursorPosition = () => {
   const { vim_info } = window;
-  const currentUrl = window.location.href;
+  // Remove hash from URL to normalize it (block links have hashes)
+  const currentUrl = window.location.href.split('#')[0];
+
+  const currentElement = vim_info.lines[vim_info.active_line]?.element;
+
+  // Try to find block ID from element or its ancestors
+  let blockId = 'N/A';
+  let elem = currentElement;
+  while (elem) {
+    const foundId = elem.getAttribute('data-block-id');
+    if (foundId) {
+      blockId = foundId;
+      break;
+    }
+    elem = elem.parentElement;
+  }
 
   try {
     // Get existing positions map
     const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
     const positionsMap: Record<string, any> = savedPositions ? JSON.parse(savedPositions) : {};
 
-    // Save position for current URL
+    // Save position for current URL with block ID for more reliable restoration
     positionsMap[currentUrl] = {
       active_line: vim_info.active_line,
       cursor_position: vim_info.cursor_position,
+      block_id: blockId !== 'N/A' ? blockId : null,
       timestamp: Date.now()
     };
 
-    // Clean up old entries (older than 60 seconds)
+    // Clean up old entries (older than 10 seconds)
     const now = Date.now();
     Object.keys(positionsMap).forEach(url => {
-      if (now - positionsMap[url].timestamp > 60000) {
+      if (now - positionsMap[url].timestamp > 10000) {
         delete positionsMap[url];
       }
     });
 
     sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
+
+    // Set a flag to indicate this is an intentional navigation (not a reload)
+    // This flag will be checked in reinitializeAfterNavigation
+    sessionStorage.setItem('vimtion_intentional_navigation', 'true');
   } catch (e) {
     // Ignore storage errors
   }
 };
 
 const restoreCursorPosition = () => {
-  const currentUrl = window.location.href;
+  const currentUrl = window.location.href.split('#')[0];
 
   try {
     const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
@@ -93,28 +113,61 @@ const restoreCursorPosition = () => {
       if (data) {
         const age = Date.now() - data.timestamp;
 
-        // Only restore if data is recent (within 60 seconds)
-        if (age < 60000) {
+        // Only restore if data is recent (within 10 seconds)
+        if (age < 10000) {
           const { vim_info } = window;
 
-          // Wait for lines to be initialized
-          setTimeout(() => {
-            if (data.active_line < vim_info.lines.length) {
-              vim_info.active_line = data.active_line;
-              vim_info.cursor_position = data.cursor_position;
-
-              const targetElement = vim_info.lines[data.active_line]?.element;
-              if (targetElement && document.contains(targetElement)) {
-                setCursorPosition(targetElement, data.cursor_position);
-                updateBlockCursor();
+          // Try to find the element by block ID first (more reliable)
+          let targetLineIndex = data.active_line;
+          if (data.block_id) {
+            const foundIndex = vim_info.lines.findIndex(line => {
+              let elem = line.element;
+              while (elem) {
+                const foundId = elem.getAttribute('data-block-id');
+                if (foundId === data.block_id) {
+                  return true;
+                }
+                elem = elem.parentElement;
               }
+              return false;
+            });
+
+            if (foundIndex !== -1) {
+              targetLineIndex = foundIndex;
             }
-          }, 100);
+          }
+
+          if (targetLineIndex < vim_info.lines.length) {
+            vim_info.active_line = targetLineIndex;
+            vim_info.cursor_position = data.cursor_position;
+
+            const targetElement = vim_info.lines[targetLineIndex]?.element;
+            if (targetElement && document.contains(targetElement)) {
+              // Delay cursor position update to allow DOM to settle
+              setTimeout(() => {
+                // Re-set cursor position in case Notion moved it during re-render
+                const currentElement = vim_info.lines[vim_info.active_line]?.element;
+                if (currentElement && document.contains(currentElement)) {
+                  setCursorPosition(currentElement, vim_info.cursor_position);
+                }
+
+                updateBlockCursor();
+              }, 100);
+            }
+          }
+
+          // Delete the restored position after use
+          delete positionsMap[currentUrl];
+          sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
+        } else {
+          // Data is too old, delete it
+          delete positionsMap[currentUrl];
+          sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
         }
       }
     }
   } catch (e) {
-    // Ignore storage errors
+    // Ignore errors
   }
 };
 let selectedLinkIndex = 0;
@@ -1367,10 +1420,8 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
   const currentPageId = extractPageId(window.location.href);
   const isBlockLink = link.href.includes('#') && linkPageId === currentPageId;
 
-  // Save cursor position before navigation (only for page links, not block links or new tabs)
-  if (!isBlockLink && !openInNewTab) {
-    saveCursorPosition();
-  }
+  // Note: cursor position is saved when entering link hint mode (gl command)
+  // or when pressing Shift+H/L, not here
 
   // Disable unsaved changes warning before any navigation
   disableNotionUnsavedWarning();
@@ -4076,6 +4127,9 @@ const handlePendingOperator = (key: string): boolean => {
         jumpToTop();
         return true;
       case "l":
+        // Save cursor position before entering link hint mode
+        // (so we can restore it when navigating back)
+        saveCursorPosition();
         enterLinkHintMode();
         return true;
       default:
@@ -5370,8 +5424,8 @@ const setLines = (f: HTMLDivElement[]) => {
     line.element.addEventListener("click", handleClick, true);
   });
 
-  // Set initial active line
-  setActiveLine(vim_info.active_line || 0);
+  // Set initial active line to 0 (will be overridden by restoreCursorPosition if navigating)
+  setActiveLine(0);
 
   // Set up MutationObserver to detect new lines
   const observer = new MutationObserver(() => {
@@ -5423,6 +5477,27 @@ const updateInfoContainer = () => {
     }
   });
 
+  // Clear any saved cursor position for current URL on initial page load
+  // (This prevents restoring stale positions from previous sessions)
+  try {
+    const currentUrl = window.location.href.split('#')[0];
+    const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
+    if (savedPositions) {
+      const positionsMap: Record<string, any> = JSON.parse(savedPositions);
+      if (positionsMap[currentUrl]) {
+        delete positionsMap[currentUrl];
+        sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
+        console.log('[Vimtion] Cleared saved position for initial page load');
+      }
+    }
+
+    // Also reset vim_info.active_line to 0 to ensure clean state
+    // (Notion might auto-focus elements during page load, which could set active_line)
+    window.vim_info.active_line = 0;
+  } catch (e) {
+    // Ignore errors
+  }
+
   let attempts = 0;
   const poll = setInterval(() => {
     attempts++;
@@ -5469,12 +5544,44 @@ const updateInfoContainer = () => {
         document.querySelectorAll("[contenteditable=true]")
       ) as HTMLDivElement[];
 
-      if (editableElements.length > 0) {
+      // Wait for at least 3 elements to ensure page is fully loaded
+      // (Notion pages typically have multiple editable blocks)
+      if (editableElements.length >= 3) {
         setLines(editableElements);
-        isReinitializing = false;
 
         // Restore cursor position after navigation (if available)
-        restoreCursorPosition();
+        // Only restore if this is an intentional navigation (gl, Shift+H/L), not a reload
+        const currentUrl = window.location.href.split('#')[0];
+        const isIntentionalNavigation = sessionStorage.getItem('vimtion_intentional_navigation') === 'true';
+
+        if (isIntentionalNavigation) {
+          // Clear the flag immediately after reading it
+          sessionStorage.removeItem('vimtion_intentional_navigation');
+          restoreCursorPosition();
+        } else {
+          // Clear saved position for current URL since it's a reload
+          try {
+            const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
+            if (savedPositions) {
+              const positionsMap: Record<string, any> = JSON.parse(savedPositions);
+              if (positionsMap[currentUrl]) {
+                delete positionsMap[currentUrl];
+                sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
+              }
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+        }
+
+        // Reset flag after a delay to prevent immediate re-initialization
+        setTimeout(() => {
+          isReinitializing = false;
+        }, 500);
+      } else if (editableElements.length > 0) {
+        // Page is still loading, wait a bit longer
+        isReinitializing = false;
+        setTimeout(reinitializeAfterNavigation, 200);
       } else {
         // Retry after a longer delay if elements not found yet
         isReinitializing = false;
