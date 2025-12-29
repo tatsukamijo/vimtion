@@ -1321,15 +1321,21 @@ const generateHints = (count: number): string[] => {
   const chars = "asdfghjklqwertyuiopzxcvbnm"; // Vimium-style: home row priority
   const hints: string[] = [];
 
+  if (count === 0) return hints;
+
+  // Calculate required hint length to avoid prefix conflicts
+  // All hints must have the same length to be prefix-free
+  const hintLength = Math.ceil(Math.log(count) / Math.log(chars.length));
+
   for (let i = 0; i < count; i++) {
     let hint = "";
     let num = i;
 
-    // Convert number to base-26 hint (a, s, d, ..., aa, as, ad, ...)
-    do {
+    // Generate hint with fixed length
+    for (let j = 0; j < hintLength; j++) {
       hint = chars[num % chars.length] + hint;
       num = Math.floor(num / chars.length);
-    } while (num > 0);
+    }
 
     hints.push(hint);
   }
