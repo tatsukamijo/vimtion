@@ -77,10 +77,6 @@ To access the Options page:
 
 ### Link Navigation
 
-
-https://github.com/user-attachments/assets/97d3f817-e582-4652-b373-e642e4ec3372
-
-
 Vimtion provides two methods for link navigation:
 
 #### Method 1: Link Hint Mode (`gl`)
@@ -90,7 +86,16 @@ Vimium-style navigation with keyboard hints:
 - `Shift+hint` opens the link in a new tab
 - Cursor position is automatically saved and restored when navigating back with `Shift+H`
 
+
+https://github.com/user-attachments/assets/04dae08b-8e01-4bcd-bd33-18f00de14d9f
+
+
 #### Method 2: Enter Key Navigation
+
+
+https://github.com/user-attachments/assets/97d3f817-e582-4652-b373-e642e4ec3372
+
+
 Faster in-document navigation:
 
 **Open links with Enter**:
