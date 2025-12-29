@@ -205,7 +205,7 @@ The following Vim features are not implemented:
 
 ### Planned Features
 - [x] **Multiple links in same line**: Improved handling when multiple links exist on a single line
-- [ ] **Smart scrolling**: Keep cursor position stable after `j`/`k` navigation following scroll
+- [x] **Enhanced scrolling**: Changed scrolling behavior same as Vim (instant, more responsive)
 - [ ] **Help page** (`?`): Display Vimium-style help overlay showing all keybindings
 - [ ] **Visual block mode** (`Ctrl+v`): Rectangular/column selection
 - [ ] **Code block CLI mode**: Specify code block language from command

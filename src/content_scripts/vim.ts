@@ -923,7 +923,8 @@ const setCursorPosition = (element: Element, index: number) => {
 
   let i = 0;
   for (const node of childNodes) {
-    const isInRange = index >= i && index <= i + node.textContent.length;
+    const nodeLength = node.textContent?.length || 0;
+    const isInRange = index >= i && index <= i + nodeLength;
     if (isInRange && node.nodeType === Node.ELEMENT_NODE) {
       setCursorPosition(node as Element, index - i);
       break;
@@ -932,14 +933,16 @@ const setCursorPosition = (element: Element, index: number) => {
       const range = document.createRange();
       const selection = window.getSelection();
 
-      range.setStart(node, index - i);
+      // Clamp the offset to be within the node's length
+      const offset = Math.min(index - i, nodeLength);
+      range.setStart(node, offset);
       range.collapse(true);
       selection.removeAllRanges();
       selection.addRange(range);
       updateBlockCursor();
       break;
     }
-    i += node.textContent.length;
+    i += nodeLength;
   }
 };
 
@@ -4601,80 +4604,52 @@ const findScrollableContainer = (): HTMLElement => {
   return document.documentElement;
 };
 
-// Scroll by a fraction of the viewport height and move cursor to first visible line
+// Scroll by a fraction of the viewport height
+// Cursor position will be automatically updated by scroll event listener
 const scrollAndMoveCursor = (pageAmount: number) => {
-  const { vim_info } = window;
-
   const scrollContainer = findScrollableContainer();
   const scrollAmount = window.innerHeight * pageAmount;
   const currentScroll = scrollContainer === document.documentElement ? window.scrollY : scrollContainer.scrollTop;
   const newScroll = Math.max(0, currentScroll + scrollAmount);
 
-  // Perform smooth scroll on the correct container
+  // Perform instant scroll on the correct container
   if (scrollContainer === document.documentElement) {
     window.scrollTo({
       top: newScroll,
-      behavior: 'smooth'
+      behavior: 'auto'
     });
   } else {
     scrollContainer.scrollTo({
       top: newScroll,
-      behavior: 'smooth'
+      behavior: 'auto'
     });
   }
-
-  // Wait for scroll to complete, then update cursor position
-  setTimeout(() => {
-    refreshLines();
-    const firstVisibleLine = getFirstVisibleLine();
-
-    // Just update the active line index and cursor position without clicking
-    vim_info.active_line = firstVisibleLine;
-    vim_info.desired_column = 0;
-
-    const targetElement = vim_info.lines[firstVisibleLine]?.element;
-    if (targetElement) {
-      setCursorPosition(targetElement, 0);
-      targetElement.focus();
-    }
-  }, 150); // Slightly longer delay for smooth scroll to progress
+  // Note: Cursor position update is handled by scroll event listener
 };
 
 // Jump to top of document (gg)
+// Cursor position will be automatically updated by scroll event listener
 const jumpToTop = () => {
-  const { vim_info } = window;
   const scrollContainer = findScrollableContainer();
 
   // Scroll to top
   if (scrollContainer === document.documentElement) {
     window.scrollTo({
       top: 0,
-      behavior: 'smooth'
+      behavior: 'auto'
     });
   } else {
     scrollContainer.scrollTo({
       top: 0,
-      behavior: 'smooth'
+      behavior: 'auto'
     });
   }
-
-  // Wait for scroll, then set cursor to first line
-  setTimeout(() => {
-    refreshLines();
-    vim_info.active_line = 0;
-    vim_info.desired_column = 0;
-
-    const targetElement = vim_info.lines[0]?.element;
-    if (targetElement) {
-      setCursorPosition(targetElement, 0);
-      targetElement.focus();
-    }
-  }, 150);
+  // Note: Cursor position update is handled by scroll event listener
 };
 
 // Jump to bottom of document (G)
+// Cursor position will be automatically updated by scroll event listener
 const jumpToBottom = () => {
-  const { vim_info } = window;
   const scrollContainer = findScrollableContainer();
 
   // Scroll to bottom
@@ -4685,28 +4660,15 @@ const jumpToBottom = () => {
   if (scrollContainer === document.documentElement) {
     window.scrollTo({
       top: maxScroll,
-      behavior: 'smooth'
+      behavior: 'auto'
     });
   } else {
     scrollContainer.scrollTo({
       top: maxScroll,
-      behavior: 'smooth'
+      behavior: 'auto'
     });
   }
-
-  // Wait for scroll, then set cursor to last line
-  setTimeout(() => {
-    refreshLines();
-    const lastLine = vim_info.lines.length - 1;
-    vim_info.active_line = lastLine;
-    vim_info.desired_column = 0;
-
-    const targetElement = vim_info.lines[lastLine]?.element;
-    if (targetElement) {
-      setCursorPosition(targetElement, 0);
-      targetElement.focus();
-    }
-  }, 150);
+  // Note: Cursor position update is handled by scroll event listener
 };
 
 const setActiveLine = (idx: number) => {
@@ -4759,9 +4721,9 @@ const setActiveLine = (idx: number) => {
 
     setCursorPosition(targetElement, cursorPosition);
   } else {
-    // For normal blocks, use click() and focus() as before
+    // For normal blocks, use click() and focus() with preventScroll to avoid unwanted page jumps
     targetElement.click();
-    targetElement.focus();
+    targetElement.focus({ preventScroll: true });
 
     // Set cursor to desired column, or end of line if line is shorter
     const lineLength = targetElement.textContent?.length || 0;
@@ -4931,6 +4893,57 @@ const updateInfoContainer = () => {
       }
     }, 300);
   };
+
+  // Listen for scroll events to update cursor position when active line goes off-screen
+  let scrollTimeout: NodeJS.Timeout | null = null;
+  const handleScroll = () => {
+    // Debounce scroll events
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+
+    scrollTimeout = setTimeout(() => {
+      const { vim_info } = window;
+
+      // Only adjust in normal mode
+      if (vim_info.mode !== 'normal') {
+        return;
+      }
+
+      // Check if active line is still visible
+      const activeElement = vim_info.lines[vim_info.active_line]?.element;
+      if (!activeElement) {
+        return;
+      }
+
+      const rect = activeElement.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+
+      // If active line is off-screen, move cursor to first visible line
+      if (rect.top < 0 || rect.bottom > viewportHeight) {
+        const firstVisibleLine = getFirstVisibleLine();
+
+        // Only update if we found a different visible line
+        if (firstVisibleLine !== vim_info.active_line) {
+          vim_info.active_line = firstVisibleLine;
+          vim_info.desired_column = 0;
+
+          const targetElement = vim_info.lines[firstVisibleLine]?.element;
+          if (targetElement) {
+            setCursorPosition(targetElement, 0);
+            // Don't call focus here to avoid triggering scroll
+            updateBlockCursor();
+            updateInfoContainer();
+          }
+        }
+      } else {
+        // Active line is still visible, just update block cursor position
+        updateBlockCursor();
+      }
+    }, 100); // 100ms debounce
+  };
+
+  window.addEventListener('scroll', handleScroll, true);
 
   // Listen for browser history navigation (back/forward buttons, H/L keys)
   window.addEventListener('popstate', () => {
