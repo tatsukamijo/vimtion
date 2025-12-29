@@ -79,17 +79,8 @@ const saveCursorPosition = () => {
     positionsMap[currentUrl] = {
       active_line: vim_info.active_line,
       cursor_position: vim_info.cursor_position,
-      block_id: blockId !== 'N/A' ? blockId : null,
-      timestamp: Date.now()
+      block_id: blockId !== 'N/A' ? blockId : null
     };
-
-    // Clean up old entries (older than 10 seconds)
-    const now = Date.now();
-    Object.keys(positionsMap).forEach(url => {
-      if (now - positionsMap[url].timestamp > 10000) {
-        delete positionsMap[url];
-      }
-    });
 
     sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
 
@@ -112,63 +103,54 @@ const restoreCursorPosition = () => {
       const data = positionsMap[currentUrl];
 
       if (data) {
-        const age = Date.now() - data.timestamp;
+        const { vim_info } = window;
 
-        // Only restore if data is recent (within 10 seconds)
-        if (age < 10000) {
-          const { vim_info } = window;
-
-          // Try to find the element by block ID first (more reliable)
-          let targetLineIndex = data.active_line;
-          if (data.block_id) {
-            const foundIndex = vim_info.lines.findIndex(line => {
-              let elem = line.element;
-              while (elem) {
-                const foundId = elem.getAttribute('data-block-id');
-                if (foundId === data.block_id) {
-                  return true;
-                }
-                elem = elem.parentElement;
+        // Try to find the element by block ID first (more reliable)
+        let targetLineIndex = data.active_line;
+        if (data.block_id) {
+          const foundIndex = vim_info.lines.findIndex(line => {
+            let elem = line.element;
+            while (elem) {
+              const foundId = elem.getAttribute('data-block-id');
+              if (foundId === data.block_id) {
+                return true;
               }
-              return false;
-            });
-
-            if (foundIndex !== -1) {
-              targetLineIndex = foundIndex;
+              elem = elem.parentElement;
             }
+            return false;
+          });
+
+          if (foundIndex !== -1) {
+            targetLineIndex = foundIndex;
           }
-
-          if (targetLineIndex < vim_info.lines.length) {
-            vim_info.active_line = targetLineIndex;
-            vim_info.cursor_position = data.cursor_position;
-
-            const targetElement = vim_info.lines[targetLineIndex]?.element;
-            if (targetElement && document.contains(targetElement)) {
-              // Scroll to the target element first (before Notion does its own scrolling)
-              // Use 'nearest' to avoid creating white space at the bottom
-              targetElement.scrollIntoView({ behavior: 'auto', block: 'nearest' });
-
-              // Then restore cursor position with delay to allow DOM to settle
-              setTimeout(() => {
-                // Re-set cursor position in case Notion moved it during re-render
-                const currentElement = vim_info.lines[vim_info.active_line]?.element;
-                if (currentElement && document.contains(currentElement)) {
-                  setCursorPosition(currentElement, vim_info.cursor_position);
-                }
-
-                updateBlockCursor();
-              }, 100);
-            }
-          }
-
-          // Delete the restored position after use
-          delete positionsMap[currentUrl];
-          sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
-        } else {
-          // Data is too old, delete it
-          delete positionsMap[currentUrl];
-          sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
         }
+
+        if (targetLineIndex < vim_info.lines.length) {
+          vim_info.active_line = targetLineIndex;
+          vim_info.cursor_position = data.cursor_position;
+
+          const targetElement = vim_info.lines[targetLineIndex]?.element;
+          if (targetElement && document.contains(targetElement)) {
+            // Scroll to the target element first (before Notion does its own scrolling)
+            // Use 'nearest' to avoid creating white space at the bottom
+            targetElement.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+
+            // Then restore cursor position with delay to allow DOM to settle
+            setTimeout(() => {
+              // Re-set cursor position in case Notion moved it during re-render
+              const currentElement = vim_info.lines[vim_info.active_line]?.element;
+              if (currentElement && document.contains(currentElement)) {
+                setCursorPosition(currentElement, vim_info.cursor_position);
+              }
+
+              updateBlockCursor();
+            }, 100);
+          }
+        }
+
+        // Delete the restored position after use
+        delete positionsMap[currentUrl];
+        sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
       }
     }
   } catch (e) {
