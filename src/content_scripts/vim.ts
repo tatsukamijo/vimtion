@@ -1147,6 +1147,32 @@ const startVisualLineMode = () => {
   updateInfoContainer();
 };
 
+// Flag to suppress beforeunload warning
+let suppressBeforeUnloadWarning = false;
+
+const disableNotionUnsavedWarning = () => {
+  suppressBeforeUnloadWarning = true;
+};
+
+const restoreNotionUnsavedWarning = () => {
+  suppressBeforeUnloadWarning = false;
+};
+
+// Intercept beforeunload events to prevent Notion's warning during Vimtion operations
+window.addEventListener('beforeunload', (e) => {
+  if (suppressBeforeUnloadWarning) {
+    // Prevent the warning dialog
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    delete e.returnValue;
+
+    // Immediately reset flag to allow warnings for actual reloads
+    suppressBeforeUnloadWarning = false;
+
+    return undefined;
+  }
+}, true); // Use capture phase to intercept before Notion's handler
+
 const enterLinkHintMode = () => {
   // Check if link hints feature is enabled
   if (!currentSettings.linkHintsEnabled) {
@@ -1204,8 +1230,8 @@ const createHintOverlay = (link: HTMLAnchorElement, hint: string): HTMLElement =
 
   // Position overlay at top-left of link
   const rect = link.getBoundingClientRect();
-  overlay.style.top = `${rect.top + window.scrollY}px`;
-  overlay.style.left = `${rect.left + window.scrollX}px`;
+  overlay.style.top = `${rect.top}px`;
+  overlay.style.left = `${rect.left}px`;
 
   document.body.appendChild(overlay);
   return overlay;
@@ -1257,6 +1283,11 @@ const filterHintsByInput = (input: string, shiftKey: boolean) => {
 const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) => {
   const { vim_info } = window;
 
+  // Exit link-hint mode first
+  removeAllHintOverlays();
+  vim_info.mode = "normal";
+  updateInfoContainer();
+
   // Check if this is a block link (same page anchor)
   // Extract Notion page ID (32-char hex after last dash before ? or #)
   const extractPageId = (url: string) => {
@@ -1268,21 +1299,27 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
   const currentPageId = extractPageId(window.location.href);
   const isBlockLink = link.href.includes('#') && linkPageId === currentPageId;
 
+  // Disable unsaved changes warning before any navigation
+  disableNotionUnsavedWarning();
+
   if (openInNewTab) {
     // Open link in new tab
     window.open(link.href, '_blank');
-  } else if (isBlockLink) {
-    // For block links (same page anchors), use click to preserve Notion behavior
-    link.click();
+    // Restore immediately for new tab
+    restoreNotionUnsavedWarning();
   } else {
-    // Open in same tab/window (ignore target attribute)
-    window.location.href = link.href;
-  }
+    // Use click() for all navigation to let Notion handle it naturally
+    // Remove target attribute to force same-tab navigation
+    const originalTarget = link.target;
+    link.target = '';
+    link.click();
+    link.target = originalTarget;
 
-  // Exit link-hint mode
-  removeAllHintOverlays();
-  vim_info.mode = "normal";
-  updateInfoContainer();
+    // Reset flag after navigation
+    setTimeout(() => {
+      restoreNotionUnsavedWarning();
+    }, 50);
+  }
 };
 
 const detectAllLinks = (): HTMLAnchorElement[] => {
@@ -4823,11 +4860,23 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "H":
       // Go back in browser history
+      // Temporarily disable unsaved changes warning
+      disableNotionUnsavedWarning();
       window.history.back();
+      // Reset flag immediately after initiating navigation
+      setTimeout(() => {
+        restoreNotionUnsavedWarning();
+      }, 50);
       return true;
     case "L":
       // Go forward in browser history
+      // Temporarily disable unsaved changes warning
+      disableNotionUnsavedWarning();
       window.history.forward();
+      // Reset flag immediately after initiating navigation
+      setTimeout(() => {
+        restoreNotionUnsavedWarning();
+      }, 50);
       return true;
     case "f":
       window.vim_info.pending_operator = "f";
