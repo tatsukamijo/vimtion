@@ -4628,8 +4628,8 @@ const scrollAndMoveCursor = (pageAmount: number) => {
 };
 
 // Jump to top of document (gg)
-// Cursor position will be automatically updated by scroll event listener
 const jumpToTop = () => {
+  const { vim_info } = window;
   const scrollContainer = findScrollableContainer();
 
   // Scroll to top
@@ -4644,12 +4644,25 @@ const jumpToTop = () => {
       behavior: 'auto'
     });
   }
-  // Note: Cursor position update is handled by scroll event listener
+
+  // Explicitly set cursor to first line (don't rely on scroll event listener)
+  setTimeout(() => {
+    vim_info.active_line = 0;
+    vim_info.desired_column = 0;
+
+    const targetElement = vim_info.lines[0]?.element;
+    if (targetElement) {
+      setCursorPosition(targetElement, 0);
+      targetElement.focus({ preventScroll: true });
+      updateBlockCursor();
+      updateInfoContainer();
+    }
+  }, 10);
 };
 
 // Jump to bottom of document (G)
-// Cursor position will be automatically updated by scroll event listener
 const jumpToBottom = () => {
+  const { vim_info } = window;
   const scrollContainer = findScrollableContainer();
 
   // Scroll to bottom
@@ -4668,7 +4681,22 @@ const jumpToBottom = () => {
       behavior: 'auto'
     });
   }
-  // Note: Cursor position update is handled by scroll event listener
+
+  // Explicitly set cursor to last line (don't rely on scroll event listener)
+  setTimeout(() => {
+    refreshLines();
+    const lastLine = vim_info.lines.length - 1;
+    vim_info.active_line = lastLine;
+    vim_info.desired_column = 0;
+
+    const targetElement = vim_info.lines[lastLine]?.element;
+    if (targetElement) {
+      setCursorPosition(targetElement, 0);
+      targetElement.focus({ preventScroll: true });
+      updateBlockCursor();
+      updateInfoContainer();
+    }
+  }, 10);
 };
 
 const setActiveLine = (idx: number) => {
