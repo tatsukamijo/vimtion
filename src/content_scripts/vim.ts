@@ -1087,9 +1087,10 @@ const linkHintReducer = (e: KeyboardEvent): boolean => {
 
     default:
       // Handle character input for filtering hints
-      if (e.key.length === 1 && /[a-z]/.test(e.key)) {
-        vim_info.link_hint_input += e.key;
-        filterHintsByInput(vim_info.link_hint_input);
+      const key = e.key.toLowerCase();
+      if (key.length === 1 && /[a-z]/.test(key)) {
+        vim_info.link_hint_input += key;
+        filterHintsByInput(vim_info.link_hint_input, e.shiftKey);
         return true;
       }
       return false;
@@ -1194,7 +1195,7 @@ const removeAllHintOverlays = () => {
   vim_info.link_hints = [];
 };
 
-const filterHintsByInput = (input: string) => {
+const filterHintsByInput = (input: string, shiftKey: boolean) => {
   const { vim_info } = window;
   let matchedHint: LinkHint | null = null;
 
@@ -1225,15 +1226,20 @@ const filterHintsByInput = (input: string) => {
 
   // If we have an exact match, navigate to it
   if (matchedHint) {
-    navigateToLink(matchedHint.link);
+    navigateToLink(matchedHint.link, shiftKey);
   }
 };
 
-const navigateToLink = (link: HTMLAnchorElement) => {
+const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) => {
   const { vim_info } = window;
 
-  // For now, just click the link
-  link.click();
+  if (openInNewTab) {
+    // Open link in new tab
+    window.open(link.href, '_blank');
+  } else {
+    // Open in same tab/window (ignore target attribute)
+    window.location.href = link.href;
+  }
 
   // Exit link-hint mode
   removeAllHintOverlays();
