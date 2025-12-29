@@ -8,6 +8,12 @@ interface VimtionSettings {
   cursorColor: string;
   visualHighlightColor: string;
   showUpdateNotifications: boolean;
+  linkHintsEnabled: boolean;
+  hintCharacters: string;
+  hintBackgroundColor: string;
+  hintTextColor: string;
+  hintMatchedColor: string;
+  hintFontSize: number;
 }
 
 const DEFAULT_SETTINGS: VimtionSettings = {
@@ -18,6 +24,12 @@ const DEFAULT_SETTINGS: VimtionSettings = {
   cursorColor: '#667eea',
   visualHighlightColor: '#667eea',
   showUpdateNotifications: true,
+  linkHintsEnabled: true,
+  hintCharacters: 'asdfghjklqwertyuiopzxcvbnm',
+  hintBackgroundColor: '#333333',
+  hintTextColor: '#ffffff',
+  hintMatchedColor: '#ff4458',
+  hintFontSize: 14,
 };
 
 // Load settings from storage
@@ -39,6 +51,17 @@ function loadSettings() {
     // Apply theme color to page
     applyThemeColor(settings.statusBarColor);
 
+    // Link Hints
+    (document.getElementById('linkHintsEnabled') as HTMLInputElement).checked = settings.linkHintsEnabled;
+    (document.getElementById('hintCharacters') as HTMLInputElement).value = settings.hintCharacters;
+    (document.getElementById('hintBackgroundColor') as HTMLInputElement).value = settings.hintBackgroundColor;
+    (document.getElementById('hintBackgroundColorText') as HTMLInputElement).value = settings.hintBackgroundColor;
+    (document.getElementById('hintTextColor') as HTMLInputElement).value = settings.hintTextColor;
+    (document.getElementById('hintTextColorText') as HTMLInputElement).value = settings.hintTextColor;
+    (document.getElementById('hintMatchedColor') as HTMLInputElement).value = settings.hintMatchedColor;
+    (document.getElementById('hintMatchedColorText') as HTMLInputElement).value = settings.hintMatchedColor;
+    (document.getElementById('hintFontSize') as HTMLInputElement).value = settings.hintFontSize.toString();
+
     // Notifications
     (document.getElementById('showUpdateNotifications') as HTMLInputElement).checked = settings.showUpdateNotifications;
   });
@@ -54,6 +77,12 @@ function saveSettings() {
     cursorColor: (document.getElementById('cursorColor') as HTMLInputElement).value,
     visualHighlightColor: (document.getElementById('visualHighlightColor') as HTMLInputElement).value,
     showUpdateNotifications: (document.getElementById('showUpdateNotifications') as HTMLInputElement).checked,
+    linkHintsEnabled: (document.getElementById('linkHintsEnabled') as HTMLInputElement).checked,
+    hintCharacters: (document.getElementById('hintCharacters') as HTMLInputElement).value,
+    hintBackgroundColor: (document.getElementById('hintBackgroundColor') as HTMLInputElement).value,
+    hintTextColor: (document.getElementById('hintTextColor') as HTMLInputElement).value,
+    hintMatchedColor: (document.getElementById('hintMatchedColor') as HTMLInputElement).value,
+    hintFontSize: parseInt((document.getElementById('hintFontSize') as HTMLInputElement).value, 10),
   };
 
   chrome.storage.sync.set(settings, () => {
@@ -154,6 +183,9 @@ function setupColorPickers() {
     { picker: 'statusBarColor', text: 'statusBarColorText' },
     { picker: 'cursorColor', text: 'cursorColorText' },
     { picker: 'visualHighlightColor', text: 'visualHighlightColorText' },
+    { picker: 'hintBackgroundColor', text: 'hintBackgroundColorText' },
+    { picker: 'hintTextColor', text: 'hintTextColorText' },
+    { picker: 'hintMatchedColor', text: 'hintMatchedColorText' },
   ];
 
   colorInputs.forEach(({ picker, text }) => {
