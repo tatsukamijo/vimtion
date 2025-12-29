@@ -48,6 +48,75 @@ let currentSettings: VimtionSettings = { ...DEFAULT_SETTINGS };
 // Link selection mode state
 let linkSelectionMode = false;
 let availableLinks: HTMLAnchorElement[] = [];
+
+// Cursor position storage helpers
+const saveCursorPosition = () => {
+  const { vim_info } = window;
+  const currentUrl = window.location.href;
+
+  try {
+    // Get existing positions map
+    const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
+    const positionsMap: Record<string, any> = savedPositions ? JSON.parse(savedPositions) : {};
+
+    // Save position for current URL
+    positionsMap[currentUrl] = {
+      active_line: vim_info.active_line,
+      cursor_position: vim_info.cursor_position,
+      timestamp: Date.now()
+    };
+
+    // Clean up old entries (older than 60 seconds)
+    const now = Date.now();
+    Object.keys(positionsMap).forEach(url => {
+      if (now - positionsMap[url].timestamp > 60000) {
+        delete positionsMap[url];
+      }
+    });
+
+    sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
+  } catch (e) {
+    // Ignore storage errors
+  }
+};
+
+const restoreCursorPosition = () => {
+  const currentUrl = window.location.href;
+
+  try {
+    const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
+
+    if (savedPositions) {
+      const positionsMap: Record<string, any> = JSON.parse(savedPositions);
+      const data = positionsMap[currentUrl];
+
+      if (data) {
+        const age = Date.now() - data.timestamp;
+
+        // Only restore if data is recent (within 60 seconds)
+        if (age < 60000) {
+          const { vim_info } = window;
+
+          // Wait for lines to be initialized
+          setTimeout(() => {
+            if (data.active_line < vim_info.lines.length) {
+              vim_info.active_line = data.active_line;
+              vim_info.cursor_position = data.cursor_position;
+
+              const targetElement = vim_info.lines[data.active_line]?.element;
+              if (targetElement && document.contains(targetElement)) {
+                setCursorPosition(targetElement, data.cursor_position);
+                updateBlockCursor();
+              }
+            }
+          }, 100);
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore storage errors
+  }
+};
 let selectedLinkIndex = 0;
 
 // Helper functions for link selection mode
@@ -1297,6 +1366,11 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
   const linkPageId = extractPageId(link.href);
   const currentPageId = extractPageId(window.location.href);
   const isBlockLink = link.href.includes('#') && linkPageId === currentPageId;
+
+  // Save cursor position before navigation (only for page links, not block links or new tabs)
+  if (!isBlockLink && !openInNewTab) {
+    saveCursorPosition();
+  }
 
   // Disable unsaved changes warning before any navigation
   disableNotionUnsavedWarning();
@@ -4423,7 +4497,37 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         e.stopPropagation();
         const selectedLink = availableLinks[selectedLinkIndex];
         exitLinkSelectionMode();
-        selectedLink.click();
+
+        // Check if it's a block link or page link to save cursor position
+        const extractPageId = (url: string) => {
+          const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
+          return match ? match[1] : null;
+        };
+        const linkPageId = extractPageId(selectedLink.href);
+        const currentPageId = extractPageId(window.location.href);
+        const isBlockLink = selectedLink.href.includes('#') && linkPageId === currentPageId;
+
+        // Save cursor position before navigating (only for page links, not block links)
+        // Shift+Enter opens in new tab, so don't save in that case either
+        if (!isBlockLink && !e.shiftKey) {
+          saveCursorPosition();
+        }
+
+        // Disable unsaved changes warning before navigation
+        disableNotionUnsavedWarning();
+
+        if (e.shiftKey) {
+          // Open in new tab
+          window.open(selectedLink.href, '_blank');
+          restoreNotionUnsavedWarning();
+        } else {
+          // Click to navigate
+          selectedLink.click();
+          setTimeout(() => {
+            restoreNotionUnsavedWarning();
+          }, 100);
+        }
+
         return true;
 
       case "d":
@@ -4912,6 +5016,8 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "H":
       // Go back in browser history
+      // Save cursor position before navigating
+      saveCursorPosition();
       // Temporarily disable unsaved changes warning
       disableNotionUnsavedWarning();
       window.history.back();
@@ -4922,6 +5028,8 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "L":
       // Go forward in browser history
+      // Save cursor position before navigating
+      saveCursorPosition();
       // Temporarily disable unsaved changes warning
       disableNotionUnsavedWarning();
       window.history.forward();
@@ -5328,6 +5436,9 @@ const updateInfoContainer = () => {
       if (editableElements.length > 0) {
         setLines(editableElements);
         isReinitializing = false;
+
+        // Restore cursor position after navigation (if available)
+        restoreCursorPosition();
       } else {
         // Retry after a longer delay if elements not found yet
         isReinitializing = false;
