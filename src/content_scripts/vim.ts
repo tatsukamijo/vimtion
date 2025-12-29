@@ -899,7 +899,7 @@ const getCursorIndex = () => {
   return i;
 };
 
-const getModeText = (mode: "insert" | "normal" | "visual" | "visual-line") => {
+const getModeText = (mode: "insert" | "normal" | "visual" | "visual-line" | "link-hint") => {
   return `-- ${mode.toUpperCase()} --`;
 };
 
@@ -1030,6 +1030,13 @@ const handleKeydown = (e: KeyboardEvent) => {
       e.stopPropagation();
       e.stopImmediatePropagation();
     }
+  } else if (vim_info.mode === "link-hint") {
+    const handled = linkHintReducer(e);
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
   } else {
     insertReducer(e);
   }
@@ -1041,7 +1048,7 @@ const initVimInfo = () => {
     cursor_position: 0,
     desired_column: 0, // Remember cursor column for j/k navigation
     lines: [] as any,
-    mode: "normal" as "normal" | "insert" | "visual" | "visual-line",
+    mode: "normal" as "normal" | "insert" | "visual" | "visual-line" | "link-hint",
     visual_start_line: 0,
     visual_start_pos: 0,
     pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "ya" | "da" | "ca" | "vi" | "va" | "g" | "f" | "F" | "t" | "T" | "df" | "dF" | "dt" | "dT" | "cf" | "cF" | "ct" | "cT" | null, // For commands like yy, dd, gg, ff, df, etc.
@@ -1063,6 +1070,22 @@ const insertReducer = (e: KeyboardEvent) => {
       break;
   }
   return;
+};
+
+const linkHintReducer = (e: KeyboardEvent): boolean => {
+  const { vim_info } = window;
+
+  switch (e.key) {
+    case "Escape":
+      // Exit link-hint mode and return to normal mode
+      vim_info.mode = "normal";
+      updateInfoContainer();
+      return true;
+
+    default:
+      // TODO: Handle character input for filtering hints
+      return false;
+  }
 };
 
 const startVisualMode = () => {
@@ -1100,6 +1123,17 @@ const startVisualLineMode = () => {
   }
 
   updateVisualLineSelection();
+  updateInfoContainer();
+};
+
+const enterLinkHintMode = () => {
+  const { vim_info } = window;
+
+  // Switch to link-hint mode
+  vim_info.mode = "link-hint";
+
+  // TODO: Detect all links and show hints
+
   updateInfoContainer();
 };
 
@@ -3652,6 +3686,9 @@ const handlePendingOperator = (key: string): boolean => {
       case "g":
         jumpToTop();
         return true;
+      case "l":
+        enterLinkHintMode();
+        return true;
       default:
         return true;
     }
@@ -4989,7 +5026,7 @@ const updateInfoContainer = () => {
   };
 
   // Listen for scroll events to update cursor position when active line goes off-screen
-  let scrollTimeout: NodeJS.Timeout | null = null;
+  let scrollTimeout: number | null = null;
   const handleScroll = () => {
     // Debounce scroll events
     if (scrollTimeout) {
