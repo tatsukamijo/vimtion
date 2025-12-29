@@ -212,7 +212,7 @@ The following Vim features are not implemented:
 - [ ] **Line movement**: Alt/Option key for moving lines up/down
 - [ ] **Visual-line performance**: Optimize `Shift+V` for better performance, currently a bit slow
 - [ ] **Scroll cursor positioning**: Maintain proper cursor position during/after `Ctrl+d`/`Ctrl+u` scrolling
-- [ ] **Todo toggle**: Press `Enter` to check/uncheck todo items
+- [x] **Todo toggle**: Press `Enter` to check/uncheck todo items
 - [ ] **Table navigation**: Vim-like navigation within Notion tables (similar to page link handling)
 - [ ] **Repeat command** (`.`): Repeat the last command
 

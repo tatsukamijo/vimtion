@@ -4244,9 +4244,75 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
 
     case "Enter":
-      // Open link at cursor position or nearby (within +/- 1 line)
+      // Check if current line is a TODO item and toggle it
       {
         const currentLine = vim_info.lines[vim_info.active_line];
+        const blockElement = currentLine.element.closest('[data-block-id]');
+
+        // Check if this is a TODO block by looking for the checkbox
+        const isTodoBlock = blockElement?.className.includes('notion-to_do-block');
+        const checkbox = blockElement?.querySelector('[data-content-editable-void="true"]');
+
+        if (isTodoBlock && checkbox) {
+          // This is a TODO item - toggle the checkbox
+          const checkboxInput = checkbox.querySelector('input[type="checkbox"]');
+
+          if (checkboxInput) {
+            // Save current cursor position and line index before toggling
+            const cursorPos = getCursorIndexInElement(currentLine.element);
+            const savedActiveLine = vim_info.active_line;
+
+            const checkboxEl = checkboxInput as HTMLElement;
+            const rect = checkboxEl.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+
+            // Simulate complete mouse interaction for reliable toggling
+            checkboxEl.dispatchEvent(new MouseEvent('mouseenter', {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y
+            }));
+
+            checkboxEl.dispatchEvent(new MouseEvent('mousedown', {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y,
+              button: 0
+            }));
+
+            checkboxEl.dispatchEvent(new MouseEvent('mouseup', {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y,
+              button: 0
+            }));
+
+            checkboxEl.click();
+
+            // Restore cursor position and active line after toggling
+            setTimeout(() => {
+              // Restore the active line index (may have been changed by events)
+              vim_info.active_line = savedActiveLine;
+
+              // Restore cursor position
+              setCursorPosition(currentLine.element, cursorPos);
+              currentLine.element.focus({ preventScroll: true });
+              updateBlockCursor();
+              updateInfoContainer();
+            }, 10);
+
+            return true; // Handled the Enter key
+          }
+        }
+
+        // Not a TODO item, continue with link navigation logic
         const cursorPos = getCursorIndexInElement(currentLine.element);
 
         // First, try to find link at cursor position in current line
