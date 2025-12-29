@@ -80,6 +80,59 @@
         </div>
       </section>
 
+      <!-- Link Hints Settings -->
+      <section class="setting-section">
+        <h2>Link Hints</h2>
+
+        <div class="setting-item">
+          <label class="toggle-label">
+            <input type="checkbox" id="linkHintsEnabled" class="toggle-input" checked>
+            <span class="toggle-slider"></span>
+            <span class="label-text">Enable Link Hints</span>
+          </label>
+          <p class="setting-description">Enable link hints feature (gl command)</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="hintCharacters">Hint Characters</label>
+          <input type="text" id="hintCharacters" value="asdfghjklqwertyuiopzxcvbnm" class="color-text-input" style="width: 100%; max-width: 400px;">
+          <p class="setting-description">Characters used to generate link hints (in priority order)</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="hintBackgroundColor">Hint Background Color</label>
+          <div class="color-picker-wrapper">
+            <input type="color" id="hintBackgroundColor" value="#333333">
+            <input type="text" id="hintBackgroundColorText" value="#333333" class="color-text-input">
+          </div>
+          <p class="setting-description">Background color for hint overlays</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="hintTextColor">Hint Text Color</label>
+          <div class="color-picker-wrapper">
+            <input type="color" id="hintTextColor" value="#ffffff">
+            <input type="text" id="hintTextColorText" value="#ffffff" class="color-text-input">
+          </div>
+          <p class="setting-description">Text color for hint characters</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="hintMatchedColor">Hint Matched Color</label>
+          <div class="color-picker-wrapper">
+            <input type="color" id="hintMatchedColor" value="#ff4458">
+            <input type="text" id="hintMatchedColorText" value="#ff4458" class="color-text-input">
+          </div>
+          <p class="setting-description">Text color for matched hint characters</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="hintFontSize">Hint Font Size (px)</label>
+          <input type="number" id="hintFontSize" value="12" min="8" max="24" class="color-text-input" style="width: 80px;">
+          <p class="setting-description">Font size for hint overlays (8-24 pixels)</p>
+        </div>
+      </section>
+
       <!-- Notification Settings -->
       <section class="setting-section">
         <h2>Notifications</h2>

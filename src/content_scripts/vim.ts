@@ -17,6 +17,12 @@ interface VimtionSettings {
   cursorColor: string;
   visualHighlightColor: string;
   showUpdateNotifications: boolean;
+  linkHintsEnabled: boolean;
+  hintCharacters: string;
+  hintBackgroundColor: string;
+  hintTextColor: string;
+  hintMatchedColor: string;
+  hintFontSize: number;
 }
 
 // Default settings
@@ -28,6 +34,12 @@ const DEFAULT_SETTINGS: VimtionSettings = {
   cursorColor: '#667eea',
   visualHighlightColor: '#667eea',
   showUpdateNotifications: true,
+  linkHintsEnabled: true,
+  hintCharacters: 'asdfghjklqwertyuiopzxcvbnm',
+  hintBackgroundColor: '#333333',
+  hintTextColor: '#ffffff',
+  hintMatchedColor: '#ff4458',
+  hintFontSize: 12,
 };
 
 // Current settings (loaded from storage)
@@ -1136,6 +1148,11 @@ const startVisualLineMode = () => {
 };
 
 const enterLinkHintMode = () => {
+  // Check if link hints feature is enabled
+  if (!currentSettings.linkHintsEnabled) {
+    return;
+  }
+
   const { vim_info } = window;
 
   // Switch to link-hint mode
@@ -1144,6 +1161,13 @@ const enterLinkHintMode = () => {
 
   // Detect all links in the document
   const links = detectAllLinks();
+
+  if (links.length === 0) {
+    // No links found, exit immediately
+    vim_info.mode = "normal";
+    updateInfoContainer();
+    return;
+  }
 
   // Generate hints for each link
   const hints = generateHints(links.length);
@@ -1165,10 +1189,10 @@ const createHintOverlay = (link: HTMLAnchorElement, hint: string): HTMLElement =
   overlay.textContent = hint;
   overlay.style.cssText = `
     position: fixed;
-    background: #333333;
-    color: #ffffff;
+    background: ${currentSettings.hintBackgroundColor};
+    color: ${currentSettings.hintTextColor};
     font-family: inherit;
-    font-size: 12px;
+    font-size: ${currentSettings.hintFontSize}px;
     font-weight: bold;
     padding: 2px 5px;
     border-radius: 2px;
@@ -1208,10 +1232,10 @@ const filterHintsByInput = (input: string, shiftKey: boolean) => {
       if (input.length > 0) {
         const matched = hint.substring(0, input.length);
         const remaining = hint.substring(input.length);
-        overlay.innerHTML = `<span style="color: #ff4458">${matched}</span><span style="color: #ffffff">${remaining}</span>`;
+        overlay.innerHTML = `<span style="color: ${currentSettings.hintMatchedColor}">${matched}</span><span style="color: ${currentSettings.hintTextColor}">${remaining}</span>`;
       } else {
         overlay.textContent = hint;
-        overlay.style.color = '#ffffff';
+        overlay.style.color = currentSettings.hintTextColor;
       }
 
       // Check for exact match
@@ -1327,10 +1351,10 @@ const detectAllLinks = (): HTMLAnchorElement[] => {
 };
 
 const generateHints = (count: number): string[] => {
-  const chars = "asdfghjklqwertyuiopzxcvbnm"; // Vimium-style: home row priority
+  const chars = currentSettings.hintCharacters; // Use custom hint characters from settings
   const hints: string[] = [];
 
-  if (count === 0) return hints;
+  if (count === 0 || chars.length === 0) return hints;
 
   // Calculate required hint length to avoid prefix conflicts
   // All hints must have the same length to be prefix-free
@@ -4642,21 +4666,21 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         }
 
         // No link in current line - enter link selection mode
-        // Find all links in the page (including block links)
+        // Find all links in the page (including block links and external URLs)
         const rootElement = vim_info.lines[0]?.element;
         if (rootElement && rootElement.getAttribute('data-content-editable-root') === 'true') {
           const currentRect = currentLineElement.getBoundingClientRect();
           const currentY = currentRect.top + currentRect.height / 2;
 
           // Find all links in root element
-          const allRootLinks = Array.from(rootElement.querySelectorAll('a'));
+          const allRootLinks = Array.from(rootElement.querySelectorAll('a[href]'));
 
-          // Collect all links (including block links)
+          // Collect all links (Notion links, block links, and external URLs)
           const allNotionLinks: Array<{link: HTMLAnchorElement, distance: number, y: number}> = [];
 
           for (const link of allRootLinks) {
             const href = link.href;
-            if (href && href.includes('notion.so')) {
+            if (href) {
               try {
                 const linkRect = link.getBoundingClientRect();
                 const linkY = linkRect.top + linkRect.height / 2;
