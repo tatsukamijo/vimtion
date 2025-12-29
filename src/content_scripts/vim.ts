@@ -1233,9 +1233,23 @@ const filterHintsByInput = (input: string, shiftKey: boolean) => {
 const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) => {
   const { vim_info } = window;
 
+  // Check if this is a block link (same page anchor)
+  // Extract Notion page ID (32-char hex after last dash before ? or #)
+  const extractPageId = (url: string) => {
+    const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
+    return match ? match[1] : null;
+  };
+
+  const linkPageId = extractPageId(link.href);
+  const currentPageId = extractPageId(window.location.href);
+  const isBlockLink = link.href.includes('#') && linkPageId === currentPageId;
+
   if (openInNewTab) {
     // Open link in new tab
     window.open(link.href, '_blank');
+  } else if (isBlockLink) {
+    // For block links (same page anchors), use click to preserve Notion behavior
+    link.click();
   } else {
     // Open in same tab/window (ignore target attribute)
     window.location.href = link.href;
@@ -4574,99 +4588,101 @@ const normalReducer = (e: KeyboardEvent): boolean => {
           charCount += nodeLength;
         }
 
-        if (targetNode) {
-          // Walk up the DOM tree to find links
-          let element = targetNode.parentElement;
-          let depth = 0;
+        // Use detectAllLinks() to find all links (same as gl link hint mode)
+        const allLinks = detectAllLinks();
 
-          while (element && depth < 5) {
-            if (element.tagName === 'A') {
-              const link = element as HTMLAnchorElement;
-              const href = link.href;
+        if (allLinks.length === 0) {
+          return true;
+        }
 
-              if (href) {
-                const url = new URL(href);
-                const currentUrl = new URL(window.location.href);
+        // Get current cursor position on the page
+        const currentLineElement = vim_info.lines[vim_info.active_line]?.element;
+        if (!currentLineElement) {
+          return true;
+        }
 
-                const extractPageId = (pathname: string) => {
-                  const parts = pathname.split('-');
-                  return parts[parts.length - 1];
-                };
+        const currentRect = currentLineElement.getBoundingClientRect();
+        const currentY = currentRect.top + currentRect.height / 2;
 
-                const linkPageId = extractPageId(url.pathname);
-                const currentPageId = extractPageId(currentUrl.pathname);
+        // Find the closest link to cursor position
+        let closestLink: HTMLAnchorElement | null = null;
+        let minDistance = Infinity;
 
-                if (linkPageId === currentPageId && url.hash) {
-                  link.click();
+        for (const link of allLinks) {
+          const linkRect = link.getBoundingClientRect();
+          const linkY = linkRect.top + linkRect.height / 2;
+          const distance = Math.abs(linkY - currentY);
 
-                  setTimeout(() => {
-                    const leafElements = vim_info.lines.filter(line =>
-                      line.element.getAttribute('data-content-editable-leaf') === 'true'
-                    );
-
-                    for (let i = 0; i < leafElements.length; i++) {
-                      const rect = leafElements[i].element.getBoundingClientRect();
-
-                      if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
-                        const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
-
-                        if (actualIndex !== -1) {
-                          vim_info.active_line = actualIndex;
-                          vim_info.cursor_position = 0;
-                          updateBlockCursor();
-                        }
-                        break;
-                      }
-                    }
-                  }, 300);
-                } else if (href.includes('notion.so')) {
-                  link.click();
-                } else {
-                  window.open(href, '_blank');
-                }
-              }
-              return true;
-            }
-
-            element = element.parentElement;
-            depth++;
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestLink = link;
           }
         }
 
-        // If no link found at cursor position, check root element for Notion page links
-        // These links are not inside individual blocks but in the page root
-        const rootElement = vim_info.lines[0]?.element;
-        if (rootElement && rootElement.getAttribute('data-content-editable-root') === 'true') {
-          const currentLineElement = vim_info.lines[vim_info.active_line]?.element;
-          if (!currentLineElement) {
-            return true;
+        if (closestLink) {
+          // Helper to extract page ID (using regex like navigateToLink)
+          const extractPageId = (url: string) => {
+            const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
+            return match ? match[1] : null;
+          };
+
+          // Use navigateToLink to handle all link types consistently
+          navigateToLink(closestLink, false);
+
+          // For block links, update cursor position after navigation
+          const linkPageId = extractPageId(closestLink.href);
+          const currentPageId = extractPageId(window.location.href);
+
+          if (linkPageId === currentPageId && closestLink.href.includes('#')) {
+            setTimeout(() => {
+              const leafElements = vim_info.lines.filter(line =>
+                line.element.getAttribute('data-content-editable-leaf') === 'true'
+              );
+
+              for (let i = 0; i < leafElements.length; i++) {
+                const rect = leafElements[i].element.getBoundingClientRect();
+
+                if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
+                  const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
+
+                  if (actualIndex !== -1) {
+                    vim_info.active_line = actualIndex;
+                    vim_info.cursor_position = 0;
+                    updateBlockCursor();
+                  }
+                  break;
+                }
+              }
+            }, 300);
           }
 
-          // Get current cursor position on the page
-          const currentRect = currentLineElement.getBoundingClientRect();
-          const currentY = currentRect.top + currentRect.height / 2;
+          return true;
+        }
 
+        // Legacy code for Notion page link selection mode
+        const rootElement = vim_info.lines[0]?.element;
+        if (rootElement && rootElement.getAttribute('data-content-editable-root') === 'true') {
           // Find all links in root element
-          const allLinks = Array.from(rootElement.querySelectorAll('a'));
+          const allRootLinks = Array.from(rootElement.querySelectorAll('a'));
 
           // Helper to extract page ID
-          const extractPageId = (pathname: string) => {
+          const extractPageIdLegacy = (pathname: string) => {
             const parts = pathname.split('-');
             return parts[parts.length - 1];
           };
 
           const currentUrl = new URL(window.location.href);
-          const currentPageId = extractPageId(currentUrl.pathname);
+          const currentPageId = extractPageIdLegacy(currentUrl.pathname);
 
           // Collect all Notion page links (no distance limit)
           const allNotionLinks: Array<{link: HTMLAnchorElement, distance: number, y: number}> = [];
 
-          for (const link of allLinks) {
+          for (const link of allRootLinks) {
             const href = link.href;
             if (href && href.includes('notion.so')) {
               try {
                 const url = new URL(href);
-                const linkPageId = extractPageId(url.pathname);
+                const linkPageId = extractPageIdLegacy(url.pathname);
 
                 // Skip if it's a block link on the same page
                 if (linkPageId === currentPageId && url.hash) {
