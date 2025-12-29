@@ -1288,17 +1288,6 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
   vim_info.mode = "normal";
   updateInfoContainer();
 
-  // Check if this is a block link (same page anchor)
-  // Extract Notion page ID (32-char hex after last dash before ? or #)
-  const extractPageId = (url: string) => {
-    const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
-    return match ? match[1] : null;
-  };
-
-  const linkPageId = extractPageId(link.href);
-  const currentPageId = extractPageId(window.location.href);
-  const isBlockLink = link.href.includes('#') && linkPageId === currentPageId;
-
   // Disable unsaved changes warning before any navigation
   disableNotionUnsavedWarning();
 
@@ -1312,13 +1301,17 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
     // Remove target attribute to force same-tab navigation
     const originalTarget = link.target;
     link.target = '';
-    link.click();
-    link.target = originalTarget;
+
+    // Delay click slightly to ensure suppression flag is set
+    setTimeout(() => {
+      link.click();
+      link.target = originalTarget;
+    }, 10);
 
     // Reset flag after navigation
     setTimeout(() => {
       restoreNotionUnsavedWarning();
-    }, 50);
+    }, 100);
   }
 };
 
