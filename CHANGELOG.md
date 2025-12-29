@@ -5,6 +5,52 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-12-30
+
+### Added
+- **Link hint mode** (`gl`): Vimium-style link navigation with keyboard hints
+  - Press `gl` to show hints for all visible links on the page (content, sidebar, and all other links)
+  - Type hint characters to filter and navigate instantly
+  - `Shift+hint` opens link in new tab
+  - Hints are prefix-free with fixed length for intuitive filtering
+  - Supports all link types: external links, Notion page links, and block links
+- **Cursor position restoration**: Automatic save/restore when navigating between pages
+  - Saves cursor position when pressing `gl` or `Shift+H/L`
+  - Restores exact position when returning to previous page with `Shift+H`
+  - Uses Block ID-based restoration for accuracy across DOM re-renders
+  - Persists until tab is closed (no time limit)
+  - Distinguishes intentional navigation from page reload (reload always starts at line 0)
+- **Link hints customization**: Options page now includes link hints appearance settings
+  - Hint characters (default: `asdfghjklqwertyuiopzxcvbnm`)
+  - Background color, text color, matched character color
+  - Font size (default: 14px)
+- **Todo toggle**: Press `Enter` on todo items to check/uncheck them
+- **Enter key link selection mode**: Press `Enter` on empty line to enter selection mode for all links in the document
+
+### Fixed
+- **Block link cursor positioning**: Fixed cursor position when navigating to block links
+  - Accurately finds target block by ID and positions cursor at block start
+  - Works for both link hint mode and Enter key navigation
+- **'addRange() not in document' error**: Prevented error during block link navigation by properly handling selection timing
+- **'Unsaved changes' warning**: Suppressed Notion's warning dialog during Vimtion navigation operations
+  - Intercepts `beforeunload` events during link navigation
+  - Prevents false warnings when using `gl`, `Enter`, or `Shift+Enter` to navigate
+- **Scroll position on cursor restoration**: Restored cursor is now scrolled into view with `scrollIntoView({ block: 'nearest' })`
+  - Avoids creating white space at bottom of page
+  - Ensures restored cursor is visible without excessive scrolling
+- **URL handling with multiple links**: Improved link detection when multiple links exist in the same line
+- **Scroll behavior**: Improved scroll behavior to prevent page jump after `Ctrl+d/u` scrolling
+- **gg/G commands**: Adapted to work correctly with new scrolling method
+
+### Changed
+- **Link hint matched character highlighting**: Only the first matched character is highlighted in a different color (not all matched characters)
+- **Default hint font size**: Changed from 16px to 14px for better readability
+
+### Documentation
+- Updated README with link hint mode documentation and demo video
+- Added two link navigation methods (link hint mode vs Enter key navigation)
+- Updated Options page documentation with link hints customization
+
 ## [1.2.1] - 2025-12-20
 
 ### Added
