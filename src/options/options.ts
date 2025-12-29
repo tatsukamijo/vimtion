@@ -29,7 +29,7 @@ const DEFAULT_SETTINGS: VimtionSettings = {
   hintBackgroundColor: '#333333',
   hintTextColor: '#ffffff',
   hintMatchedColor: '#ff4458',
-  hintFontSize: 12,
+  hintFontSize: 14,
 };
 
 // Load settings from storage
