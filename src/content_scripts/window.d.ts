@@ -3,6 +3,12 @@ interface VimLine {
   cursor_position: number;
 }
 
+interface LinkHint {
+  link: HTMLAnchorElement;
+  hint: string;
+  overlay: HTMLElement;
+}
+
 interface VimInfo {
   active_line: number;
   cursor_position: number;
@@ -15,6 +21,7 @@ interface VimInfo {
   pending_operator: "y" | "d" | "c" | "yi" | "di" | "ci" | "ya" | "da" | "ca" | "vi" | "va" | "g" | "f" | "F" | "t" | "T" | "df" | "dF" | "dt" | "dT" | "cf" | "cF" | "ct" | "cT" | null;
   undo_count: number;
   in_undo_group: boolean;
+  link_hints: LinkHint[];
 }
 
 declare global {

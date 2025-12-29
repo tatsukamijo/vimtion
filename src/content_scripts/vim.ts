@@ -1054,6 +1054,7 @@ const initVimInfo = () => {
     pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "ya" | "da" | "ca" | "vi" | "va" | "g" | "f" | "F" | "t" | "T" | "df" | "dF" | "dt" | "dT" | "cf" | "cF" | "ct" | "cT" | null, // For commands like yy, dd, gg, ff, df, etc.
     undo_count: 0, // Track number of native undo operations in current group
     in_undo_group: false, // Whether we're currently in a grouped operation
+    link_hints: [] as LinkHint[],
   };
   window.vim_info = vim_info;
 };
@@ -1078,6 +1079,7 @@ const linkHintReducer = (e: KeyboardEvent): boolean => {
   switch (e.key) {
     case "Escape":
       // Exit link-hint mode and return to normal mode
+      removeAllHintOverlays();
       vim_info.mode = "normal";
       updateInfoContainer();
       return true;
@@ -1140,15 +1142,53 @@ const enterLinkHintMode = () => {
   const hints = generateHints(links.length);
   console.log(`[Link Hint] Generated hints:`, hints);
 
-  // Assign hints to links
+  // Create and display hint overlays
+  vim_info.link_hints = [];
   links.forEach((link, index) => {
-    const rect = link.getBoundingClientRect();
-    console.log(`[Link Hint] ${index}: hint="${hints[index]}" for "${link.textContent?.trim().substring(0, 30)}" at (${Math.round(rect.top)}, ${Math.round(rect.left)})`);
+    const hint = hints[index];
+    const overlay = createHintOverlay(link, hint);
+    vim_info.link_hints.push({ link, hint, overlay });
   });
 
-  // TODO: Display hint overlays
+  console.log(`[Link Hint] Created ${vim_info.link_hints.length} hint overlays`);
 
   updateInfoContainer();
+};
+
+const createHintOverlay = (link: HTMLAnchorElement, hint: string): HTMLElement => {
+  const overlay = document.createElement('div');
+  overlay.className = 'vim-link-hint';
+  overlay.textContent = hint;
+  overlay.style.cssText = `
+    position: fixed;
+    background: #333333;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 2px 5px;
+    border-radius: 2px;
+    z-index: 99999;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    text-transform: lowercase;
+    pointer-events: none;
+  `;
+
+  // Position overlay at top-left of link
+  const rect = link.getBoundingClientRect();
+  overlay.style.top = `${rect.top + window.scrollY}px`;
+  overlay.style.left = `${rect.left + window.scrollX}px`;
+
+  document.body.appendChild(overlay);
+  return overlay;
+};
+
+const removeAllHintOverlays = () => {
+  const { vim_info } = window;
+  vim_info.link_hints.forEach(({ overlay }) => {
+    overlay.remove();
+  });
+  vim_info.link_hints = [];
 };
 
 const detectAllLinks = (): HTMLAnchorElement[] => {
