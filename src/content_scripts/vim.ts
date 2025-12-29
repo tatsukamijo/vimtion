@@ -1288,6 +1288,16 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
   vim_info.mode = "normal";
   updateInfoContainer();
 
+  // Check if this is a block link (same page anchor)
+  const extractPageId = (url: string) => {
+    const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
+    return match ? match[1] : null;
+  };
+
+  const linkPageId = extractPageId(link.href);
+  const currentPageId = extractPageId(window.location.href);
+  const isBlockLink = link.href.includes('#') && linkPageId === currentPageId;
+
   // Disable unsaved changes warning before any navigation
   disableNotionUnsavedWarning();
 
@@ -1312,6 +1322,38 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
     setTimeout(() => {
       restoreNotionUnsavedWarning();
     }, 100);
+
+    // For block links, update cursor position after navigation
+    if (isBlockLink) {
+      const blockId = link.href.split('#')[1].split('?')[0];
+
+      setTimeout(() => {
+        // Try to find the actual block element by its ID
+        let blockElement = document.querySelector(`[data-block-id="${blockId}"]`);
+
+        // If not found, try with hyphens (UUID format)
+        if (!blockElement) {
+          const blockIdWithHyphens = blockId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+          blockElement = document.querySelector(`[data-block-id="${blockIdWithHyphens}"]`);
+        }
+
+        if (blockElement) {
+          // Find the leaf element within this block
+          const leafElement = blockElement.querySelector('[data-content-editable-leaf="true"]');
+
+          if (leafElement) {
+            // Find this leaf in vim_info.lines
+            const actualIndex = vim_info.lines.findIndex(line => line.element === leafElement);
+
+            if (actualIndex !== -1) {
+              vim_info.active_line = actualIndex;
+              vim_info.cursor_position = 0;
+              updateBlockCursor();
+            }
+          }
+        }
+      }, 300);
+    }
   }
 };
 
@@ -4669,23 +4711,32 @@ const normalReducer = (e: KeyboardEvent): boolean => {
             const currentPageId = extractPageId(window.location.href);
 
             if (linkPageId === currentPageId && closestLink.href.includes('#')) {
+              // Extract block ID from URL hash
+              const blockId = closestLink.href.split('#')[1].split('?')[0];
+
               setTimeout(() => {
-                const leafElements = vim_info.lines.filter(line =>
-                  line.element.getAttribute('data-content-editable-leaf') === 'true'
-                );
+                // Try to find the actual block element by its ID
+                let blockElement = document.querySelector(`[data-block-id="${blockId}"]`);
 
-                for (let i = 0; i < leafElements.length; i++) {
-                  const rect = leafElements[i].element.getBoundingClientRect();
+                // If not found, try with hyphens (UUID format)
+                if (!blockElement) {
+                  const blockIdWithHyphens = blockId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+                  blockElement = document.querySelector(`[data-block-id="${blockIdWithHyphens}"]`);
+                }
 
-                  if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
-                    const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
+                if (blockElement) {
+                  // Find the leaf element within this block
+                  const leafElement = blockElement.querySelector('[data-content-editable-leaf="true"]');
+
+                  if (leafElement) {
+                    // Find this leaf in vim_info.lines
+                    const actualIndex = vim_info.lines.findIndex(line => line.element === leafElement);
 
                     if (actualIndex !== -1) {
                       vim_info.active_line = actualIndex;
                       vim_info.cursor_position = 0;
                       updateBlockCursor();
                     }
-                    break;
                   }
                 }
               }, 300);
@@ -4703,7 +4754,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
           const currentY = currentRect.top + currentRect.height / 2;
 
           // Find all links in root element
-          const allRootLinks = Array.from(rootElement.querySelectorAll('a[href]'));
+          const allRootLinks = Array.from(rootElement.querySelectorAll('a[href]')) as HTMLAnchorElement[];
 
           // Collect all links (Notion links, block links, and external URLs)
           const allNotionLinks: Array<{link: HTMLAnchorElement, distance: number, y: number}> = [];
