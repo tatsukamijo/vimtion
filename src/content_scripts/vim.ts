@@ -1055,6 +1055,7 @@ const initVimInfo = () => {
     undo_count: 0, // Track number of native undo operations in current group
     in_undo_group: false, // Whether we're currently in a grouped operation
     link_hints: [] as LinkHint[],
+    link_hint_input: "",
   };
   window.vim_info = vim_info;
 };
@@ -1085,7 +1086,14 @@ const linkHintReducer = (e: KeyboardEvent): boolean => {
       return true;
 
     default:
-      // TODO: Handle character input for filtering hints
+      // Handle character input for filtering hints
+      if (e.key.length === 1 && /[a-z]/.test(e.key)) {
+        vim_info.link_hint_input += e.key;
+        console.log(`[Link Hint] Input: "${vim_info.link_hint_input}"`);
+
+        filterHintsByInput(vim_info.link_hint_input);
+        return true;
+      }
       return false;
   }
 };
@@ -1133,6 +1141,7 @@ const enterLinkHintMode = () => {
 
   // Switch to link-hint mode
   vim_info.mode = "link-hint";
+  vim_info.link_hint_input = "";
 
   // Detect all links in the document
   const links = detectAllLinks();
@@ -1189,6 +1198,54 @@ const removeAllHintOverlays = () => {
     overlay.remove();
   });
   vim_info.link_hints = [];
+};
+
+const filterHintsByInput = (input: string) => {
+  const { vim_info } = window;
+  let matchedHint: LinkHint | null = null;
+
+  vim_info.link_hints.forEach(({ hint, overlay }) => {
+    if (hint.startsWith(input)) {
+      // Show this hint
+      overlay.style.display = 'block';
+
+      // Change background color for matched portion
+      if (input.length > 0) {
+        overlay.style.background = '#ff4458'; // Reddish pink for matched
+      }
+
+      // Check for exact match
+      if (hint === input) {
+        matchedHint = vim_info.link_hints.find(h => h.hint === hint)!;
+      }
+    } else {
+      // Hide non-matching hints
+      overlay.style.display = 'none';
+    }
+  });
+
+  console.log(`[Link Hint] Filtered: ${vim_info.link_hints.filter(h => h.overlay.style.display !== 'none').length} visible`);
+
+  // If we have an exact match, navigate to it
+  if (matchedHint) {
+    console.log(`[Link Hint] Exact match: "${matchedHint.hint}" -> ${matchedHint.link.href}`);
+    navigateToLink(matchedHint.link);
+  }
+};
+
+const navigateToLink = (link: HTMLAnchorElement) => {
+  const { vim_info } = window;
+
+  // TODO: Handle different link types (external, block, Notion page)
+  console.log(`[Link Hint] Navigating to: ${link.href}`);
+
+  // For now, just click the link
+  link.click();
+
+  // Exit link-hint mode
+  removeAllHintOverlays();
+  vim_info.mode = "normal";
+  updateInfoContainer();
 };
 
 const detectAllLinks = (): HTMLAnchorElement[] => {

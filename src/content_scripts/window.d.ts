@@ -22,6 +22,7 @@ interface VimInfo {
   undo_count: number;
   in_undo_group: boolean;
   link_hints: LinkHint[];
+  link_hint_input: string;
 }
 
 declare global {
