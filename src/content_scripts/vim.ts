@@ -5325,6 +5325,7 @@ const setActiveLine = (idx: number) => {
   if (idx >= lines.length) i = lines.length - 1;
   if (i < 0) i = 0;
 
+  const previousActiveLine = window.vim_info.active_line;
   window.vim_info.active_line = i;
 
   const targetElement = lines[i].element;
@@ -5490,6 +5491,9 @@ const updateInfoContainer = () => {
         sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
       }
     }
+
+    // Clear the intentional navigation flag on initial page load (reload)
+    sessionStorage.removeItem('vimtion_intentional_navigation');
 
     // Also reset vim_info.active_line to 0 to ensure clean state
     // (Notion might auto-focus elements during page load, which could set active_line)
