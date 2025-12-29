@@ -1089,8 +1089,6 @@ const linkHintReducer = (e: KeyboardEvent): boolean => {
       // Handle character input for filtering hints
       if (e.key.length === 1 && /[a-z]/.test(e.key)) {
         vim_info.link_hint_input += e.key;
-        console.log(`[Link Hint] Input: "${vim_info.link_hint_input}"`);
-
         filterHintsByInput(vim_info.link_hint_input);
         return true;
       }
@@ -1145,11 +1143,9 @@ const enterLinkHintMode = () => {
 
   // Detect all links in the document
   const links = detectAllLinks();
-  console.log(`[Link Hint] Found ${links.length} visible links`);
 
   // Generate hints for each link
   const hints = generateHints(links.length);
-  console.log(`[Link Hint] Generated hints:`, hints);
 
   // Create and display hint overlays
   vim_info.link_hints = [];
@@ -1158,8 +1154,6 @@ const enterLinkHintMode = () => {
     const overlay = createHintOverlay(link, hint);
     vim_info.link_hints.push({ link, hint, overlay });
   });
-
-  console.log(`[Link Hint] Created ${vim_info.link_hints.length} hint overlays`);
 
   updateInfoContainer();
 };
@@ -1229,20 +1223,14 @@ const filterHintsByInput = (input: string) => {
     }
   });
 
-  console.log(`[Link Hint] Filtered: ${vim_info.link_hints.filter(h => h.overlay.style.display !== 'none').length} visible`);
-
   // If we have an exact match, navigate to it
   if (matchedHint) {
-    console.log(`[Link Hint] Exact match: "${matchedHint.hint}" -> ${matchedHint.link.href}`);
     navigateToLink(matchedHint.link);
   }
 };
 
 const navigateToLink = (link: HTMLAnchorElement) => {
   const { vim_info } = window;
-
-  // TODO: Handle different link types (external, block, Notion page)
-  console.log(`[Link Hint] Navigating to: ${link.href}`);
 
   // For now, just click the link
   link.click();
@@ -1261,7 +1249,6 @@ const detectAllLinks = (): HTMLAnchorElement[] => {
     '[data-content-editable-root] a[href]'
   );
   contentEditableLinks.forEach((link) => links.push(link));
-  console.log(`[Link Hint] Content editable links: ${contentEditableLinks.length}`);
 
   // Strategy 2: Find sidebar links using multiple selectors for robustness
   const sidebarSelectors = [
@@ -1283,7 +1270,6 @@ const detectAllLinks = (): HTMLAnchorElement[] => {
       }
     });
   });
-  console.log(`[Link Hint] Sidebar links: ${sidebarLinkCount}`);
 
   // Strategy 3: Find all other links in the document
   const allLinks = document.querySelectorAll<HTMLAnchorElement>('a[href]');
@@ -1295,14 +1281,12 @@ const detectAllLinks = (): HTMLAnchorElement[] => {
       otherLinkCount++;
     }
   });
-  console.log(`[Link Hint] Other links: ${otherLinkCount}`);
 
   // Filter out invisible links (zero dimensions or off-screen)
   const visibleLinks = links.filter((link) => {
     const rect = link.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   });
-  console.log(`[Link Hint] Visible links: ${visibleLinks.length} (filtered from ${links.length} total)`);
 
   // Sort links by position: top to bottom, left to right
   visibleLinks.sort((a, b) => {
