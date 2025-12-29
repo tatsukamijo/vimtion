@@ -204,7 +204,7 @@ The following Vim features are not implemented:
 - Page title editing cursor position fix
 
 ### Planned Features
-- [ ] **Multiple links in same line**: Improved handling when multiple links exist on a single line
+- [x] **Multiple links in same line**: Improved handling when multiple links exist on a single line
 - [ ] **Smart scrolling**: Keep cursor position stable after `j`/`k` navigation following scroll
 - [ ] **Help page** (`?`): Display Vimium-style help overlay showing all keybindings
 - [ ] **Visual block mode** (`Ctrl+v`): Rectangular/column selection

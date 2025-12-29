@@ -4244,7 +4244,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       // Open link at cursor position or nearby (within +/- 1 line)
       {
         const currentLine = vim_info.lines[vim_info.active_line];
-        const cursorPos = vim_info.cursor_position;
+        const cursorPos = getCursorIndexInElement(currentLine.element);
 
         // First, try to find link at cursor position in current line
         const walker = document.createTreeWalker(
