@@ -1135,12 +1135,18 @@ const enterLinkHintMode = () => {
   // Detect all links in the document
   const links = detectAllLinks();
   console.log(`[Link Hint] Found ${links.length} visible links`);
+
+  // Generate hints for each link
+  const hints = generateHints(links.length);
+  console.log(`[Link Hint] Generated hints:`, hints);
+
+  // Assign hints to links
   links.forEach((link, index) => {
     const rect = link.getBoundingClientRect();
-    console.log(`[Link Hint] ${index}: "${link.textContent?.trim().substring(0, 30)}" at (${Math.round(rect.top)}, ${Math.round(rect.left)}) - ${link.href}`);
+    console.log(`[Link Hint] ${index}: hint="${hints[index]}" for "${link.textContent?.trim().substring(0, 30)}" at (${Math.round(rect.top)}, ${Math.round(rect.left)})`);
   });
 
-  // TODO: Generate hints and show overlays
+  // TODO: Display hint overlays
 
   updateInfoContainer();
 };
@@ -1212,6 +1218,26 @@ const detectAllLinks = (): HTMLAnchorElement[] => {
   });
 
   return visibleLinks;
+};
+
+const generateHints = (count: number): string[] => {
+  const chars = "asdfghjklqwertyuiopzxcvbnm"; // Vimium-style: home row priority
+  const hints: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    let hint = "";
+    let num = i;
+
+    // Convert number to base-26 hint (a, s, d, ..., aa, as, ad, ...)
+    do {
+      hint = chars[num % chars.length] + hint;
+      num = Math.floor(num / chars.length);
+    } while (num > 0);
+
+    hints.push(hint);
+  }
+
+  return hints;
 };
 
 const updateVisualLineSelection = () => {
