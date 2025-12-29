@@ -4526,6 +4526,42 @@ const normalReducer = (e: KeyboardEvent): boolean => {
           setTimeout(() => {
             restoreNotionUnsavedWarning();
           }, 100);
+
+          // For block links, update cursor position after navigation
+          if (isBlockLink) {
+            const blockId = selectedLink.href.split('#')[1].split('?')[0];
+
+            setTimeout(() => {
+              // Try to find the actual block element by its ID
+              let blockElement = document.querySelector(`[data-block-id="${blockId}"]`);
+
+              // If not found, try with hyphens (UUID format)
+              if (!blockElement) {
+                const blockIdWithHyphens = blockId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+                blockElement = document.querySelector(`[data-block-id="${blockIdWithHyphens}"]`);
+              }
+
+              if (blockElement) {
+                // Find the leaf element within this block
+                const leafElement = blockElement.querySelector('[data-content-editable-leaf="true"]');
+
+                if (leafElement && document.contains(leafElement)) {
+                  // Find this leaf in vim_info.lines
+                  const actualIndex = vim_info.lines.findIndex(line => line.element === leafElement);
+
+                  if (actualIndex !== -1) {
+                    vim_info.active_line = actualIndex;
+                    vim_info.cursor_position = 0;
+
+                    // Ensure the element is still in the document before updating cursor
+                    if (document.contains(vim_info.lines[actualIndex].element)) {
+                      updateBlockCursor();
+                    }
+                  }
+                }
+              }
+            }, 300);
+          }
         }
 
         return true;
