@@ -69,12 +69,13 @@ const saveCursorPosition = () => {
     elem = elem.parentElement;
   }
 
+
   try {
     // Get existing positions map
     const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
     const positionsMap: Record<string, any> = savedPositions ? JSON.parse(savedPositions) : {};
 
-    // Save position for current URL with block ID for more reliable restoration
+    // Save position for current URL with block ID
     positionsMap[currentUrl] = {
       active_line: vim_info.active_line,
       cursor_position: vim_info.cursor_position,
@@ -143,7 +144,11 @@ const restoreCursorPosition = () => {
 
             const targetElement = vim_info.lines[targetLineIndex]?.element;
             if (targetElement && document.contains(targetElement)) {
-              // Delay cursor position update to allow DOM to settle
+              // Scroll to the target element first (before Notion does its own scrolling)
+              // Use 'nearest' to avoid creating white space at the bottom
+              targetElement.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+
+              // Then restore cursor position with delay to allow DOM to settle
               setTimeout(() => {
                 // Re-set cursor position in case Notion moved it during re-render
                 const currentElement = vim_info.lines[vim_info.active_line]?.element;
@@ -5320,10 +5325,6 @@ const setActiveLine = (idx: number) => {
   if (idx >= lines.length) i = lines.length - 1;
   if (i < 0) i = 0;
 
-  // Save the old active_line BEFORE updating it
-  const previousActiveLine = window.vim_info.active_line;
-
-  // Update the active line index
   window.vim_info.active_line = i;
 
   const targetElement = lines[i].element;
@@ -5418,14 +5419,15 @@ const setLines = (f: HTMLDivElement[]) => {
     element: elem as HTMLDivElement,
   }));
 
+  // Set initial active line to 0 BEFORE adding event listeners
+  // (to prevent Notion's auto-focus from changing it)
+  setActiveLine(0);
+
   // Add event listeners to ALL lines at once
-  vim_info.lines.forEach((line, index) => {
+  vim_info.lines.forEach((line) => {
     line.element.addEventListener("keydown", handleKeydown, true);
     line.element.addEventListener("click", handleClick, true);
   });
-
-  // Set initial active line to 0 (will be overridden by restoreCursorPosition if navigating)
-  setActiveLine(0);
 
   // Set up MutationObserver to detect new lines
   const observer = new MutationObserver(() => {
@@ -5436,7 +5438,6 @@ const setLines = (f: HTMLDivElement[]) => {
     childList: true,
     subtree: true,
   });
-
 };
 
 const updateInfoContainer = () => {
@@ -5487,7 +5488,6 @@ const updateInfoContainer = () => {
       if (positionsMap[currentUrl]) {
         delete positionsMap[currentUrl];
         sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
-        console.log('[Vimtion] Cleared saved position for initial page load');
       }
     }
 
@@ -5524,6 +5524,9 @@ const updateInfoContainer = () => {
     }
 
     isReinitializing = true;
+
+    // Reset active_line to prevent old page state from leaking
+    window.vim_info.active_line = 0;
 
     // Exit link selection mode if active (old page's link references)
     if (linkSelectionMode) {
