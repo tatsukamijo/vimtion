@@ -4565,131 +4565,99 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         }
 
         // Not a TODO item, continue with link navigation logic
-        const cursorPos = getCursorIndexInElement(currentLine.element);
-
-        // First, try to find link at cursor position in current line
-        const walker = document.createTreeWalker(
-          currentLine.element,
-          NodeFilter.SHOW_TEXT,
-          null
-        );
-
-        let charCount = 0;
-        let targetNode: Node | null = null;
-
-        while (walker.nextNode()) {
-          const node = walker.currentNode;
-          const nodeLength = node.textContent?.length || 0;
-
-          if (charCount + nodeLength > cursorPos) {
-            targetNode = node;
-            break;
-          }
-          charCount += nodeLength;
-        }
-
-        // Use detectAllLinks() to find all links (same as gl link hint mode)
-        const allLinks = detectAllLinks();
-
-        if (allLinks.length === 0) {
-          return true;
-        }
-
-        // Get current cursor position on the page
+        // Check if current line contains a link
         const currentLineElement = vim_info.lines[vim_info.active_line]?.element;
         if (!currentLineElement) {
           return true;
         }
 
-        const currentRect = currentLineElement.getBoundingClientRect();
-        const currentY = currentRect.top + currentRect.height / 2;
+        const linkInCurrentLine = currentLineElement.querySelector('a[href]');
 
-        // Find the closest link to cursor position
-        let closestLink: HTMLAnchorElement | null = null;
-        let minDistance = Infinity;
+        if (linkInCurrentLine) {
+          // Current line has a link - use detectAllLinks() to find closest link
+          const allLinks = detectAllLinks();
 
-        for (const link of allLinks) {
-          const linkRect = link.getBoundingClientRect();
-          const linkY = linkRect.top + linkRect.height / 2;
-          const distance = Math.abs(linkY - currentY);
-
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestLink = link;
+          if (allLinks.length === 0) {
+            return true;
           }
-        }
 
-        if (closestLink) {
-          // Helper to extract page ID (using regex like navigateToLink)
-          const extractPageId = (url: string) => {
-            const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
-            return match ? match[1] : null;
-          };
+          const currentRect = currentLineElement.getBoundingClientRect();
+          const currentY = currentRect.top + currentRect.height / 2;
 
-          // Use navigateToLink to handle all link types consistently
-          // Shift+Enter opens in new tab
-          navigateToLink(closestLink, e.shiftKey);
+          // Find the closest link to cursor position
+          let closestLink: HTMLAnchorElement | null = null;
+          let minDistance = Infinity;
 
-          // For block links, update cursor position after navigation
-          const linkPageId = extractPageId(closestLink.href);
-          const currentPageId = extractPageId(window.location.href);
+          for (const link of allLinks) {
+            const linkRect = link.getBoundingClientRect();
+            const linkY = linkRect.top + linkRect.height / 2;
+            const distance = Math.abs(linkY - currentY);
 
-          if (linkPageId === currentPageId && closestLink.href.includes('#')) {
-            setTimeout(() => {
-              const leafElements = vim_info.lines.filter(line =>
-                line.element.getAttribute('data-content-editable-leaf') === 'true'
-              );
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestLink = link;
+            }
+          }
 
-              for (let i = 0; i < leafElements.length; i++) {
-                const rect = leafElements[i].element.getBoundingClientRect();
+          if (closestLink) {
+            // Helper to extract page ID (using regex like navigateToLink)
+            const extractPageId = (url: string) => {
+              const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
+              return match ? match[1] : null;
+            };
 
-                if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
-                  const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
+            // Use navigateToLink to handle all link types consistently
+            // Shift+Enter opens in new tab
+            navigateToLink(closestLink, e.shiftKey);
 
-                  if (actualIndex !== -1) {
-                    vim_info.active_line = actualIndex;
-                    vim_info.cursor_position = 0;
-                    updateBlockCursor();
+            // For block links, update cursor position after navigation
+            const linkPageId = extractPageId(closestLink.href);
+            const currentPageId = extractPageId(window.location.href);
+
+            if (linkPageId === currentPageId && closestLink.href.includes('#')) {
+              setTimeout(() => {
+                const leafElements = vim_info.lines.filter(line =>
+                  line.element.getAttribute('data-content-editable-leaf') === 'true'
+                );
+
+                for (let i = 0; i < leafElements.length; i++) {
+                  const rect = leafElements[i].element.getBoundingClientRect();
+
+                  if (rect.top >= 0 && rect.top < window.innerHeight / 2) {
+                    const actualIndex = vim_info.lines.findIndex(line => line.element === leafElements[i].element);
+
+                    if (actualIndex !== -1) {
+                      vim_info.active_line = actualIndex;
+                      vim_info.cursor_position = 0;
+                      updateBlockCursor();
+                    }
+                    break;
                   }
-                  break;
                 }
-              }
-            }, 300);
-          }
+              }, 300);
+            }
 
-          return true;
+            return true;
+          }
         }
 
-        // Legacy code for Notion page link selection mode
+        // No link in current line - enter link selection mode
+        // Find all links in the page (including block links)
         const rootElement = vim_info.lines[0]?.element;
         if (rootElement && rootElement.getAttribute('data-content-editable-root') === 'true') {
+          const currentRect = currentLineElement.getBoundingClientRect();
+          const currentY = currentRect.top + currentRect.height / 2;
+
           // Find all links in root element
           const allRootLinks = Array.from(rootElement.querySelectorAll('a'));
 
-          // Helper to extract page ID
-          const extractPageIdLegacy = (pathname: string) => {
-            const parts = pathname.split('-');
-            return parts[parts.length - 1];
-          };
-
-          const currentUrl = new URL(window.location.href);
-          const currentPageId = extractPageIdLegacy(currentUrl.pathname);
-
-          // Collect all Notion page links (no distance limit)
+          // Collect all links (including block links)
           const allNotionLinks: Array<{link: HTMLAnchorElement, distance: number, y: number}> = [];
 
           for (const link of allRootLinks) {
             const href = link.href;
             if (href && href.includes('notion.so')) {
               try {
-                const url = new URL(href);
-                const linkPageId = extractPageIdLegacy(url.pathname);
-
-                // Skip if it's a block link on the same page
-                if (linkPageId === currentPageId && url.hash) {
-                  continue;
-                }
-
                 const linkRect = link.getBoundingClientRect();
                 const linkY = linkRect.top + linkRect.height / 2;
                 const distance = Math.abs(linkY - currentY);
