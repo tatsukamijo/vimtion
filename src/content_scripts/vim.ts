@@ -1132,9 +1132,86 @@ const enterLinkHintMode = () => {
   // Switch to link-hint mode
   vim_info.mode = "link-hint";
 
-  // TODO: Detect all links and show hints
+  // Detect all links in the document
+  const links = detectAllLinks();
+  console.log(`[Link Hint] Found ${links.length} visible links`);
+  links.forEach((link, index) => {
+    const rect = link.getBoundingClientRect();
+    console.log(`[Link Hint] ${index}: "${link.textContent?.trim().substring(0, 30)}" at (${Math.round(rect.top)}, ${Math.round(rect.left)}) - ${link.href}`);
+  });
+
+  // TODO: Generate hints and show overlays
 
   updateInfoContainer();
+};
+
+const detectAllLinks = (): HTMLAnchorElement[] => {
+  const links: HTMLAnchorElement[] = [];
+
+  // Strategy 1: Find all <a> tags with href in the main content area
+  const contentEditableLinks = document.querySelectorAll<HTMLAnchorElement>(
+    '[data-content-editable-root] a[href]'
+  );
+  contentEditableLinks.forEach((link) => links.push(link));
+  console.log(`[Link Hint] Content editable links: ${contentEditableLinks.length}`);
+
+  // Strategy 2: Find sidebar links using multiple selectors for robustness
+  const sidebarSelectors = [
+    '.notion-sidebar a[href]',
+    '[data-sidebar] a[href]',
+    '.notion-frame-sidebar a[href]',
+    'aside a[href]',
+    '[role="navigation"] a[href]',
+  ];
+
+  let sidebarLinkCount = 0;
+  sidebarSelectors.forEach((selector) => {
+    const sidebarLinks = document.querySelectorAll<HTMLAnchorElement>(selector);
+    sidebarLinks.forEach((link) => {
+      // Only add if not already in the list (avoid duplicates)
+      if (!links.includes(link)) {
+        links.push(link);
+        sidebarLinkCount++;
+      }
+    });
+  });
+  console.log(`[Link Hint] Sidebar links: ${sidebarLinkCount}`);
+
+  // Strategy 3: Find all other links in the document
+  const allLinks = document.querySelectorAll<HTMLAnchorElement>('a[href]');
+  let otherLinkCount = 0;
+  allLinks.forEach((link) => {
+    // Only add if not already in the list
+    if (!links.includes(link)) {
+      links.push(link);
+      otherLinkCount++;
+    }
+  });
+  console.log(`[Link Hint] Other links: ${otherLinkCount}`);
+
+  // Filter out invisible links (zero dimensions or off-screen)
+  const visibleLinks = links.filter((link) => {
+    const rect = link.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+  console.log(`[Link Hint] Visible links: ${visibleLinks.length} (filtered from ${links.length} total)`);
+
+  // Sort links by position: top to bottom, left to right
+  visibleLinks.sort((a, b) => {
+    const rectA = a.getBoundingClientRect();
+    const rectB = b.getBoundingClientRect();
+
+    // First compare top position
+    if (Math.abs(rectA.top - rectB.top) > 5) {
+      // 5px tolerance for same line
+      return rectA.top - rectB.top;
+    }
+
+    // If on same line, compare left position
+    return rectA.left - rectB.left;
+  });
+
+  return visibleLinks;
 };
 
 const updateVisualLineSelection = () => {
