@@ -1341,14 +1341,18 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
           // Find the leaf element within this block
           const leafElement = blockElement.querySelector('[data-content-editable-leaf="true"]');
 
-          if (leafElement) {
+          if (leafElement && document.contains(leafElement)) {
             // Find this leaf in vim_info.lines
             const actualIndex = vim_info.lines.findIndex(line => line.element === leafElement);
 
             if (actualIndex !== -1) {
               vim_info.active_line = actualIndex;
               vim_info.cursor_position = 0;
-              updateBlockCursor();
+
+              // Ensure the element is still in the document before updating cursor
+              if (document.contains(vim_info.lines[actualIndex].element)) {
+                updateBlockCursor();
+              }
             }
           }
         }
@@ -4728,14 +4732,18 @@ const normalReducer = (e: KeyboardEvent): boolean => {
                   // Find the leaf element within this block
                   const leafElement = blockElement.querySelector('[data-content-editable-leaf="true"]');
 
-                  if (leafElement) {
+                  if (leafElement && document.contains(leafElement)) {
                     // Find this leaf in vim_info.lines
                     const actualIndex = vim_info.lines.findIndex(line => line.element === leafElement);
 
                     if (actualIndex !== -1) {
                       vim_info.active_line = actualIndex;
                       vim_info.cursor_position = 0;
-                      updateBlockCursor();
+
+                      // Ensure the element is still in the document before updating cursor
+                      if (document.contains(vim_info.lines[actualIndex].element)) {
+                        updateBlockCursor();
+                      }
                     }
                   }
                 }
