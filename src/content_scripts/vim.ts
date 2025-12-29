@@ -4627,7 +4627,8 @@ const normalReducer = (e: KeyboardEvent): boolean => {
           };
 
           // Use navigateToLink to handle all link types consistently
-          navigateToLink(closestLink, false);
+          // Shift+Enter opens in new tab
+          navigateToLink(closestLink, e.shiftKey);
 
           // For block links, update cursor position after navigation
           const linkPageId = extractPageId(closestLink.href);
