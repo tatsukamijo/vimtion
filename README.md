@@ -1,11 +1,32 @@
-# Vimtion: Vim for Notion
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/9fe8d591-6d61-4b15-9ea2-5b34b3765eb9" alt="Vimtion logo" width="160">
+</p>
 
-[![Chrome Web Store](https://img.shields.io/badge/chrome-extension-blue?logo=googlechrome&logoColor=white)](https://github.com/tatsuya/vim-notion)
-[![Manifest V3](https://img.shields.io/badge/manifest-v3-green)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![TypeScript](https://img.shields.io/badge/typescript-5.3-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](LICENSE)
+<h1 align="center">Vimtion: Vim for Notion</h1>
 
-A Chrome extension that brings Vim keybindings to Notion.
+<p align="center">
+  <strong>Vim keybindings for Notion</strong><br>
+  Bring the power of Vim to your Notion workflow.
+</p>
+
+<p align="center">
+  <a href="https://github.com/tatsukamijo/vimtion/stargazers">
+    <img src="https://img.shields.io/github/stars/tatsukamijo/vimtion?style=flat-square">
+  </a>
+  <a href="https://github.com/tatsukamijo/vimtion">
+    <img src="https://img.shields.io/badge/chrome-extension-blue?style=flat-square&logo=googlechrome&logoColor=white" />
+  </a>
+  <a href="https://developer.chrome.com/docs/extensions/mv3/intro/">
+    <img src="https://img.shields.io/badge/manifest-v3-green?style=flat-square" />
+  </a>
+  <a href="https://www.typescriptlang.org/">
+    <img src="https://img.shields.io/badge/typescript-5.3-blue?style=flat-square&logo=typescript" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-ISC-blue?style=flat-square" />
+  </a>
+</p>
+
 
 
 https://github.com/user-attachments/assets/b4f2f922-dfe6-40ca-a4aa-6f7a3f89ebb3
