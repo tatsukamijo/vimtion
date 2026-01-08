@@ -13,7 +13,7 @@
   <a href="https://github.com/tatsukamijo/vimtion/stargazers">
     <img src="https://img.shields.io/github/stars/tatsukamijo/vimtion?style=flat-square">
   </a>
-  <a href="https://github.com/tatsukamijo/vimtion">
+  <a href="https://chromewebstore.google.com/detail/vimtion-vim-for-notion/omcehhihhemhincacmandepjhhnjfeoo">
     <img src="https://img.shields.io/badge/chrome-extension-blue?style=flat-square&logo=googlechrome&logoColor=white" />
   </a>
   <a href="https://developer.chrome.com/docs/extensions/mv3/intro/">
