@@ -1257,15 +1257,81 @@ const initVimInfo = () => {
   window.vim_info = vim_info;
 };
 
+// Track last key press for jk escape sequence
+let lastInsertKey: string | null = null;
+let lastInsertKeyTime = 0;
+const JK_TIMEOUT_MS = 200; // Time window for jk sequence
+
 const insertReducer = (e: KeyboardEvent) => {
+  const now = Date.now();
+
   switch (e.key) {
     case "Escape":
       e.preventDefault();
       e.stopPropagation();
       window.vim_info.mode = "normal";
       updateInfoContainer();
+      lastInsertKey = null;
+      break;
+    case "j":
+      // Track 'j' press
+      lastInsertKey = "j";
+      lastInsertKeyTime = now;
+      break;
+    case "k":
+      // Check if 'k' follows 'j' within timeout
+      if (lastInsertKey === "j" && (now - lastInsertKeyTime) < JK_TIMEOUT_MS) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Delete the 'j' character that was just typed
+        const currentElement = window.vim_info.lines[window.vim_info.active_line]?.element;
+        if (currentElement) {
+          const selection = window.getSelection();
+          const range = document.createRange();
+
+          // Get current cursor position
+          const cursorPos = getCursorIndexInElement(currentElement);
+
+          // Create a range that selects the 'j' character (one character back)
+          const walker = document.createTreeWalker(
+            currentElement,
+            NodeFilter.SHOW_TEXT,
+            null
+          );
+
+          let currentNode: Text | null = null;
+          let currentOffset = 0;
+
+          while ((currentNode = walker.nextNode() as Text | null)) {
+            const nodeLength = currentNode.length;
+            const nodeEnd = currentOffset + nodeLength;
+
+            // Check if the position for 'j' (cursorPos - 1) falls within this node
+            if (cursorPos - 1 >= currentOffset && cursorPos - 1 < nodeEnd) {
+              const offsetInNode = cursorPos - 1 - currentOffset;
+              range.setStart(currentNode, offsetInNode);
+              range.setEnd(currentNode, offsetInNode + 1);
+              range.deleteContents();
+              break;
+            }
+
+            currentOffset = nodeEnd;
+          }
+        }
+
+        // Switch to normal mode
+        window.vim_info.mode = "normal";
+        updateInfoContainer();
+        lastInsertKey = null;
+      } else {
+        lastInsertKey = "k";
+        lastInsertKeyTime = now;
+      }
       break;
     default:
+      // Reset tracking on any other key
+      lastInsertKey = null;
       break;
   }
   return;
