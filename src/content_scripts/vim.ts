@@ -11,7 +11,7 @@
 // Settings interface
 interface VimtionSettings {
   showStatusBar: boolean;
-  statusBarPosition: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  statusBarPosition: "bottom-right" | "bottom-left" | "top-right" | "top-left";
   statusBarColor: string;
   cursorBlink: boolean;
   cursorColor: string;
@@ -28,17 +28,17 @@ interface VimtionSettings {
 // Default settings
 const DEFAULT_SETTINGS: VimtionSettings = {
   showStatusBar: true,
-  statusBarPosition: 'bottom-right',
-  statusBarColor: '#667eea',
+  statusBarPosition: "bottom-right",
+  statusBarColor: "#667eea",
   cursorBlink: true,
-  cursorColor: '#667eea',
-  visualHighlightColor: '#667eea',
+  cursorColor: "#667eea",
+  visualHighlightColor: "#667eea",
   showUpdateNotifications: true,
   linkHintsEnabled: true,
-  hintCharacters: 'asdfghjklqwertyuiopzxcvbnm',
-  hintBackgroundColor: '#333333',
-  hintTextColor: '#ffffff',
-  hintMatchedColor: '#ff4458',
+  hintCharacters: "asdfghjklqwertyuiopzxcvbnm",
+  hintBackgroundColor: "#333333",
+  hintTextColor: "#ffffff",
+  hintMatchedColor: "#ff4458",
   hintFontSize: 14,
 };
 
@@ -53,15 +53,15 @@ let availableLinks: HTMLAnchorElement[] = [];
 const saveCursorPosition = () => {
   const { vim_info } = window;
   // Remove hash from URL to normalize it (block links have hashes)
-  const currentUrl = window.location.href.split('#')[0];
+  const currentUrl = window.location.href.split("#")[0];
 
   const currentElement = vim_info.lines[vim_info.active_line]?.element;
 
   // Try to find block ID from element or its ancestors
-  let blockId = 'N/A';
+  let blockId = "N/A";
   let elem = currentElement;
   while (elem) {
-    const foundId = elem.getAttribute('data-block-id');
+    const foundId = elem.getAttribute("data-block-id");
     if (foundId) {
       blockId = foundId;
       break;
@@ -69,34 +69,38 @@ const saveCursorPosition = () => {
     elem = elem.parentElement;
   }
 
-
   try {
     // Get existing positions map
-    const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
-    const positionsMap: Record<string, any> = savedPositions ? JSON.parse(savedPositions) : {};
+    const savedPositions = sessionStorage.getItem("vimtion_cursor_positions");
+    const positionsMap: Record<string, any> = savedPositions
+      ? JSON.parse(savedPositions)
+      : {};
 
     // Save position for current URL with block ID
     positionsMap[currentUrl] = {
       active_line: vim_info.active_line,
       cursor_position: vim_info.cursor_position,
-      block_id: blockId !== 'N/A' ? blockId : null
+      block_id: blockId !== "N/A" ? blockId : null,
     };
 
-    sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
+    sessionStorage.setItem(
+      "vimtion_cursor_positions",
+      JSON.stringify(positionsMap),
+    );
 
     // Set a flag to indicate this is an intentional navigation (not a reload)
     // This flag will be checked in reinitializeAfterNavigation
-    sessionStorage.setItem('vimtion_intentional_navigation', 'true');
+    sessionStorage.setItem("vimtion_intentional_navigation", "true");
   } catch (e) {
     // Ignore storage errors
   }
 };
 
 const restoreCursorPosition = () => {
-  const currentUrl = window.location.href.split('#')[0];
+  const currentUrl = window.location.href.split("#")[0];
 
   try {
-    const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
+    const savedPositions = sessionStorage.getItem("vimtion_cursor_positions");
 
     if (savedPositions) {
       const positionsMap: Record<string, any> = JSON.parse(savedPositions);
@@ -108,10 +112,10 @@ const restoreCursorPosition = () => {
         // Try to find the element by block ID first (more reliable)
         let targetLineIndex = data.active_line;
         if (data.block_id) {
-          const foundIndex = vim_info.lines.findIndex(line => {
+          const foundIndex = vim_info.lines.findIndex((line) => {
             let elem = line.element;
             while (elem) {
-              const foundId = elem.getAttribute('data-block-id');
+              const foundId = elem.getAttribute("data-block-id");
               if (foundId === data.block_id) {
                 return true;
               }
@@ -133,12 +137,16 @@ const restoreCursorPosition = () => {
           if (targetElement && document.contains(targetElement)) {
             // Scroll to the target element first (before Notion does its own scrolling)
             // Use 'nearest' to avoid creating white space at the bottom
-            targetElement.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+            targetElement.scrollIntoView({
+              behavior: "auto",
+              block: "nearest",
+            });
 
             // Then restore cursor position with delay to allow DOM to settle
             setTimeout(() => {
               // Re-set cursor position in case Notion moved it during re-render
-              const currentElement = vim_info.lines[vim_info.active_line]?.element;
+              const currentElement =
+                vim_info.lines[vim_info.active_line]?.element;
               if (currentElement && document.contains(currentElement)) {
                 setCursorPosition(currentElement, vim_info.cursor_position);
               }
@@ -150,7 +158,10 @@ const restoreCursorPosition = () => {
 
         // Delete the restored position after use
         delete positionsMap[currentUrl];
-        sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
+        sessionStorage.setItem(
+          "vimtion_cursor_positions",
+          JSON.stringify(positionsMap),
+        );
       }
     }
   } catch (e) {
@@ -161,23 +172,30 @@ let selectedLinkIndex = 0;
 
 // Helper functions for link selection mode
 function highlightSelectedLink() {
-  if (availableLinks.length > 0 && selectedLinkIndex >= 0 && selectedLinkIndex < availableLinks.length) {
-    const visualHighlight = hexToRgba(currentSettings.visualHighlightColor, 0.3);
+  if (
+    availableLinks.length > 0 &&
+    selectedLinkIndex >= 0 &&
+    selectedLinkIndex < availableLinks.length
+  ) {
+    const visualHighlight = hexToRgba(
+      currentSettings.visualHighlightColor,
+      0.3,
+    );
     const selectedLink = availableLinks[selectedLinkIndex];
     selectedLink.style.backgroundColor = visualHighlight;
 
     // Scroll the selected link into view if it's outside the viewport
     selectedLink.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'nearest'
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
     });
   }
 }
 
 function clearAllLinkHighlights() {
-  availableLinks.forEach(link => {
-    link.style.backgroundColor = '';
+  availableLinks.forEach((link) => {
+    link.style.backgroundColor = "";
   });
 }
 
@@ -190,11 +208,20 @@ function exitLinkSelectionMode() {
 
 // Helper function to adjust color brightness
 function adjustColor(color: string, amount: number): string {
-  const hex = color.replace('#', '');
-  const r = Math.max(0, Math.min(255, parseInt(hex.substring(0, 2), 16) + amount));
-  const g = Math.max(0, Math.min(255, parseInt(hex.substring(2, 4), 16) + amount));
-  const b = Math.max(0, Math.min(255, parseInt(hex.substring(4, 6), 16) + amount));
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  const hex = color.replace("#", "");
+  const r = Math.max(
+    0,
+    Math.min(255, parseInt(hex.substring(0, 2), 16) + amount),
+  );
+  const g = Math.max(
+    0,
+    Math.min(255, parseInt(hex.substring(2, 4), 16) + amount),
+  );
+  const b = Math.max(
+    0,
+    Math.min(255, parseInt(hex.substring(4, 6), 16) + amount),
+  );
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
 // Load settings from storage
@@ -217,17 +244,24 @@ function hexToRgba(hex: string, alpha: number): string {
 // Apply settings to the page
 function applySettings() {
   // Apply status bar visibility and position
-  const infoContainer = document.querySelector('.vim-info-container') as HTMLElement;
+  const infoContainer = document.querySelector(
+    ".vim-info-container",
+  ) as HTMLElement;
 
   if (infoContainer) {
     if (currentSettings.showStatusBar) {
-      infoContainer.style.display = 'block';
+      infoContainer.style.display = "block";
     } else {
-      infoContainer.style.display = 'none';
+      infoContainer.style.display = "none";
     }
 
     // Apply position
-    infoContainer.classList.remove('bottom-right', 'bottom-left', 'top-right', 'top-left');
+    infoContainer.classList.remove(
+      "bottom-right",
+      "bottom-left",
+      "top-right",
+      "top-left",
+    );
     infoContainer.classList.add(currentSettings.statusBarPosition);
 
     // Apply status bar color with gradient
@@ -236,9 +270,9 @@ function applySettings() {
   }
 
   // Apply cursor color and visual highlight
-  const style = document.createElement('style');
-  style.id = 'vimtion-custom-styles';
-  const existingStyle = document.getElementById('vimtion-custom-styles');
+  const style = document.createElement("style");
+  style.id = "vimtion-custom-styles";
+  const existingStyle = document.getElementById("vimtion-custom-styles");
   if (existingStyle) {
     existingStyle.remove();
   }
@@ -249,7 +283,7 @@ function applySettings() {
     .vim-block-cursor {
       background-color: ${currentSettings.cursorColor} !important;
       box-shadow: 0 0 4px ${hexToRgba(currentSettings.cursorColor, 0.6)} !important;
-      ${currentSettings.cursorBlink ? 'animation: blink 1s step-end infinite !important;' : 'animation: none !important;'}
+      ${currentSettings.cursorBlink ? "animation: blink 1s step-end infinite !important;" : "animation: none !important;"}
     }
     body.vim-normal-mode [contenteditable="true"]:focus::selection,
     body.vim-normal-mode [contenteditable="true"]::selection {
@@ -282,9 +316,9 @@ function applySettings() {
   `;
 
   // Insert style at the end to ensure it overrides everything
-  const lastStyle = document.head.querySelector('style:last-of-type');
+  const lastStyle = document.head.querySelector("style:last-of-type");
   if (lastStyle) {
-    lastStyle.insertAdjacentElement('afterend', style);
+    lastStyle.insertAdjacentElement("afterend", style);
   } else {
     document.head.appendChild(style);
   }
@@ -311,7 +345,9 @@ const createBlockCursor = () => {
 
 const updateBlockCursor = () => {
   const { vim_info } = window;
-  let blockCursor = document.querySelector(".vim-block-cursor") as HTMLDivElement;
+  let blockCursor = document.querySelector(
+    ".vim-block-cursor",
+  ) as HTMLDivElement;
 
   if (!blockCursor) {
     blockCursor = createBlockCursor();
@@ -346,14 +382,18 @@ const updateBlockCursor = () => {
     if (inCodeBlock) {
       // For code blocks on empty lines, temporarily insert a zero-width space to get the cursor position
       try {
-        if (range.startContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+        if (
+          range.startContainer &&
+          range.startContainer.nodeType === Node.TEXT_NODE
+        ) {
           const textNode = range.startContainer as Text;
           const offset = range.startOffset;
 
           // Insert a zero-width space temporarily
-          const zws = '\u200B';
-          const originalText = textNode.textContent || '';
-          textNode.textContent = originalText.slice(0, offset) + zws + originalText.slice(offset);
+          const zws = "\u200B";
+          const originalText = textNode.textContent || "";
+          textNode.textContent =
+            originalText.slice(0, offset) + zws + originalText.slice(offset);
 
           // Create a range around the zero-width space
           const tempRange = document.createRange();
@@ -586,11 +626,11 @@ const moveCursorDownInCodeBlock = () => {
   const currentPos = getCursorIndexInElement(currentElement);
 
   // Find current line start
-  let lineStart = text.lastIndexOf('\n', currentPos - 1);
+  let lineStart = text.lastIndexOf("\n", currentPos - 1);
   if (lineStart === -1) lineStart = -1; // Before first character
 
   // Find current line end (next newline)
-  let lineEnd = text.indexOf('\n', currentPos);
+  let lineEnd = text.indexOf("\n", currentPos);
   if (lineEnd === -1) {
     // Already on last line of code block, move to next block
     setActiveLine(vim_info.active_line + 1);
@@ -604,7 +644,7 @@ const moveCursorDownInCodeBlock = () => {
   const nextLineStart = lineEnd + 1;
 
   // Find next line end
-  let nextLineEnd = text.indexOf('\n', nextLineStart);
+  let nextLineEnd = text.indexOf("\n", nextLineStart);
   if (nextLineEnd === -1) nextLineEnd = text.length;
 
   // Calculate target position in next line
@@ -623,7 +663,7 @@ const moveCursorUpInCodeBlock = () => {
   const currentPos = getCursorIndexInElement(currentElement);
 
   // Find current line start
-  let lineStart = text.lastIndexOf('\n', currentPos - 1);
+  let lineStart = text.lastIndexOf("\n", currentPos - 1);
 
   if (lineStart === -1) {
     // Already on first line of code block, move to previous block
@@ -632,7 +672,7 @@ const moveCursorUpInCodeBlock = () => {
   }
 
   // Find previous line start
-  let prevLineStart = text.lastIndexOf('\n', lineStart - 1);
+  let prevLineStart = text.lastIndexOf("\n", lineStart - 1);
   if (prevLineStart === -1) prevLineStart = -1; // Before first character
 
   // Previous line is between prevLineStart and lineStart
@@ -688,14 +728,14 @@ const openLineBelowInCodeBlock = () => {
   const currentPos = getCursorIndexInElement(currentElement);
 
   // Find the end of the current line (next \n or end of text)
-  let lineEnd = text.indexOf('\n', currentPos);
+  let lineEnd = text.indexOf("\n", currentPos);
   if (lineEnd === -1) lineEnd = text.length;
 
   // Move cursor to end of current line
   setCursorPosition(currentElement, lineEnd);
 
   // Insert a newline character using execCommand (works better in contenteditable)
-  document.execCommand('insertText', false, '\n');
+  document.execCommand("insertText", false, "\n");
 
   // Switch to insert mode
   vim_info.mode = "insert";
@@ -710,14 +750,14 @@ const openLineAboveInCodeBlock = () => {
   const currentPos = getCursorIndexInElement(currentElement);
 
   // Find the start of the current line (previous \n or start of text)
-  let lineStart = text.lastIndexOf('\n', currentPos - 1);
+  let lineStart = text.lastIndexOf("\n", currentPos - 1);
   lineStart = lineStart === -1 ? 0 : lineStart + 1;
 
   // Move cursor to start of current line
   setCursorPosition(currentElement, lineStart);
 
   // Insert a newline character
-  document.execCommand('insertText', false, '\n');
+  document.execCommand("insertText", false, "\n");
 
   // Move cursor back to the newly created empty line
   setCursorPosition(currentElement, lineStart);
@@ -823,9 +863,9 @@ const openLineBelow = () => {
   // Then simulate Enter key (in insert mode, so it won't be blocked)
   setTimeout(() => {
     const currentElement = vim_info.lines[vim_info.active_line].element;
-    const enterEvent = new KeyboardEvent('keydown', {
-      key: 'Enter',
-      code: 'Enter',
+    const enterEvent = new KeyboardEvent("keydown", {
+      key: "Enter",
+      code: "Enter",
       keyCode: 13,
       which: 13,
       bubbles: true,
@@ -854,9 +894,9 @@ const openLineAbove = () => {
   // Simulate Enter key
   setTimeout(() => {
     const currentElement = vim_info.lines[currentLine].element;
-    const enterEvent = new KeyboardEvent('keydown', {
-      key: 'Enter',
-      code: 'Enter',
+    const enterEvent = new KeyboardEvent("keydown", {
+      key: "Enter",
+      code: "Enter",
       keyCode: 13,
       which: 13,
       bubbles: true,
@@ -867,9 +907,9 @@ const openLineAbove = () => {
     // After Enter, cursor is on the new line below
     // We need to move the cursor back up to the empty line we just created
     setTimeout(() => {
-      const arrowUpEvent = new KeyboardEvent('keydown', {
-        key: 'ArrowUp',
-        code: 'ArrowUp',
+      const arrowUpEvent = new KeyboardEvent("keydown", {
+        key: "ArrowUp",
+        code: "ArrowUp",
         keyCode: 38,
         which: 38,
         bubbles: true,
@@ -921,7 +961,7 @@ const deleteCharacter = () => {
     sel.addRange(r);
 
     // Cut to clipboard like vim's 'x' command
-    document.execCommand('cut');
+    document.execCommand("cut");
   }
 
   vim_info.desired_column = currentCursorPosition;
@@ -937,7 +977,9 @@ const deleteCharacterBefore = () => {
   if (currentCursorPosition <= 0) return;
 
   // Delete the character before cursor position
-  const newText = text.slice(0, currentCursorPosition - 1) + text.slice(currentCursorPosition);
+  const newText =
+    text.slice(0, currentCursorPosition - 1) +
+    text.slice(currentCursorPosition);
   currentElement.textContent = newText;
 
   // Move cursor back one position
@@ -971,7 +1013,7 @@ const substituteCharacter = () => {
     sel.addRange(r);
 
     // Delete the selection using execCommand
-    document.execCommand('delete');
+    document.execCommand("delete");
   }
 
   // Keep cursor at same position and enter insert mode
@@ -1020,12 +1062,13 @@ const getCursorIndex = () => {
   return i;
 };
 
-const getModeText = (mode: "insert" | "normal" | "visual" | "visual-line" | "link-hint") => {
+const getModeText = (
+  mode: "insert" | "normal" | "visual" | "visual-line" | "link-hint",
+) => {
   return `-- ${mode.toUpperCase()} --`;
 };
 
 const setCursorPosition = (element: Element, index: number) => {
-
   const childNodes = Array.from(element.childNodes);
 
   // Handle empty elements (no child nodes or only empty text)
@@ -1077,19 +1120,22 @@ const handleClick = (e: MouseEvent) => {
 
   // Find which line was clicked
   const target = e.target as HTMLElement;
-  const clickedElement = target.closest('[contenteditable="true"]') as HTMLDivElement;
+  const clickedElement = target.closest(
+    '[contenteditable="true"]',
+  ) as HTMLDivElement;
 
   if (!clickedElement) {
     return;
   }
 
   // Find the line index
-  const lineIndex = vim_info.lines.findIndex((line: any) => line.element === clickedElement);
+  const lineIndex = vim_info.lines.findIndex(
+    (line: any) => line.element === clickedElement,
+  );
 
   if (lineIndex === -1) {
     return;
   }
-
 
   // Let the browser handle the click to position the cursor, then update our state
   setTimeout(() => {
@@ -1102,7 +1148,7 @@ const handleClick = (e: MouseEvent) => {
       const walker = document.createTreeWalker(
         clickedElement,
         NodeFilter.SHOW_TEXT,
-        null
+        null,
       );
 
       let node;
@@ -1169,10 +1215,40 @@ const initVimInfo = () => {
     cursor_position: 0,
     desired_column: 0, // Remember cursor column for j/k navigation
     lines: [] as any,
-    mode: "normal" as "normal" | "insert" | "visual" | "visual-line" | "link-hint",
+    mode: "normal" as
+      | "normal"
+      | "insert"
+      | "visual"
+      | "visual-line"
+      | "link-hint",
     visual_start_line: 0,
     visual_start_pos: 0,
-    pending_operator: null as "y" | "d" | "c" | "yi" | "di" | "ci" | "ya" | "da" | "ca" | "vi" | "va" | "g" | "f" | "F" | "t" | "T" | "df" | "dF" | "dt" | "dT" | "cf" | "cF" | "ct" | "cT" | null, // For commands like yy, dd, gg, ff, df, etc.
+    pending_operator: null as
+      | "y"
+      | "d"
+      | "c"
+      | "yi"
+      | "di"
+      | "ci"
+      | "ya"
+      | "da"
+      | "ca"
+      | "vi"
+      | "va"
+      | "g"
+      | "f"
+      | "F"
+      | "t"
+      | "T"
+      | "df"
+      | "dF"
+      | "dt"
+      | "dT"
+      | "cf"
+      | "cF"
+      | "ct"
+      | "cT"
+      | null, // For commands like yy, dd, gg, ff, df, etc.
     undo_count: 0, // Track number of native undo operations in current group
     in_undo_group: false, // Whether we're currently in a grouped operation
     link_hints: [] as LinkHint[],
@@ -1232,9 +1308,11 @@ const startVisualMode = () => {
 
 const clearAllBackgroundColors = () => {
   // Clear background colors from ALL contenteditable elements in the document
-  const allEditableElements = document.querySelectorAll("[contenteditable=true]");
+  const allEditableElements = document.querySelectorAll(
+    "[contenteditable=true]",
+  );
   allEditableElements.forEach((elem) => {
-    (elem as HTMLElement).style.backgroundColor = '';
+    (elem as HTMLElement).style.backgroundColor = "";
   });
 };
 
@@ -1268,19 +1346,23 @@ const restoreNotionUnsavedWarning = () => {
 };
 
 // Intercept beforeunload events to prevent Notion's warning during Vimtion operations
-window.addEventListener('beforeunload', (e) => {
-  if (suppressBeforeUnloadWarning) {
-    // Prevent the warning dialog
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    delete e.returnValue;
+window.addEventListener(
+  "beforeunload",
+  (e) => {
+    if (suppressBeforeUnloadWarning) {
+      // Prevent the warning dialog
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      delete e.returnValue;
 
-    // Immediately reset flag to allow warnings for actual reloads
-    suppressBeforeUnloadWarning = false;
+      // Immediately reset flag to allow warnings for actual reloads
+      suppressBeforeUnloadWarning = false;
 
-    return undefined;
-  }
-}, true); // Use capture phase to intercept before Notion's handler
+      return undefined;
+    }
+  },
+  true,
+); // Use capture phase to intercept before Notion's handler
 
 const enterLinkHintMode = () => {
   // Check if link hints feature is enabled
@@ -1318,9 +1400,12 @@ const enterLinkHintMode = () => {
   updateInfoContainer();
 };
 
-const createHintOverlay = (link: HTMLAnchorElement, hint: string): HTMLElement => {
-  const overlay = document.createElement('div');
-  overlay.className = 'vim-link-hint';
+const createHintOverlay = (
+  link: HTMLAnchorElement,
+  hint: string,
+): HTMLElement => {
+  const overlay = document.createElement("div");
+  overlay.className = "vim-link-hint";
   overlay.textContent = hint;
   overlay.style.cssText = `
     position: fixed;
@@ -1361,7 +1446,7 @@ const filterHintsByInput = (input: string, shiftKey: boolean) => {
   vim_info.link_hints.forEach(({ hint, overlay }) => {
     if (hint.startsWith(input)) {
       // Show this hint
-      overlay.style.display = 'block';
+      overlay.style.display = "block";
 
       // Highlight only the matched portion
       if (input.length > 0) {
@@ -1375,11 +1460,11 @@ const filterHintsByInput = (input: string, shiftKey: boolean) => {
 
       // Check for exact match
       if (hint === input) {
-        matchedHint = vim_info.link_hints.find(h => h.hint === hint)!;
+        matchedHint = vim_info.link_hints.find((h) => h.hint === hint)!;
       }
     } else {
       // Hide non-matching hints
-      overlay.style.display = 'none';
+      overlay.style.display = "none";
     }
   });
 
@@ -1389,7 +1474,10 @@ const filterHintsByInput = (input: string, shiftKey: boolean) => {
   }
 };
 
-const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) => {
+const navigateToLink = (
+  link: HTMLAnchorElement,
+  openInNewTab: boolean = false,
+) => {
   const { vim_info } = window;
 
   // Exit link-hint mode first
@@ -1405,7 +1493,7 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
 
   const linkPageId = extractPageId(link.href);
   const currentPageId = extractPageId(window.location.href);
-  const isBlockLink = link.href.includes('#') && linkPageId === currentPageId;
+  const isBlockLink = link.href.includes("#") && linkPageId === currentPageId;
 
   // Note: cursor position is saved when entering link hint mode (gl command)
   // or when pressing Shift+H/L, not here
@@ -1415,14 +1503,14 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
 
   if (openInNewTab) {
     // Open link in new tab
-    window.open(link.href, '_blank');
+    window.open(link.href, "_blank");
     // Restore immediately for new tab
     restoreNotionUnsavedWarning();
   } else {
     // Use click() for all navigation to let Notion handle it naturally
     // Remove target attribute to force same-tab navigation
     const originalTarget = link.target;
-    link.target = '';
+    link.target = "";
 
     // Delay click slightly to ensure suppression flag is set
     setTimeout(() => {
@@ -1437,25 +1525,36 @@ const navigateToLink = (link: HTMLAnchorElement, openInNewTab: boolean = false) 
 
     // For block links, update cursor position after navigation
     if (isBlockLink) {
-      const blockId = link.href.split('#')[1].split('?')[0];
+      const blockId = link.href.split("#")[1].split("?")[0];
 
       setTimeout(() => {
         // Try to find the actual block element by its ID
-        let blockElement = document.querySelector(`[data-block-id="${blockId}"]`);
+        let blockElement = document.querySelector(
+          `[data-block-id="${blockId}"]`,
+        );
 
         // If not found, try with hyphens (UUID format)
         if (!blockElement) {
-          const blockIdWithHyphens = blockId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
-          blockElement = document.querySelector(`[data-block-id="${blockIdWithHyphens}"]`);
+          const blockIdWithHyphens = blockId.replace(
+            /(.{8})(.{4})(.{4})(.{4})(.{12})/,
+            "$1-$2-$3-$4-$5",
+          );
+          blockElement = document.querySelector(
+            `[data-block-id="${blockIdWithHyphens}"]`,
+          );
         }
 
         if (blockElement) {
           // Find the leaf element within this block
-          const leafElement = blockElement.querySelector('[data-content-editable-leaf="true"]');
+          const leafElement = blockElement.querySelector(
+            '[data-content-editable-leaf="true"]',
+          );
 
           if (leafElement && document.contains(leafElement)) {
             // Find this leaf in vim_info.lines
-            const actualIndex = vim_info.lines.findIndex(line => line.element === leafElement);
+            const actualIndex = vim_info.lines.findIndex(
+              (line) => line.element === leafElement,
+            );
 
             if (actualIndex !== -1) {
               vim_info.active_line = actualIndex;
@@ -1478,16 +1577,16 @@ const detectAllLinks = (): HTMLAnchorElement[] => {
 
   // Strategy 1: Find all <a> tags with href in the main content area
   const contentEditableLinks = document.querySelectorAll<HTMLAnchorElement>(
-    '[data-content-editable-root] a[href]'
+    "[data-content-editable-root] a[href]",
   );
   contentEditableLinks.forEach((link) => links.push(link));
 
   // Strategy 2: Find sidebar links using multiple selectors for robustness
   const sidebarSelectors = [
-    '.notion-sidebar a[href]',
-    '[data-sidebar] a[href]',
-    '.notion-frame-sidebar a[href]',
-    'aside a[href]',
+    ".notion-sidebar a[href]",
+    "[data-sidebar] a[href]",
+    ".notion-frame-sidebar a[href]",
+    "aside a[href]",
     '[role="navigation"] a[href]',
   ];
 
@@ -1504,7 +1603,7 @@ const detectAllLinks = (): HTMLAnchorElement[] => {
   });
 
   // Strategy 3: Find all other links in the document
-  const allLinks = document.querySelectorAll<HTMLAnchorElement>('a[href]');
+  const allLinks = document.querySelectorAll<HTMLAnchorElement>("a[href]");
   let otherLinkCount = 0;
   allLinks.forEach((link) => {
     // Only add if not already in the list
@@ -1579,9 +1678,8 @@ const updateVisualLineSelection = () => {
   const endLine = vim_info.active_line;
 
   // Determine the range of lines to select
-  const [firstLine, lastLine] = startLine <= endLine
-    ? [startLine, endLine]
-    : [endLine, startLine];
+  const [firstLine, lastLine] =
+    startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
 
   // Check if we're in a code block
   const firstElement = vim_info.lines[firstLine].element;
@@ -1597,14 +1695,15 @@ const updateVisualLineSelection = () => {
     vim_info.visual_end_pos = endPos;
 
     // Determine the range of positions to select
-    const [selStart, selEnd] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];
+    const [selStart, selEnd] =
+      startPos <= endPos ? [startPos, endPos] : [endPos, startPos];
 
     // Find the line boundaries for the start position
-    let lineStart = text.lastIndexOf('\n', selStart - 1);
+    let lineStart = text.lastIndexOf("\n", selStart - 1);
     lineStart = lineStart === -1 ? 0 : lineStart + 1;
 
     // Find the line boundaries for the end position
-    let lineEnd = text.indexOf('\n', selEnd);
+    let lineEnd = text.indexOf("\n", selEnd);
     if (lineEnd === -1) lineEnd = text.length;
 
     // Don't set background color for code blocks - we'll rely on the selection highlight only
@@ -1615,7 +1714,7 @@ const updateVisualLineSelection = () => {
     const walker = document.createTreeWalker(
       currentElement,
       NodeFilter.SHOW_TEXT,
-      null
+      null,
     );
 
     let currentNode: Text | null = null;
@@ -1694,7 +1793,12 @@ const updateVisualLineSelection = () => {
 };
 
 // Helper function to set range in an element
-const setRangeInElement = (range: Range, element: Node, start: number, end: number) => {
+const setRangeInElement = (
+  range: Range,
+  element: Node,
+  start: number,
+  end: number,
+) => {
   let textOffset = 0;
   let startSet = false;
   let endSet = false;
@@ -1748,9 +1852,10 @@ const updateVisualSelection = () => {
 
   const lineLength = currentElement.textContent?.length || 0;
 
-  const [selStart, selEnd] = startPos <= currentPos
-    ? [startPos, Math.min(currentPos + 1, lineLength)]  // Include character under cursor, but don't exceed line length
-    : [currentPos, Math.min(startPos + 1, lineLength)];
+  const [selStart, selEnd] =
+    startPos <= currentPos
+      ? [startPos, Math.min(currentPos + 1, lineLength)] // Include character under cursor, but don't exceed line length
+      : [currentPos, Math.min(startPos + 1, lineLength)];
 
   setRangeInElement(range, currentElement, selStart, selEnd);
   selection?.removeAllRanges();
@@ -1806,9 +1911,10 @@ const visualSelectInnerBracket = (openChar: string, closeChar: string) => {
   const text = currentElement.textContent || "";
 
   // Use different function for quotes (where open === close)
-  const result = openChar === closeChar
-    ? findMatchingQuotes(text, currentCursorPosition, openChar)
-    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  const result =
+    openChar === closeChar
+      ? findMatchingQuotes(text, currentCursorPosition, openChar)
+      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
 
   if (!result) {
     return;
@@ -1836,9 +1942,10 @@ const visualSelectAroundBracket = (openChar: string, closeChar: string) => {
   const text = currentElement.textContent || "";
 
   // Use different function for quotes (where open === close)
-  const result = openChar === closeChar
-    ? findMatchingQuotes(text, currentCursorPosition, openChar)
-    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  const result =
+    openChar === closeChar
+      ? findMatchingQuotes(text, currentCursorPosition, openChar)
+      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
 
   if (!result) {
     return;
@@ -1871,7 +1978,12 @@ const visualReducer = (e: KeyboardEvent): boolean => {
   // Handle pending text object operators
   if (vim_info.pending_operator === "vi") {
     // Ignore modifier keys (Shift, Ctrl, Alt, Meta)
-    if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta") {
+    if (
+      e.key === "Shift" ||
+      e.key === "Control" ||
+      e.key === "Alt" ||
+      e.key === "Meta"
+    ) {
       return true;
     }
 
@@ -1928,7 +2040,12 @@ const visualReducer = (e: KeyboardEvent): boolean => {
     return true;
   } else if (vim_info.pending_operator === "va") {
     // Ignore modifier keys (Shift, Ctrl, Alt, Meta)
-    if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta") {
+    if (
+      e.key === "Shift" ||
+      e.key === "Control" ||
+      e.key === "Alt" ||
+      e.key === "Meta"
+    ) {
       return true;
     }
 
@@ -2139,12 +2256,15 @@ const visualLineMoveCursorDown = () => {
       }
     } else {
       // Visual-line started inside this code block - navigate line by line
-      const text = currentElement.textContent || '';
+      const text = currentElement.textContent || "";
       // Use the saved visual_end_pos if it exists, otherwise get from cursor
-      const cursorPos = vim_info.visual_end_pos !== undefined ? vim_info.visual_end_pos : getCursorIndexInElement(currentElement);
+      const cursorPos =
+        vim_info.visual_end_pos !== undefined
+          ? vim_info.visual_end_pos
+          : getCursorIndexInElement(currentElement);
 
       // Find the next newline after current position
-      const nextNewline = text.indexOf('\n', cursorPos);
+      const nextNewline = text.indexOf("\n", cursorPos);
 
       if (nextNewline === -1) {
         // No next line in code block - try to move to next block
@@ -2193,16 +2313,19 @@ const visualLineMoveCursorUp = () => {
       }
     } else {
       // Visual-line started inside this code block - navigate line by line
-      const text = currentElement.textContent || '';
+      const text = currentElement.textContent || "";
       // Use the saved visual_end_pos if it exists, otherwise get from cursor
-      const cursorPos = vim_info.visual_end_pos !== undefined ? vim_info.visual_end_pos : getCursorIndexInElement(currentElement);
+      const cursorPos =
+        vim_info.visual_end_pos !== undefined
+          ? vim_info.visual_end_pos
+          : getCursorIndexInElement(currentElement);
 
       // Find the current line's start
-      let currentLineStart = text.lastIndexOf('\n', cursorPos - 1);
+      let currentLineStart = text.lastIndexOf("\n", cursorPos - 1);
       currentLineStart = currentLineStart === -1 ? 0 : currentLineStart + 1;
 
       // If we're at the first line of the code block, try to move to previous block
-      if (currentLineStart === 0 && cursorPos < text.indexOf('\n')) {
+      if (currentLineStart === 0 && cursorPos < text.indexOf("\n")) {
         const prevLine = vim_info.active_line - 1;
         if (prevLine >= 0) {
           vim_info.active_line = prevLine;
@@ -2210,9 +2333,9 @@ const visualLineMoveCursorUp = () => {
           const prevElement = vim_info.lines[prevLine].element;
           const prevInCodeBlock = isInsideCodeBlock(prevElement);
           if (prevInCodeBlock) {
-            const prevText = prevElement.textContent || '';
+            const prevText = prevElement.textContent || "";
             // Move to the last line of the previous code block
-            const lastNewline = prevText.lastIndexOf('\n');
+            const lastNewline = prevText.lastIndexOf("\n");
             if (lastNewline !== -1) {
               vim_info.visual_end_pos = lastNewline + 1;
               setCursorPosition(prevElement, lastNewline + 1);
@@ -2224,7 +2347,7 @@ const visualLineMoveCursorUp = () => {
         }
       } else if (currentLineStart > 0) {
         // Find the previous line's start
-        let prevLineStart = text.lastIndexOf('\n', currentLineStart - 2);
+        let prevLineStart = text.lastIndexOf("\n", currentLineStart - 2);
         prevLineStart = prevLineStart === -1 ? 0 : prevLineStart + 1;
         vim_info.visual_end_pos = prevLineStart;
         setCursorPosition(currentElement, prevLineStart);
@@ -2242,7 +2365,10 @@ const visualLineMoveCursorUp = () => {
 };
 
 // Helper function to dispatch Delete and Backspace events to delete a code block
-const deleteCodeBlockWithKeyboardEvents = (element: HTMLElement, delay: number = 0) => {
+const deleteCodeBlockWithKeyboardEvents = (
+  element: HTMLElement,
+  delay: number = 0,
+) => {
   setTimeout(() => {
     // Check if element is still in the document
     if (!document.contains(element)) {
@@ -2260,9 +2386,9 @@ const deleteCodeBlockWithKeyboardEvents = (element: HTMLElement, delay: number =
     element.focus();
 
     // Dispatch Delete key event immediately (no delay for code blocks)
-    const deleteEvent = new KeyboardEvent('keydown', {
-      key: 'Delete',
-      code: 'Delete',
+    const deleteEvent = new KeyboardEvent("keydown", {
+      key: "Delete",
+      code: "Delete",
       keyCode: 46,
       which: 46,
       bubbles: true,
@@ -2272,9 +2398,9 @@ const deleteCodeBlockWithKeyboardEvents = (element: HTMLElement, delay: number =
 
     // After deleting content, dispatch Backspace to delete the empty block
     setTimeout(() => {
-      const backspaceEvent = new KeyboardEvent('keydown', {
-        key: 'Backspace',
-        code: 'Backspace',
+      const backspaceEvent = new KeyboardEvent("keydown", {
+        key: "Backspace",
+        code: "Backspace",
         keyCode: 8,
         which: 8,
         bubbles: true,
@@ -2286,7 +2412,10 @@ const deleteCodeBlockWithKeyboardEvents = (element: HTMLElement, delay: number =
 };
 
 // Helper function to dispatch Delete and Backspace events to delete a normal block
-const deleteNormalBlockWithKeyboardEvents = (element: HTMLElement, delay: number = 0) => {
+const deleteNormalBlockWithKeyboardEvents = (
+  element: HTMLElement,
+  delay: number = 0,
+) => {
   setTimeout(() => {
     // Check if element is still in the document
     if (!document.contains(element)) {
@@ -2305,9 +2434,9 @@ const deleteNormalBlockWithKeyboardEvents = (element: HTMLElement, delay: number
 
     // Dispatch Delete key event after a small delay to ensure focus is set
     setTimeout(() => {
-      const deleteEvent = new KeyboardEvent('keydown', {
-        key: 'Delete',
-        code: 'Delete',
+      const deleteEvent = new KeyboardEvent("keydown", {
+        key: "Delete",
+        code: "Delete",
         keyCode: 46,
         which: 46,
         bubbles: true,
@@ -2317,9 +2446,9 @@ const deleteNormalBlockWithKeyboardEvents = (element: HTMLElement, delay: number
 
       // After deleting content, dispatch Backspace to delete the empty block
       setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent('keydown', {
-          key: 'Backspace',
-          code: 'Backspace',
+        const backspaceEvent = new KeyboardEvent("keydown", {
+          key: "Backspace",
+          code: "Backspace",
           keyCode: 8,
           which: 8,
           bubbles: true,
@@ -2337,11 +2466,14 @@ const deleteCodeBlockLines = (firstLine: number, lastLine: number): number => {
   const { vim_info } = window;
 
   const codeBlockElement = vim_info.lines[firstLine].element;
-  const text = codeBlockElement.textContent || '';
+  const text = codeBlockElement.textContent || "";
 
   // Use visual_start_pos and visual_end_pos to determine the range
   let startCursorPos = vim_info.visual_start_pos || 0;
-  let endCursorPos = vim_info.visual_end_pos !== undefined ? vim_info.visual_end_pos : getCursorIndexInElement(codeBlockElement);
+  let endCursorPos =
+    vim_info.visual_end_pos !== undefined
+      ? vim_info.visual_end_pos
+      : getCursorIndexInElement(codeBlockElement);
 
   // Ensure startCursorPos <= endCursorPos
   if (startCursorPos > endCursorPos) {
@@ -2349,10 +2481,10 @@ const deleteCodeBlockLines = (firstLine: number, lastLine: number): number => {
   }
 
   // Find line boundaries for deletion
-  let deleteStart = text.lastIndexOf('\n', startCursorPos - 1);
+  let deleteStart = text.lastIndexOf("\n", startCursorPos - 1);
   deleteStart = deleteStart === -1 ? 0 : deleteStart + 1;
 
-  let deleteEnd = text.indexOf('\n', endCursorPos);
+  let deleteEnd = text.indexOf("\n", endCursorPos);
   if (deleteEnd !== -1) {
     deleteEnd = deleteEnd + 1; // Include the \n
   } else {
@@ -2367,7 +2499,7 @@ const deleteCodeBlockLines = (firstLine: number, lastLine: number): number => {
   const walker = document.createTreeWalker(
     codeBlockElement,
     NodeFilter.SHOW_TEXT,
-    null
+    null,
   );
 
   let currentNode: Text | null = null;
@@ -2405,7 +2537,7 @@ const deleteCodeBlockLines = (firstLine: number, lastLine: number): number => {
     selection?.addRange(range);
 
     // Delete the content
-    document.execCommand('delete');
+    document.execCommand("delete");
   }
 
   // Clear selection
@@ -2423,7 +2555,6 @@ const changeCodeBlockLines = (firstLine: number, lastLine: number) => {
   for (let i = lastLine; i >= firstLine; i--) {
     const element = vim_info.lines[i].element as HTMLElement;
 
-
     // Select all content in the line
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -2433,7 +2564,7 @@ const changeCodeBlockLines = (firstLine: number, lastLine: number) => {
     selection?.addRange(range);
 
     // Delete the content
-    document.execCommand('delete');
+    document.execCommand("delete");
   }
 
   // Clear selection
@@ -2461,20 +2592,19 @@ const deleteVisualLineSelection = () => {
   const endLine = vim_info.active_line;
 
   // Determine the range of lines to delete
-  const [firstLine, lastLine] = startLine <= endLine
-    ? [startLine, endLine]
-    : [endLine, startLine];
+  const [firstLine, lastLine] =
+    startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
 
   // Collect text from all lines for clipboard
   const textLines: string[] = [];
   for (let i = firstLine; i <= lastLine; i++) {
-    textLines.push(vim_info.lines[i].element.textContent || '');
+    textLines.push(vim_info.lines[i].element.textContent || "");
   }
-  const clipboardText = textLines.join('\n');
+  const clipboardText = textLines.join("\n");
 
   // Copy to clipboard
-  navigator.clipboard.writeText(clipboardText).catch(err => {
-    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  navigator.clipboard.writeText(clipboardText).catch((err) => {
+    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
   });
 
   // Clear background highlights from all elements IMMEDIATELY
@@ -2483,7 +2613,12 @@ const deleteVisualLineSelection = () => {
   window.getSelection()?.removeAllRanges();
 
   // Group consecutive lines by their element (code blocks share the same element)
-  const lineGroups: { start: number; end: number; isCodeBlock: boolean; element: HTMLElement }[] = [];
+  const lineGroups: {
+    start: number;
+    end: number;
+    isCodeBlock: boolean;
+    element: HTMLElement;
+  }[] = [];
   let currentGroupStart = firstLine;
   let currentGroupElement = vim_info.lines[firstLine].element;
   let currentGroupIsCodeBlock = isInsideCodeBlock(currentGroupElement);
@@ -2497,7 +2632,7 @@ const deleteVisualLineSelection = () => {
         start: currentGroupStart,
         end: i - 1,
         isCodeBlock: currentGroupIsCodeBlock,
-        element: currentGroupElement
+        element: currentGroupElement,
       });
       currentGroupStart = i;
       currentGroupElement = currentElement;
@@ -2510,7 +2645,7 @@ const deleteVisualLineSelection = () => {
     start: currentGroupStart,
     end: lastLine,
     isCodeBlock: currentGroupIsCodeBlock,
-    element: currentGroupElement
+    element: currentGroupElement,
   });
 
   // Start undo group for multi-line deletion
@@ -2527,7 +2662,8 @@ const deleteVisualLineSelection = () => {
 
     if (group.isCodeBlock) {
       // Check if selection extends beyond this group (selected from outside)
-      const selectionExtendsOutside = firstLine < group.start || lastLine > group.end;
+      const selectionExtendsOutside =
+        firstLine < group.start || lastLine > group.end;
 
       if (selectionExtendsOutside) {
         // Selection includes lines outside this code block - delete the whole block
@@ -2558,7 +2694,10 @@ const deleteVisualLineSelection = () => {
     refreshLines();
     clearAllBackgroundColors();
 
-    const newActiveLine = Math.max(0, Math.min(firstLine, vim_info.lines.length - 1));
+    const newActiveLine = Math.max(
+      0,
+      Math.min(firstLine, vim_info.lines.length - 1),
+    );
 
     if (vim_info.lines.length > 0) {
       setActiveLine(newActiveLine);
@@ -2582,20 +2721,19 @@ const changeVisualLineSelection = () => {
   const endLine = vim_info.active_line;
 
   // Determine the range of lines to change
-  const [firstLine, lastLine] = startLine <= endLine
-    ? [startLine, endLine]
-    : [endLine, startLine];
+  const [firstLine, lastLine] =
+    startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
 
   // Collect text from all lines for clipboard
   const textLines: string[] = [];
   for (let i = firstLine; i <= lastLine; i++) {
-    textLines.push(vim_info.lines[i].element.textContent || '');
+    textLines.push(vim_info.lines[i].element.textContent || "");
   }
-  const clipboardText = textLines.join('\n');
+  const clipboardText = textLines.join("\n");
 
   // Copy to clipboard
-  navigator.clipboard.writeText(clipboardText).catch(err => {
-    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  navigator.clipboard.writeText(clipboardText).catch((err) => {
+    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
   });
 
   // Clear background highlights from all elements IMMEDIATELY
@@ -2609,7 +2747,12 @@ const changeVisualLineSelection = () => {
   });
 
   // Group consecutive lines by their element (code blocks share the same element)
-  const lineGroups: { start: number; end: number; isCodeBlock: boolean; element: HTMLElement }[] = [];
+  const lineGroups: {
+    start: number;
+    end: number;
+    isCodeBlock: boolean;
+    element: HTMLElement;
+  }[] = [];
   let currentGroupStart = firstLine;
   let currentGroupElement = vim_info.lines[firstLine].element;
   let currentGroupIsCodeBlock = isInsideCodeBlock(currentGroupElement);
@@ -2623,7 +2766,7 @@ const changeVisualLineSelection = () => {
         start: currentGroupStart,
         end: i - 1,
         isCodeBlock: currentGroupIsCodeBlock,
-        element: currentGroupElement
+        element: currentGroupElement,
       });
       currentGroupStart = i;
       currentGroupElement = currentElement;
@@ -2636,7 +2779,7 @@ const changeVisualLineSelection = () => {
     start: currentGroupStart,
     end: lastLine,
     isCodeBlock: currentGroupIsCodeBlock,
-    element: currentGroupElement
+    element: currentGroupElement,
   });
 
   // If selection is entirely within a single code block, use changeCodeBlockLines
@@ -2646,7 +2789,11 @@ const changeVisualLineSelection = () => {
   }
 
   // If selection is a single normal line, just clear and enter insert mode
-  if (lineGroups.length === 1 && !lineGroups[0].isCodeBlock && firstLine === lastLine) {
+  if (
+    lineGroups.length === 1 &&
+    !lineGroups[0].isCodeBlock &&
+    firstLine === lastLine
+  ) {
     const element = vim_info.lines[firstLine].element as HTMLElement;
 
     // Select all content
@@ -2657,7 +2804,7 @@ const changeVisualLineSelection = () => {
     selection?.addRange(range);
 
     // Delete content
-    document.execCommand('delete');
+    document.execCommand("delete");
 
     // Clear selection to remove any remaining highlights
     selection?.removeAllRanges();
@@ -2700,7 +2847,7 @@ const changeVisualLineSelection = () => {
         selection?.addRange(range);
 
         // Delete the content
-        document.execCommand('delete');
+        document.execCommand("delete");
       }
     }
   }
@@ -2713,7 +2860,10 @@ const changeVisualLineSelection = () => {
 
   deleteExtraLinesSequentially(linesToDelete, firstLine);
 
-  function deleteExtraLinesSequentially(lineIndices: number[], targetLine: number) {
+  function deleteExtraLinesSequentially(
+    lineIndices: number[],
+    targetLine: number,
+  ) {
     if (lineIndices.length === 0) {
       // All extra lines deleted, now clear the first line and enter insert mode
       vim_info.in_undo_group = false;
@@ -2734,7 +2884,7 @@ const changeVisualLineSelection = () => {
           selection?.addRange(range);
 
           // Delete content
-          document.execCommand('delete');
+          document.execCommand("delete");
 
           // Clear selection to remove any remaining highlights
           selection?.removeAllRanges();
@@ -2760,14 +2910,18 @@ const changeVisualLineSelection = () => {
     }
 
     const element = vim_info.lines[lineIndex].element;
-    const block = element.closest('[data-block-id]') || element.parentElement?.parentElement;
+    const block =
+      element.closest("[data-block-id]") ||
+      element.parentElement?.parentElement;
 
     if (!block) {
       deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
       return;
     }
 
-    const editableElement = block.querySelector('[contenteditable="true"]') as HTMLElement;
+    const editableElement = block.querySelector(
+      '[contenteditable="true"]',
+    ) as HTMLElement;
     if (!editableElement) {
       deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
       return;
@@ -2785,9 +2939,9 @@ const changeVisualLineSelection = () => {
 
     setTimeout(() => {
       // Delete content
-      const deleteEvent = new KeyboardEvent('keydown', {
-        key: 'Delete',
-        code: 'Delete',
+      const deleteEvent = new KeyboardEvent("keydown", {
+        key: "Delete",
+        code: "Delete",
         keyCode: 46,
         which: 46,
         bubbles: true,
@@ -2797,9 +2951,9 @@ const changeVisualLineSelection = () => {
 
       // Delete empty block
       setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent('keydown', {
-          key: 'Backspace',
-          code: 'Backspace',
+        const backspaceEvent = new KeyboardEvent("keydown", {
+          key: "Backspace",
+          code: "Backspace",
           keyCode: 8,
           which: 8,
           bubbles: true,
@@ -2820,7 +2974,7 @@ const yankVisualSelection = () => {
   const { vim_info } = window;
 
   // Use execCommand('copy') to copy to clipboard without deleting
-  document.execCommand('copy');
+  document.execCommand("copy");
 
   vim_info.mode = "normal";
   window.getSelection()?.removeAllRanges();
@@ -2831,7 +2985,7 @@ const yankVisualLineSelection = () => {
   const { vim_info } = window;
 
   // Use execCommand('copy') to copy to clipboard without deleting
-  document.execCommand('copy');
+  document.execCommand("copy");
 
   // Clear background highlights from all elements
   clearAllBackgroundColors();
@@ -2862,7 +3016,8 @@ const pasteAfterCursor = async () => {
 
     // Insert text at cursor position
     const text = currentElement.textContent || "";
-    const newText = text.slice(0, pastePosition) + clipboardText + text.slice(pastePosition);
+    const newText =
+      text.slice(0, pastePosition) + clipboardText + text.slice(pastePosition);
     currentElement.textContent = newText;
 
     // Move cursor to end of pasted text
@@ -2870,7 +3025,7 @@ const pasteAfterCursor = async () => {
     setCursorPosition(currentElement, newCursorPosition);
     vim_info.desired_column = newCursorPosition;
   } catch (err) {
-    console.error('[Vim-Notion] Failed to paste:', err);
+    console.error("[Vim-Notion] Failed to paste:", err);
   }
 };
 
@@ -2887,7 +3042,10 @@ const pasteBeforeCursor = async () => {
 
     // Insert text at cursor position
     const text = currentElement.textContent || "";
-    const newText = text.slice(0, currentCursorPosition) + clipboardText + text.slice(currentCursorPosition);
+    const newText =
+      text.slice(0, currentCursorPosition) +
+      clipboardText +
+      text.slice(currentCursorPosition);
     currentElement.textContent = newText;
 
     // Move cursor to end of pasted text
@@ -2895,7 +3053,7 @@ const pasteBeforeCursor = async () => {
     setCursorPosition(currentElement, newCursorPosition);
     vim_info.desired_column = newCursorPosition;
   } catch (err) {
-    console.error('[Vim-Notion] Failed to paste:', err);
+    console.error("[Vim-Notion] Failed to paste:", err);
   }
 };
 
@@ -2907,7 +3065,7 @@ const yankCurrentLine = async () => {
   try {
     await navigator.clipboard.writeText(text);
   } catch (err) {
-    console.error('[Vim-Notion] Failed to yank:', err);
+    console.error("[Vim-Notion] Failed to yank:", err);
   }
 };
 
@@ -2934,7 +3092,7 @@ const yankToNextWord = async () => {
   try {
     await navigator.clipboard.writeText(yankedText);
   } catch (err) {
-    console.error('[Vim-Notion] Failed to yank:', err);
+    console.error("[Vim-Notion] Failed to yank:", err);
   }
 };
 
@@ -2949,7 +3107,7 @@ const yankToEndOfLine = async () => {
   try {
     await navigator.clipboard.writeText(yankedText);
   } catch (err) {
-    console.error('[Vim-Notion] Failed to yank:', err);
+    console.error("[Vim-Notion] Failed to yank:", err);
   }
 };
 
@@ -2964,7 +3122,7 @@ const yankToBeginningOfLine = async () => {
   try {
     await navigator.clipboard.writeText(yankedText);
   } catch (err) {
-    console.error('[Vim-Notion] Failed to yank:', err);
+    console.error("[Vim-Notion] Failed to yank:", err);
   }
 };
 
@@ -3015,7 +3173,10 @@ const getAroundWordBounds = (text: string, pos: number): [number, number] => {
   }
 
   // If no trailing whitespace, include leading whitespace instead
-  if (end === start + (pos - start) + (text.slice(pos).match(/^\w+/)?.[0].length || 0)) {
+  if (
+    end ===
+    start + (pos - start) + (text.slice(pos).match(/^\w+/)?.[0].length || 0)
+  ) {
     while (start > 0 && /\s/.test(text[start - 1])) {
       start--;
     }
@@ -3036,7 +3197,7 @@ const yankInnerWord = async () => {
   try {
     await navigator.clipboard.writeText(yankedText);
   } catch (err) {
-    console.error('[Vim-Notion] Failed to yank:', err);
+    console.error("[Vim-Notion] Failed to yank:", err);
   }
   vim_info.pending_operator = null;
   updateInfoContainer();
@@ -3052,14 +3213,14 @@ const deleteCurrentLine = async () => {
 
   if (inCodeBlock) {
     // For code blocks, delete only the line content, not the block itself
-    const text = currentElement.textContent || '';
+    const text = currentElement.textContent || "";
     const cursorPos = getCursorIndexInElement(currentElement);
 
     // Find the start and end of the current line
-    let lineStart = text.lastIndexOf('\n', cursorPos - 1);
+    let lineStart = text.lastIndexOf("\n", cursorPos - 1);
     lineStart = lineStart === -1 ? 0 : lineStart + 1;
 
-    let lineEnd = text.indexOf('\n', cursorPos);
+    let lineEnd = text.indexOf("\n", cursorPos);
     // Include the newline character in deletion (if it exists)
     if (lineEnd !== -1) {
       lineEnd = lineEnd + 1; // Include the \n
@@ -3073,13 +3234,15 @@ const deleteCurrentLine = async () => {
     }
 
     // Extract the line text for clipboard (without newlines for clipboard)
-    const originalLineStart = text.lastIndexOf('\n', cursorPos - 1);
-    const actualLineStart = originalLineStart === -1 ? 0 : originalLineStart + 1;
-    const originalLineEnd = text.indexOf('\n', cursorPos);
-    const actualLineEnd = originalLineEnd === -1 ? text.length : originalLineEnd;
+    const originalLineStart = text.lastIndexOf("\n", cursorPos - 1);
+    const actualLineStart =
+      originalLineStart === -1 ? 0 : originalLineStart + 1;
+    const originalLineEnd = text.indexOf("\n", cursorPos);
+    const actualLineEnd =
+      originalLineEnd === -1 ? text.length : originalLineEnd;
     const lineText = text.substring(actualLineStart, actualLineEnd);
-    navigator.clipboard.writeText(lineText).catch(err => {
-      console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+    navigator.clipboard.writeText(lineText).catch((err) => {
+      console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
     // Temporarily switch to insert mode
@@ -3089,7 +3252,7 @@ const deleteCurrentLine = async () => {
     const walker = document.createTreeWalker(
       currentElement,
       NodeFilter.SHOW_TEXT,
-      null
+      null,
     );
 
     let currentNode: Text | null = null;
@@ -3128,7 +3291,7 @@ const deleteCurrentLine = async () => {
 
       // Delete the selected content
       setTimeout(() => {
-        document.execCommand('delete');
+        document.execCommand("delete");
 
         setTimeout(() => {
           vim_info.mode = "normal";
@@ -3142,9 +3305,9 @@ const deleteCurrentLine = async () => {
   } else {
     // For normal blocks, delete the entire block as before
     // Copy line content to clipboard
-    const lineText = currentElement.textContent || '';
-    navigator.clipboard.writeText(lineText).catch(err => {
-      console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+    const lineText = currentElement.textContent || "";
+    navigator.clipboard.writeText(lineText).catch((err) => {
+      console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
     // Temporarily switch to insert mode to allow deletion
@@ -3162,9 +3325,9 @@ const deleteCurrentLine = async () => {
     (currentElement as HTMLElement).focus();
 
     setTimeout(() => {
-      const deleteEvent = new KeyboardEvent('keydown', {
-        key: 'Delete',
-        code: 'Delete',
+      const deleteEvent = new KeyboardEvent("keydown", {
+        key: "Delete",
+        code: "Delete",
         keyCode: 46,
         which: 46,
         bubbles: true,
@@ -3175,9 +3338,9 @@ const deleteCurrentLine = async () => {
 
       // After deleting content, press Backspace to delete the empty block
       setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent('keydown', {
-          key: 'Backspace',
-          code: 'Backspace',
+        const backspaceEvent = new KeyboardEvent("keydown", {
+          key: "Backspace",
+          code: "Backspace",
           keyCode: 8,
           which: 8,
           bubbles: true,
@@ -3191,7 +3354,10 @@ const deleteCurrentLine = async () => {
           vim_info.mode = "normal";
           refreshLines();
 
-          const newActiveLine = Math.max(0, Math.min(currentLineIndex - 1, vim_info.lines.length - 1));
+          const newActiveLine = Math.max(
+            0,
+            Math.min(currentLineIndex - 1, vim_info.lines.length - 1),
+          );
           if (vim_info.lines.length > 0) {
             setActiveLine(newActiveLine);
           }
@@ -3229,7 +3395,7 @@ const deleteToNextWord = () => {
     sel.removeAllRanges();
     sel.addRange(r);
 
-    document.execCommand('cut');
+    document.execCommand("cut");
   }
 
   vim_info.desired_column = currentCursorPosition;
@@ -3271,8 +3437,8 @@ const deleteInnerWord = () => {
   const deletedText = text.slice(start, end);
 
   // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch(err => {
-    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  navigator.clipboard.writeText(deletedText).catch((err) => {
+    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
   });
 
   const newText = text.slice(0, start) + text.slice(end);
@@ -3285,7 +3451,11 @@ const deleteInnerWord = () => {
 };
 
 // Helper function to find matching quotes (where open and close are the same)
-const findMatchingQuotes = (text: string, cursorPos: number, quoteChar: string): [number, number] | null => {
+const findMatchingQuotes = (
+  text: string,
+  cursorPos: number,
+  quoteChar: string,
+): [number, number] | null => {
   // Support both regular quotes and smart quotes (typographic quotes)
   // Notion uses various quote characters inconsistently
   let allQuoteChars: string[];
@@ -3341,7 +3511,12 @@ const findMatchingQuotes = (text: string, cursorPos: number, quoteChar: string):
 };
 
 // Helper function to find matching brackets/quotes
-const findMatchingBrackets = (text: string, cursorPos: number, openChar: string, closeChar: string): [number, number] | null => {
+const findMatchingBrackets = (
+  text: string,
+  cursorPos: number,
+  openChar: string,
+  closeChar: string,
+): [number, number] | null => {
   // Find the opening bracket before cursor
   let openIndex = -1;
   let closeIndex = -1;
@@ -3404,9 +3579,10 @@ const deleteInnerBracket = (openChar: string, closeChar: string) => {
   const text = currentElement.textContent || "";
 
   // Use different function for quotes (where open === close)
-  const result = openChar === closeChar
-    ? findMatchingQuotes(text, currentCursorPosition, openChar)
-    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  const result =
+    openChar === closeChar
+      ? findMatchingQuotes(text, currentCursorPosition, openChar)
+      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
 
   if (!result) {
     vim_info.pending_operator = null;
@@ -3418,8 +3594,8 @@ const deleteInnerBracket = (openChar: string, closeChar: string) => {
   const deletedText = text.slice(openIndex + 1, closeIndex);
 
   // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch(err => {
-    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  navigator.clipboard.writeText(deletedText).catch((err) => {
+    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
   });
 
   const newText = text.slice(0, openIndex + 1) + text.slice(closeIndex);
@@ -3438,9 +3614,10 @@ const deleteAroundBracket = (openChar: string, closeChar: string) => {
   const text = currentElement.textContent || "";
 
   // Use different function for quotes (where open === close)
-  const result = openChar === closeChar
-    ? findMatchingQuotes(text, currentCursorPosition, openChar)
-    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  const result =
+    openChar === closeChar
+      ? findMatchingQuotes(text, currentCursorPosition, openChar)
+      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
 
   if (!result) {
     vim_info.pending_operator = null;
@@ -3452,8 +3629,8 @@ const deleteAroundBracket = (openChar: string, closeChar: string) => {
   const deletedText = text.slice(openIndex, closeIndex + 1);
 
   // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch(err => {
-    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  navigator.clipboard.writeText(deletedText).catch((err) => {
+    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
   });
 
   const newText = text.slice(0, openIndex) + text.slice(closeIndex + 1);
@@ -3602,7 +3779,7 @@ const yankAroundWord = async () => {
   try {
     await navigator.clipboard.writeText(yankedText);
   } catch (err) {
-    console.error('[Vim-Notion] Failed to yank:', err);
+    console.error("[Vim-Notion] Failed to yank:", err);
   }
   vim_info.pending_operator = null;
   updateInfoContainer();
@@ -3618,8 +3795,8 @@ const deleteAroundWord = () => {
   const deletedText = text.slice(start, end);
 
   // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch(err => {
-    console.error('[Vim-Notion] Failed to copy to clipboard:', err);
+  navigator.clipboard.writeText(deletedText).catch((err) => {
+    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
   });
 
   const newText = text.slice(0, start) + text.slice(end);
@@ -3656,9 +3833,10 @@ const yankInnerBracket = (openChar: string, closeChar: string) => {
   const text = currentElement.textContent || "";
 
   // Use different function for quotes (where open === close)
-  const result = openChar === closeChar
-    ? findMatchingQuotes(text, currentCursorPosition, openChar)
-    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  const result =
+    openChar === closeChar
+      ? findMatchingQuotes(text, currentCursorPosition, openChar)
+      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
 
   if (!result) {
     vim_info.pending_operator = null;
@@ -3680,9 +3858,10 @@ const yankAroundBracket = (openChar: string, closeChar: string) => {
   const text = currentElement.textContent || "";
 
   // Use different function for quotes (where open === close)
-  const result = openChar === closeChar
-    ? findMatchingQuotes(text, currentCursorPosition, openChar)
-    : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+  const result =
+    openChar === closeChar
+      ? findMatchingQuotes(text, currentCursorPosition, openChar)
+      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
 
   if (!result) {
     vim_info.pending_operator = null;
@@ -3723,10 +3902,10 @@ const undo = () => {
     }
 
     // Simulate Cmd+Z / Ctrl+Z to trigger Notion's undo
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    const event = new KeyboardEvent('keydown', {
-      key: 'z',
-      code: 'KeyZ',
+    const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+    const event = new KeyboardEvent("keydown", {
+      key: "z",
+      code: "KeyZ",
       keyCode: 90,
       which: 90,
       metaKey: isMac,
@@ -3770,10 +3949,10 @@ const redo = () => {
     }
 
     // Simulate Cmd+Shift+Z / Ctrl+Shift+Z to trigger Notion's redo
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    const event = new KeyboardEvent('keydown', {
-      key: 'z',
-      code: 'KeyZ',
+    const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+    const event = new KeyboardEvent("keydown", {
+      key: "z",
+      code: "KeyZ",
       keyCode: 90,
       which: 90,
       shiftKey: true,
@@ -3978,7 +4157,7 @@ const deleteVisualSelection = () => {
 
   // The selection is already set by updateVisualSelection
   // Use 'cut' to copy to clipboard like vim's 'd' command
-  document.execCommand('cut');
+  document.execCommand("cut");
 
   vim_info.mode = "normal";
   window.getSelection()?.removeAllRanges();
@@ -3989,7 +4168,10 @@ const deleteVisualSelection = () => {
 const isInsideCodeBlock = (element: Element): boolean => {
   // Notion code blocks typically have a specific structure
   // Check if the element or its parents have code-related selectors
-  const codeContainer = element.closest('[class*="code"]') || element.closest('code') || element.closest('pre');
+  const codeContainer =
+    element.closest('[class*="code"]') ||
+    element.closest("code") ||
+    element.closest("pre");
   const isCodeBlock = !!codeContainer;
 
   return isCodeBlock;
@@ -3997,7 +4179,8 @@ const isInsideCodeBlock = (element: Element): boolean => {
 
 // Helper function to get all contenteditable lines within the same code block
 const getCodeBlockLines = (element: Element): Element[] => {
-  const codeContainer = element.closest('[class*="code"]') || element.closest('[data-block-id]');
+  const codeContainer =
+    element.closest('[class*="code"]') || element.closest("[data-block-id]");
   if (!codeContainer) return [];
 
   return Array.from(codeContainer.querySelectorAll('[contenteditable="true"]'));
@@ -4038,7 +4221,6 @@ const moveCursorBackwards = () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
 
-
   // If at beginning of line, move to end of previous line
   if (currentCursorPosition === 0) {
     if (vim_info.active_line > 0) {
@@ -4061,7 +4243,6 @@ const moveCursorForwards = () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const lineLength = currentElement.textContent?.length || 0;
-
 
   // If at end of line, move to next line
   if (currentCursorPosition >= lineLength) {
@@ -4529,7 +4710,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         e.preventDefault();
         e.stopPropagation();
         clearAllLinkHighlights();
-        selectedLinkIndex = (selectedLinkIndex - 1 + availableLinks.length) % availableLinks.length;
+        selectedLinkIndex =
+          (selectedLinkIndex - 1 + availableLinks.length) %
+          availableLinks.length;
         highlightSelectedLink();
         return true;
 
@@ -4546,7 +4729,8 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         };
         const linkPageId = extractPageId(selectedLink.href);
         const currentPageId = extractPageId(window.location.href);
-        const isBlockLink = selectedLink.href.includes('#') && linkPageId === currentPageId;
+        const isBlockLink =
+          selectedLink.href.includes("#") && linkPageId === currentPageId;
 
         // Save cursor position before navigating (only for page links, not block links)
         // Shift+Enter opens in new tab, so don't save in that case either
@@ -4559,7 +4743,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
         if (e.shiftKey) {
           // Open in new tab
-          window.open(selectedLink.href, '_blank');
+          window.open(selectedLink.href, "_blank");
           restoreNotionUnsavedWarning();
         } else {
           // Click to navigate
@@ -4570,32 +4754,45 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
           // For block links, update cursor position after navigation
           if (isBlockLink) {
-            const blockId = selectedLink.href.split('#')[1].split('?')[0];
+            const blockId = selectedLink.href.split("#")[1].split("?")[0];
 
             setTimeout(() => {
               // Try to find the actual block element by its ID
-              let blockElement = document.querySelector(`[data-block-id="${blockId}"]`);
+              let blockElement = document.querySelector(
+                `[data-block-id="${blockId}"]`,
+              );
 
               // If not found, try with hyphens (UUID format)
               if (!blockElement) {
-                const blockIdWithHyphens = blockId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
-                blockElement = document.querySelector(`[data-block-id="${blockIdWithHyphens}"]`);
+                const blockIdWithHyphens = blockId.replace(
+                  /(.{8})(.{4})(.{4})(.{4})(.{12})/,
+                  "$1-$2-$3-$4-$5",
+                );
+                blockElement = document.querySelector(
+                  `[data-block-id="${blockIdWithHyphens}"]`,
+                );
               }
 
               if (blockElement) {
                 // Find the leaf element within this block
-                const leafElement = blockElement.querySelector('[data-content-editable-leaf="true"]');
+                const leafElement = blockElement.querySelector(
+                  '[data-content-editable-leaf="true"]',
+                );
 
                 if (leafElement && document.contains(leafElement)) {
                   // Find this leaf in vim_info.lines
-                  const actualIndex = vim_info.lines.findIndex(line => line.element === leafElement);
+                  const actualIndex = vim_info.lines.findIndex(
+                    (line) => line.element === leafElement,
+                  );
 
                   if (actualIndex !== -1) {
                     vim_info.active_line = actualIndex;
                     vim_info.cursor_position = 0;
 
                     // Ensure the element is still in the document before updating cursor
-                    if (document.contains(vim_info.lines[actualIndex].element)) {
+                    if (
+                      document.contains(vim_info.lines[actualIndex].element)
+                    ) {
                       updateBlockCursor();
                     }
                   }
@@ -4613,11 +4810,15 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
         // Delete the block containing the selected link
         const linkToDelete = availableLinks[selectedLinkIndex];
-        let blockElement = linkToDelete.closest('[data-block-id]');
+        let blockElement = linkToDelete.closest("[data-block-id]");
 
         if (blockElement) {
-          const editableElement = blockElement.querySelector('[contenteditable="true"]') as HTMLElement;
-          const focusableElement = blockElement.querySelector('[tabindex]') as HTMLElement;
+          const editableElement = blockElement.querySelector(
+            '[contenteditable="true"]',
+          ) as HTMLElement;
+          const focusableElement = blockElement.querySelector(
+            "[tabindex]",
+          ) as HTMLElement;
 
           if (editableElement) {
             // Normal block with contenteditable
@@ -4630,9 +4831,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
             editableElement.focus();
 
             setTimeout(() => {
-              const deleteEvent = new KeyboardEvent('keydown', {
-                key: 'Delete',
-                code: 'Delete',
+              const deleteEvent = new KeyboardEvent("keydown", {
+                key: "Delete",
+                code: "Delete",
                 keyCode: 46,
                 which: 46,
                 bubbles: true,
@@ -4642,9 +4843,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
               editableElement.dispatchEvent(deleteEvent);
 
               setTimeout(() => {
-                const backspaceEvent = new KeyboardEvent('keydown', {
-                  key: 'Backspace',
-                  code: 'Backspace',
+                const backspaceEvent = new KeyboardEvent("keydown", {
+                  key: "Backspace",
+                  code: "Backspace",
                   keyCode: 8,
                   which: 8,
                   bubbles: true,
@@ -4674,42 +4875,48 @@ const normalReducer = (e: KeyboardEvent): boolean => {
             const y = rect.top + rect.height / 2;
 
             // Mouse enter
-            blockEl.dispatchEvent(new MouseEvent('mouseenter', {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-              clientX: x,
-              clientY: y
-            }));
+            blockEl.dispatchEvent(
+              new MouseEvent("mouseenter", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: x,
+                clientY: y,
+              }),
+            );
 
             // Mouse down
-            blockEl.dispatchEvent(new MouseEvent('mousedown', {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-              clientX: x,
-              clientY: y,
-              button: 0
-            }));
+            blockEl.dispatchEvent(
+              new MouseEvent("mousedown", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: x,
+                clientY: y,
+                button: 0,
+              }),
+            );
 
             // Mouse up
-            blockEl.dispatchEvent(new MouseEvent('mouseup', {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-              clientX: x,
-              clientY: y,
-              button: 0
-            }));
+            blockEl.dispatchEvent(
+              new MouseEvent("mouseup", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: x,
+                clientY: y,
+                button: 0,
+              }),
+            );
 
             // Click
             blockEl.click();
 
             setTimeout(() => {
               // Dispatch Delete key to delete the selected block
-              const deleteEvent = new KeyboardEvent('keydown', {
-                key: 'Delete',
-                code: 'Delete',
+              const deleteEvent = new KeyboardEvent("keydown", {
+                key: "Delete",
+                code: "Delete",
                 keyCode: 46,
                 which: 46,
                 bubbles: true,
@@ -4761,7 +4968,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "o":
       // In code blocks, use custom line opening to stay within the block
-      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+      if (
+        vim_info.lines[active_line] &&
+        isInsideCodeBlock(vim_info.lines[active_line].element)
+      ) {
         openLineBelowInCodeBlock();
         return true;
       }
@@ -4769,7 +4979,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "O":
       // In code blocks, use custom line opening to stay within the block
-      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+      if (
+        vim_info.lines[active_line] &&
+        isInsideCodeBlock(vim_info.lines[active_line].element)
+      ) {
         openLineAboveInCodeBlock();
         return true;
       }
@@ -4780,15 +4993,20 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       // Check if current line is a TODO item and toggle it
       {
         const currentLine = vim_info.lines[vim_info.active_line];
-        const blockElement = currentLine.element.closest('[data-block-id]');
+        const blockElement = currentLine.element.closest("[data-block-id]");
 
         // Check if this is a TODO block by looking for the checkbox
-        const isTodoBlock = blockElement?.className.includes('notion-to_do-block');
-        const checkbox = blockElement?.querySelector('[data-content-editable-void="true"]');
+        const isTodoBlock =
+          blockElement?.className.includes("notion-to_do-block");
+        const checkbox = blockElement?.querySelector(
+          '[data-content-editable-void="true"]',
+        );
 
         if (isTodoBlock && checkbox) {
           // This is a TODO item - toggle the checkbox
-          const checkboxInput = checkbox.querySelector('input[type="checkbox"]');
+          const checkboxInput = checkbox.querySelector(
+            'input[type="checkbox"]',
+          );
 
           if (checkboxInput) {
             // Save current cursor position and line index before toggling
@@ -4801,31 +5019,37 @@ const normalReducer = (e: KeyboardEvent): boolean => {
             const y = rect.top + rect.height / 2;
 
             // Simulate complete mouse interaction for reliable toggling
-            checkboxEl.dispatchEvent(new MouseEvent('mouseenter', {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-              clientX: x,
-              clientY: y
-            }));
+            checkboxEl.dispatchEvent(
+              new MouseEvent("mouseenter", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: x,
+                clientY: y,
+              }),
+            );
 
-            checkboxEl.dispatchEvent(new MouseEvent('mousedown', {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-              clientX: x,
-              clientY: y,
-              button: 0
-            }));
+            checkboxEl.dispatchEvent(
+              new MouseEvent("mousedown", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: x,
+                clientY: y,
+                button: 0,
+              }),
+            );
 
-            checkboxEl.dispatchEvent(new MouseEvent('mouseup', {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-              clientX: x,
-              clientY: y,
-              button: 0
-            }));
+            checkboxEl.dispatchEvent(
+              new MouseEvent("mouseup", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: x,
+                clientY: y,
+                button: 0,
+              }),
+            );
 
             checkboxEl.click();
 
@@ -4847,12 +5071,13 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
         // Not a TODO item, continue with link navigation logic
         // Check if current line contains a link
-        const currentLineElement = vim_info.lines[vim_info.active_line]?.element;
+        const currentLineElement =
+          vim_info.lines[vim_info.active_line]?.element;
         if (!currentLineElement) {
           return true;
         }
 
-        const linkInCurrentLine = currentLineElement.querySelector('a[href]');
+        const linkInCurrentLine = currentLineElement.querySelector("a[href]");
 
         if (linkInCurrentLine) {
           // Current line has a link - use detectAllLinks() to find closest link
@@ -4895,34 +5120,50 @@ const normalReducer = (e: KeyboardEvent): boolean => {
             const linkPageId = extractPageId(closestLink.href);
             const currentPageId = extractPageId(window.location.href);
 
-            if (linkPageId === currentPageId && closestLink.href.includes('#')) {
+            if (
+              linkPageId === currentPageId &&
+              closestLink.href.includes("#")
+            ) {
               // Extract block ID from URL hash
-              const blockId = closestLink.href.split('#')[1].split('?')[0];
+              const blockId = closestLink.href.split("#")[1].split("?")[0];
 
               setTimeout(() => {
                 // Try to find the actual block element by its ID
-                let blockElement = document.querySelector(`[data-block-id="${blockId}"]`);
+                let blockElement = document.querySelector(
+                  `[data-block-id="${blockId}"]`,
+                );
 
                 // If not found, try with hyphens (UUID format)
                 if (!blockElement) {
-                  const blockIdWithHyphens = blockId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
-                  blockElement = document.querySelector(`[data-block-id="${blockIdWithHyphens}"]`);
+                  const blockIdWithHyphens = blockId.replace(
+                    /(.{8})(.{4})(.{4})(.{4})(.{12})/,
+                    "$1-$2-$3-$4-$5",
+                  );
+                  blockElement = document.querySelector(
+                    `[data-block-id="${blockIdWithHyphens}"]`,
+                  );
                 }
 
                 if (blockElement) {
                   // Find the leaf element within this block
-                  const leafElement = blockElement.querySelector('[data-content-editable-leaf="true"]');
+                  const leafElement = blockElement.querySelector(
+                    '[data-content-editable-leaf="true"]',
+                  );
 
                   if (leafElement && document.contains(leafElement)) {
                     // Find this leaf in vim_info.lines
-                    const actualIndex = vim_info.lines.findIndex(line => line.element === leafElement);
+                    const actualIndex = vim_info.lines.findIndex(
+                      (line) => line.element === leafElement,
+                    );
 
                     if (actualIndex !== -1) {
                       vim_info.active_line = actualIndex;
                       vim_info.cursor_position = 0;
 
                       // Ensure the element is still in the document before updating cursor
-                      if (document.contains(vim_info.lines[actualIndex].element)) {
+                      if (
+                        document.contains(vim_info.lines[actualIndex].element)
+                      ) {
                         updateBlockCursor();
                       }
                     }
@@ -4938,15 +5179,24 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         // No link in current line - enter link selection mode
         // Find all links in the page (including block links and external URLs)
         const rootElement = vim_info.lines[0]?.element;
-        if (rootElement && rootElement.getAttribute('data-content-editable-root') === 'true') {
+        if (
+          rootElement &&
+          rootElement.getAttribute("data-content-editable-root") === "true"
+        ) {
           const currentRect = currentLineElement.getBoundingClientRect();
           const currentY = currentRect.top + currentRect.height / 2;
 
           // Find all links in root element
-          const allRootLinks = Array.from(rootElement.querySelectorAll('a[href]')) as HTMLAnchorElement[];
+          const allRootLinks = Array.from(
+            rootElement.querySelectorAll("a[href]"),
+          ) as HTMLAnchorElement[];
 
           // Collect all links (Notion links, block links, and external URLs)
-          const allNotionLinks: Array<{link: HTMLAnchorElement, distance: number, y: number}> = [];
+          const allNotionLinks: Array<{
+            link: HTMLAnchorElement;
+            distance: number;
+            y: number;
+          }> = [];
 
           for (const link of allRootLinks) {
             const href = link.href;
@@ -4982,7 +5232,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
           // Enter selection mode
           linkSelectionMode = true;
-          availableLinks = allNotionLinks.map(item => item.link);
+          availableLinks = allNotionLinks.map((item) => item.link);
           selectedLinkIndex = closestIndex;
           highlightSelectedLink();
           return true;
@@ -4992,7 +5242,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
     case "h":
       // In code blocks, use custom navigation to stay within the block
-      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+      if (
+        vim_info.lines[active_line] &&
+        isInsideCodeBlock(vim_info.lines[active_line].element)
+      ) {
         moveCursorBackwardsInCodeBlock();
         return true;
       }
@@ -5000,7 +5253,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "j":
       // In code blocks, move cursor down within the block
-      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+      if (
+        vim_info.lines[active_line] &&
+        isInsideCodeBlock(vim_info.lines[active_line].element)
+      ) {
         moveCursorDownInCodeBlock();
         return true;
       }
@@ -5008,7 +5264,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "k":
       // In code blocks, move cursor up within the block
-      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+      if (
+        vim_info.lines[active_line] &&
+        isInsideCodeBlock(vim_info.lines[active_line].element)
+      ) {
         moveCursorUpInCodeBlock();
         return true;
       }
@@ -5016,7 +5275,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "l":
       // In code blocks, use custom navigation to stay within the block
-      if (vim_info.lines[active_line] && isInsideCodeBlock(vim_info.lines[active_line].element)) {
+      if (
+        vim_info.lines[active_line] &&
+        isInsideCodeBlock(vim_info.lines[active_line].element)
+      ) {
         moveCursorForwardsInCodeBlock();
         return true;
       }
@@ -5183,8 +5445,10 @@ const findScrollableContainer = (): HTMLElement => {
     // Walk up the DOM tree to find the scrollable container
     let parent = activeElement.parentElement;
     while (parent) {
-      if (parent.classList.contains('notion-scroller') &&
-          parent.scrollHeight > parent.clientHeight) {
+      if (
+        parent.classList.contains("notion-scroller") &&
+        parent.scrollHeight > parent.clientHeight
+      ) {
         return parent;
       }
       parent = parent.parentElement;
@@ -5192,9 +5456,9 @@ const findScrollableContainer = (): HTMLElement => {
   }
 
   // Fallback: find .notion-scroller within .notion-frame (not in sidebar)
-  const frame = document.querySelector('.notion-frame');
+  const frame = document.querySelector(".notion-frame");
   if (frame) {
-    const scroller = frame.querySelector('.notion-scroller') as HTMLElement;
+    const scroller = frame.querySelector(".notion-scroller") as HTMLElement;
     if (scroller && scroller.scrollHeight > scroller.clientHeight) {
       return scroller;
     }
@@ -5208,19 +5472,22 @@ const findScrollableContainer = (): HTMLElement => {
 const scrollAndMoveCursor = (pageAmount: number) => {
   const scrollContainer = findScrollableContainer();
   const scrollAmount = window.innerHeight * pageAmount;
-  const currentScroll = scrollContainer === document.documentElement ? window.scrollY : scrollContainer.scrollTop;
+  const currentScroll =
+    scrollContainer === document.documentElement
+      ? window.scrollY
+      : scrollContainer.scrollTop;
   const newScroll = Math.max(0, currentScroll + scrollAmount);
 
   // Perform instant scroll on the correct container
   if (scrollContainer === document.documentElement) {
     window.scrollTo({
       top: newScroll,
-      behavior: 'auto'
+      behavior: "auto",
     });
   } else {
     scrollContainer.scrollTo({
       top: newScroll,
-      behavior: 'auto'
+      behavior: "auto",
     });
   }
   // Note: Cursor position update is handled by scroll event listener
@@ -5235,12 +5502,12 @@ const jumpToTop = () => {
   if (scrollContainer === document.documentElement) {
     window.scrollTo({
       top: 0,
-      behavior: 'auto'
+      behavior: "auto",
     });
   } else {
     scrollContainer.scrollTo({
       top: 0,
-      behavior: 'auto'
+      behavior: "auto",
     });
   }
 
@@ -5265,19 +5532,20 @@ const jumpToBottom = () => {
   const scrollContainer = findScrollableContainer();
 
   // Scroll to bottom
-  const maxScroll = scrollContainer === document.documentElement
-    ? document.documentElement.scrollHeight - window.innerHeight
-    : scrollContainer.scrollHeight - scrollContainer.clientHeight;
+  const maxScroll =
+    scrollContainer === document.documentElement
+      ? document.documentElement.scrollHeight - window.innerHeight
+      : scrollContainer.scrollHeight - scrollContainer.clientHeight;
 
   if (scrollContainer === document.documentElement) {
     window.scrollTo({
       top: maxScroll,
-      behavior: 'auto'
+      behavior: "auto",
     });
   } else {
     scrollContainer.scrollTo({
       top: maxScroll,
-      behavior: 'auto'
+      behavior: "auto",
     });
   }
 
@@ -5325,7 +5593,7 @@ const setActiveLine = (idx: number) => {
     // If moving up (idx < previous active_line), go to the last line of the code block
     // If moving down (idx > previous active_line), go to the first line
     const text = targetElement.textContent || "";
-    const lines = text.split('\n');
+    const lines = text.split("\n");
     const movingUp = i < previousActiveLine;
 
     let cursorPosition = 0;
@@ -5359,39 +5627,41 @@ const setActiveLine = (idx: number) => {
 const refreshLines = () => {
   const { vim_info } = window;
   const allEditableElements = Array.from(
-    document.querySelectorAll("[contenteditable=true]")
+    document.querySelectorAll("[contenteditable=true]"),
   ) as HTMLDivElement[];
 
   // Store the current active element to find its new index later
   const currentActiveElement = vim_info.lines[vim_info.active_line]?.element;
 
   // Find new elements that aren't in our lines array yet
-  const existingElements = new Set(vim_info.lines.map(line => line.element));
-  const newElements = allEditableElements.filter(elem => !existingElements.has(elem));
+  const existingElements = new Set(vim_info.lines.map((line) => line.element));
+  const newElements = allEditableElements.filter(
+    (elem) => !existingElements.has(elem),
+  );
 
   if (newElements.length > 0) {
-
     // Add event listeners to new elements
-    newElements.forEach(elem => {
+    newElements.forEach((elem) => {
       elem.addEventListener("keydown", handleKeydown, true);
       elem.addEventListener("click", handleClick, true);
     });
   }
 
   // Rebuild lines array in DOM order
-  vim_info.lines = allEditableElements.map(elem => ({
+  vim_info.lines = allEditableElements.map((elem) => ({
     cursor_position: 0,
     element: elem,
   }));
 
   // Update active line index to match the current active element
   if (currentActiveElement) {
-    const newIndex = vim_info.lines.findIndex(line => line.element === currentActiveElement);
+    const newIndex = vim_info.lines.findIndex(
+      (line) => line.element === currentActiveElement,
+    );
     if (newIndex !== -1) {
       vim_info.active_line = newIndex;
     }
   }
-
 };
 
 const setLines = (f: HTMLDivElement[]) => {
@@ -5429,7 +5699,12 @@ const updateInfoContainer = () => {
   mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}`;
 
   // Update body class for cursor styling
-  document.body.classList.remove("vim-normal-mode", "vim-insert-mode", "vim-visual-mode", "vim-visual-line-mode");
+  document.body.classList.remove(
+    "vim-normal-mode",
+    "vim-insert-mode",
+    "vim-visual-mode",
+    "vim-visual-line-mode",
+  );
 
   if (vim_info.mode === "normal") {
     document.body.classList.add("vim-normal-mode");
@@ -5456,7 +5731,7 @@ const updateInfoContainer = () => {
 
   // Listen for settings changes
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'sync') {
+    if (areaName === "sync") {
       loadSettings();
     }
   });
@@ -5464,18 +5739,21 @@ const updateInfoContainer = () => {
   // Clear any saved cursor position for current URL on initial page load
   // (This prevents restoring stale positions from previous sessions)
   try {
-    const currentUrl = window.location.href.split('#')[0];
-    const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
+    const currentUrl = window.location.href.split("#")[0];
+    const savedPositions = sessionStorage.getItem("vimtion_cursor_positions");
     if (savedPositions) {
       const positionsMap: Record<string, any> = JSON.parse(savedPositions);
       if (positionsMap[currentUrl]) {
         delete positionsMap[currentUrl];
-        sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
+        sessionStorage.setItem(
+          "vimtion_cursor_positions",
+          JSON.stringify(positionsMap),
+        );
       }
     }
 
     // Clear the intentional navigation flag on initial page load (reload)
-    sessionStorage.removeItem('vimtion_intentional_navigation');
+    sessionStorage.removeItem("vimtion_intentional_navigation");
 
     // Also reset vim_info.active_line to 0 to ensure clean state
     // (Notion might auto-focus elements during page load, which could set active_line)
@@ -5487,9 +5765,7 @@ const updateInfoContainer = () => {
   let attempts = 0;
   const poll = setInterval(() => {
     attempts++;
-    const f = Array.from(
-      document.querySelectorAll("[contenteditable=true]")
-    );
+    const f = Array.from(document.querySelectorAll("[contenteditable=true]"));
 
     if (f.length > 0) {
       clearInterval(poll);
@@ -5520,17 +5796,17 @@ const updateInfoContainer = () => {
     }
 
     // Restore focus to Notion after navigation (fixes drag handle visibility)
-    const mouseEnterEvent = new MouseEvent('mouseenter', {
+    const mouseEnterEvent = new MouseEvent("mouseenter", {
       bubbles: true,
       cancelable: true,
-      view: window
+      view: window,
     });
     document.body.dispatchEvent(mouseEnterEvent);
 
     // Wait a bit for Notion to render the new page
     setTimeout(() => {
       const editableElements = Array.from(
-        document.querySelectorAll("[contenteditable=true]")
+        document.querySelectorAll("[contenteditable=true]"),
       ) as HTMLDivElement[];
 
       // Wait for at least 3 elements to ensure page is fully loaded
@@ -5540,22 +5816,29 @@ const updateInfoContainer = () => {
 
         // Restore cursor position after navigation (if available)
         // Only restore if this is an intentional navigation (gl, Shift+H/L), not a reload
-        const currentUrl = window.location.href.split('#')[0];
-        const isIntentionalNavigation = sessionStorage.getItem('vimtion_intentional_navigation') === 'true';
+        const currentUrl = window.location.href.split("#")[0];
+        const isIntentionalNavigation =
+          sessionStorage.getItem("vimtion_intentional_navigation") === "true";
 
         if (isIntentionalNavigation) {
           // Clear the flag immediately after reading it
-          sessionStorage.removeItem('vimtion_intentional_navigation');
+          sessionStorage.removeItem("vimtion_intentional_navigation");
           restoreCursorPosition();
         } else {
           // Clear saved position for current URL since it's a reload
           try {
-            const savedPositions = sessionStorage.getItem('vimtion_cursor_positions');
+            const savedPositions = sessionStorage.getItem(
+              "vimtion_cursor_positions",
+            );
             if (savedPositions) {
-              const positionsMap: Record<string, any> = JSON.parse(savedPositions);
+              const positionsMap: Record<string, any> =
+                JSON.parse(savedPositions);
               if (positionsMap[currentUrl]) {
                 delete positionsMap[currentUrl];
-                sessionStorage.setItem('vimtion_cursor_positions', JSON.stringify(positionsMap));
+                sessionStorage.setItem(
+                  "vimtion_cursor_positions",
+                  JSON.stringify(positionsMap),
+                );
               }
             }
           } catch (e) {
@@ -5591,7 +5874,7 @@ const updateInfoContainer = () => {
       const { vim_info } = window;
 
       // Only adjust in normal mode
-      if (vim_info.mode !== 'normal') {
+      if (vim_info.mode !== "normal") {
         return;
       }
 
@@ -5628,10 +5911,10 @@ const updateInfoContainer = () => {
     }, 100); // 100ms debounce
   };
 
-  window.addEventListener('scroll', handleScroll, true);
+  window.addEventListener("scroll", handleScroll, true);
 
   // Listen for browser history navigation (back/forward buttons, H/L keys)
-  window.addEventListener('popstate', () => {
+  window.addEventListener("popstate", () => {
     reinitializeAfterNavigation();
   });
 
