@@ -5,6 +5,14 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-12
+
+### Added
+- **`jk` to exit insert mode**: Type `jk` quickly (within 200ms) in insert mode to return to normal mode
+  - A popular Vim plugin feature for avoiding the Escape key
+  - Automatically deletes the typed `j` character when `k` is pressed
+  - Configurable timeout window (200ms) for the key sequence
+
 ## [1.3.0] - 2025-12-30
 
 ### Added

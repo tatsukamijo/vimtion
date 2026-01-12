@@ -120,7 +120,7 @@ Faster in-document navigation:
 4. Press `Enter` to open the selected page, or `Esc` to cancel
 
 ### Modes
-**Insert**: `i` `I` `a` `A` `o` `O` • **Visual**: `v` (char) `V` (line) • **Normal**: `Esc`
+**Insert**: `i` `I` `a` `A` `o` `O` • **Visual**: `v` (char) `V` (line) • **Normal**: `Esc` or `jk` (in insert mode)
 
 ### Editing
 **Delete**: `x` `X` `s` `D` `dd` (delete line with block) • **Undo/Redo**: `u` `r` (grouped undo for multi-line operations) • **Paste**: `p` `P`
