@@ -610,6 +610,121 @@ const jumpToPreviousWORD = () => {
   vim_info.desired_column = pos;
 };
 
+// Paragraph navigation helper functions
+
+// Get the block type of an element from its closest [data-block-id] ancestor
+const getBlockType = (element: HTMLElement): string => {
+  const blockElement = element.closest("[data-block-id]");
+  if (!blockElement) return "text";
+
+  const className = blockElement.className;
+
+  // Check for each block type
+  if (className.includes("notion-header-block")) return "header";
+  if (className.includes("notion-sub_header-block")) return "sub_header";
+  if (className.includes("notion-sub_sub_header-block"))
+    return "sub_sub_header";
+  if (className.includes("notion-code-block")) return "code";
+  if (className.includes("notion-quote-block")) return "quote";
+  if (className.includes("notion-callout-block")) return "callout";
+  if (className.includes("notion-bulleted_list-block")) return "bulleted_list";
+  if (className.includes("notion-numbered_list-block")) return "numbered_list";
+  if (className.includes("notion-to_do-block")) return "to_do";
+  if (className.includes("notion-page-block")) return "page";
+
+  return "text"; // Default to text block
+};
+
+// Check if a line is a paragraph boundary (empty line)
+const isParagraphBoundary = (
+  lineIndex: number,
+  direction: "forward" | "backward",
+): boolean => {
+  const { vim_info } = window;
+
+  if (lineIndex < 0 || lineIndex >= vim_info.lines.length) {
+    return false;
+  }
+
+  const line = vim_info.lines[lineIndex];
+
+  // Empty line is a paragraph boundary
+  return line.element.textContent?.trim() === "";
+};
+
+// Jump to the beginning of the previous paragraph
+const jumpToPreviousParagraph = (): void => {
+  const { vim_info } = window;
+  let targetLine = vim_info.active_line;
+
+  // If we're on a blank line, skip backward through all consecutive blank lines
+  while (targetLine > 0 && isParagraphBoundary(targetLine, "backward")) {
+    targetLine--;
+  }
+
+  // Now skip backward through the previous paragraph content
+  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1, "backward")) {
+    targetLine--;
+  }
+
+  // Now targetLine is at the first line of the previous paragraph
+  // Move up one more to land on the blank line above it (Vim behavior)
+  if (targetLine > 0) {
+    targetLine--;
+  }
+
+  // Move to target line
+  vim_info.active_line = targetLine;
+  vim_info.cursor_position = 0;
+  vim_info.desired_column = 0;
+
+  const targetElement = vim_info.lines[targetLine].element;
+  setCursorPosition(targetElement, 0);
+};
+
+// Jump to the beginning of the next paragraph
+const jumpToNextParagraph = (): void => {
+  const { vim_info } = window;
+  const maxLine = vim_info.lines.length - 1;
+  let targetLine = vim_info.active_line;
+
+  // If we're on a blank line, skip forward through all consecutive blank lines
+  while (targetLine < maxLine && isParagraphBoundary(targetLine, "forward")) {
+    targetLine++;
+  }
+
+  // Now skip forward through the next paragraph content
+  while (
+    targetLine < maxLine &&
+    !isParagraphBoundary(targetLine + 1, "forward")
+  ) {
+    targetLine++;
+  }
+
+  // Now targetLine is at the last line of the next paragraph
+  // Move down one more to land on the blank line below it (Vim behavior)
+  if (targetLine < maxLine) {
+    targetLine++;
+  }
+
+  // Move to target line
+  vim_info.active_line = targetLine;
+
+  const targetElement = vim_info.lines[targetLine].element;
+
+  // If at the last line, move cursor to end of line (like Vim)
+  if (targetLine === maxLine) {
+    const lineLength = targetElement.textContent?.length || 0;
+    vim_info.cursor_position = lineLength;
+    vim_info.desired_column = lineLength;
+    setCursorPosition(targetElement, lineLength);
+  } else {
+    vim_info.cursor_position = 0;
+    vim_info.desired_column = 0;
+    setCursorPosition(targetElement, 0);
+  }
+};
+
 const jumpToLineStart = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -1280,12 +1395,13 @@ const insertReducer = (e: KeyboardEvent) => {
       break;
     case "k":
       // Check if 'k' follows 'j' within timeout
-      if (lastInsertKey === "j" && (now - lastInsertKeyTime) < JK_TIMEOUT_MS) {
+      if (lastInsertKey === "j" && now - lastInsertKeyTime < JK_TIMEOUT_MS) {
         e.preventDefault();
         e.stopPropagation();
 
         // Delete the 'j' character that was just typed
-        const currentElement = window.vim_info.lines[window.vim_info.active_line]?.element;
+        const currentElement =
+          window.vim_info.lines[window.vim_info.active_line]?.element;
         if (currentElement) {
           const selection = window.getSelection();
           const range = document.createRange();
@@ -1297,7 +1413,7 @@ const insertReducer = (e: KeyboardEvent) => {
           const walker = document.createTreeWalker(
             currentElement,
             NodeFilter.SHOW_TEXT,
-            null
+            null,
           );
 
           let currentNode: Text | null = null;
@@ -5367,6 +5483,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "B":
       jumpToPreviousWORD();
+      return true;
+    case "{":
+      jumpToPreviousParagraph();
+      return true;
+    case "}":
+      jumpToNextParagraph();
       return true;
     case "0":
       jumpToLineStart();
