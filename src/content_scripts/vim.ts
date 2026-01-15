@@ -2401,6 +2401,14 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
       updateVisualLineSelection();
       updateInfoContainer();
       return true;
+    case "{":
+      // Jump to previous paragraph
+      visualLineJumpToPreviousParagraph();
+      return true;
+    case "}":
+      // Jump to next paragraph
+      visualLineJumpToNextParagraph();
+      return true;
     case "d":
     case "x":
       deleteVisualLineSelection();
@@ -2542,6 +2550,66 @@ const visualLineMoveCursorUp = () => {
     vim_info.active_line = prevLine;
   }
 
+  updateVisualLineSelection();
+  updateInfoContainer();
+};
+
+const visualLineJumpToPreviousParagraph = (): void => {
+  const { vim_info } = window;
+  let targetLine = vim_info.active_line;
+
+  // If we're on a blank line, skip backward through all consecutive blank lines
+  while (targetLine > 0 && isParagraphBoundary(targetLine, "backward")) {
+    targetLine--;
+  }
+
+  // Now skip backward through the previous paragraph content
+  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1, "backward")) {
+    targetLine--;
+  }
+
+  // Now targetLine is at the first line of the previous paragraph
+  // Move up one more to land on the blank line above it (Vim behavior)
+  if (targetLine > 0) {
+    targetLine--;
+  }
+
+  // Move to target line
+  vim_info.active_line = targetLine;
+
+  // Update visual-line selection
+  updateVisualLineSelection();
+  updateInfoContainer();
+};
+
+const visualLineJumpToNextParagraph = (): void => {
+  const { vim_info } = window;
+  const maxLine = vim_info.lines.length - 1;
+  let targetLine = vim_info.active_line;
+
+  // If we're on a blank line, skip forward through all consecutive blank lines
+  while (targetLine < maxLine && isParagraphBoundary(targetLine, "forward")) {
+    targetLine++;
+  }
+
+  // Now skip forward through the next paragraph content
+  while (
+    targetLine < maxLine &&
+    !isParagraphBoundary(targetLine + 1, "forward")
+  ) {
+    targetLine++;
+  }
+
+  // Now targetLine is at the last line of the next paragraph
+  // Move down one more to land on the blank line below it (Vim behavior)
+  if (targetLine < maxLine) {
+    targetLine++;
+  }
+
+  // Move to target line
+  vim_info.active_line = targetLine;
+
+  // Update visual-line selection
   updateVisualLineSelection();
   updateInfoContainer();
 };
