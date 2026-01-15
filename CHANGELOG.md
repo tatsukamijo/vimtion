@@ -5,6 +5,22 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-01-16
+
+### Added
+- **Paragraph navigation**: Jump between paragraphs with `{` (previous) and `}` (next)
+  - Paragraphs are separated by blank lines (Vim behavior)
+  - Works in normal mode, visual modes, and as motions for operators
+- **Paragraph text objects**: `ip` (inner paragraph) and `ap` (around paragraph)
+  - `ip`: Paragraph content excluding surrounding blank lines
+  - `ap`: Paragraph content including surrounding blank lines
+  - Works with all operators: `dip`, `cip`, `yip`, `dap`, `cap`, `yap`
+  - Works in visual mode: `vip`, `vap`
+- **Paragraph motion operators**: `d{`, `c{`, `y{`, `d}`, `c}`, `y}`
+  - Delete/change/yank from cursor to previous/next paragraph boundary
+- **Visual line mode paragraph navigation**: Use `{` and `}` in visual line mode to select by paragraphs
+
+
 ## [1.4.0] - 2026-01-12
 
 ### Added
