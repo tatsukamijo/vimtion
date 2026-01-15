@@ -636,10 +636,7 @@ const getBlockType = (element: HTMLElement): string => {
 };
 
 // Check if a line is a paragraph boundary (empty line)
-const isParagraphBoundary = (
-  lineIndex: number,
-  direction: "forward" | "backward",
-): boolean => {
+const isParagraphBoundary = (lineIndex: number): boolean => {
   const { vim_info } = window;
 
   if (lineIndex < 0 || lineIndex >= vim_info.lines.length) {
@@ -658,19 +655,19 @@ const jumpToPreviousParagraph = (): void => {
   let targetLine = vim_info.active_line;
 
   // If we're on a blank line, skip backward through all consecutive blank lines
-  while (targetLine > 0 && isParagraphBoundary(targetLine, "backward")) {
+  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
     targetLine--;
   }
 
   // Now skip backward through the previous paragraph content
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1, "backward")) {
+  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
     targetLine--;
   }
 
   // Now targetLine is at the first line of the previous paragraph
   // Move up one more to land on the blank line above it (Vim behavior)
   // But only if there is a blank line above
-  if (targetLine > 0 && isParagraphBoundary(targetLine - 1, "backward")) {
+  if (targetLine > 0 && isParagraphBoundary(targetLine - 1)) {
     targetLine--;
   }
 
@@ -690,14 +687,14 @@ const jumpToNextParagraph = (): void => {
   let targetLine = vim_info.active_line;
 
   // If we're on a blank line, skip forward through all consecutive blank lines
-  while (targetLine < maxLine && isParagraphBoundary(targetLine, "forward")) {
+  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
     targetLine++;
   }
 
   // Now skip forward through the next paragraph content
   while (
     targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1, "forward")
+    !isParagraphBoundary(targetLine + 1)
   ) {
     targetLine++;
   }
@@ -705,7 +702,7 @@ const jumpToNextParagraph = (): void => {
   // Now targetLine is at the last line of the next paragraph
   // Move down one more to land on the blank line below it (Vim behavior)
   // But only if there is a blank line below
-  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1, "forward")) {
+  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1)) {
     targetLine++;
   }
 
@@ -2561,19 +2558,19 @@ const visualLineJumpToPreviousParagraph = (): void => {
   let targetLine = vim_info.active_line;
 
   // If we're on a blank line, skip backward through all consecutive blank lines
-  while (targetLine > 0 && isParagraphBoundary(targetLine, "backward")) {
+  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
     targetLine--;
   }
 
   // Now skip backward through the previous paragraph content
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1, "backward")) {
+  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
     targetLine--;
   }
 
   // Now targetLine is at the first line of the previous paragraph
   // Move up one more to land on the blank line above it (Vim behavior)
   // But only if there is a blank line above
-  if (targetLine > 0 && isParagraphBoundary(targetLine - 1, "backward")) {
+  if (targetLine > 0 && isParagraphBoundary(targetLine - 1)) {
     targetLine--;
   }
 
@@ -2591,14 +2588,14 @@ const visualLineJumpToNextParagraph = (): void => {
   let targetLine = vim_info.active_line;
 
   // If we're on a blank line, skip forward through all consecutive blank lines
-  while (targetLine < maxLine && isParagraphBoundary(targetLine, "forward")) {
+  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
     targetLine++;
   }
 
   // Now skip forward through the next paragraph content
   while (
     targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1, "forward")
+    !isParagraphBoundary(targetLine + 1)
   ) {
     targetLine++;
   }
@@ -2606,7 +2603,7 @@ const visualLineJumpToNextParagraph = (): void => {
   // Now targetLine is at the last line of the next paragraph
   // Move down one more to land on the blank line below it (Vim behavior)
   // But only if there is a blank line below
-  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1, "forward")) {
+  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1)) {
     targetLine++;
   }
 
@@ -3391,19 +3388,19 @@ const yankToPreviousParagraph = async () => {
   let targetLine = currentLine;
 
   // If we're on a blank line, skip backward through all consecutive blank lines
-  while (targetLine > 0 && isParagraphBoundary(targetLine, "backward")) {
+  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
     targetLine--;
   }
 
   // Now skip backward through the previous paragraph content
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1, "backward")) {
+  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
     targetLine--;
   }
 
   // Now targetLine is at the first line of the previous paragraph
   // Move up one more to land on the blank line above it (Vim behavior)
   // But only if there is a blank line above
-  if (targetLine > 0 && isParagraphBoundary(targetLine - 1, "backward")) {
+  if (targetLine > 0 && isParagraphBoundary(targetLine - 1)) {
     targetLine--;
   }
 
@@ -3441,14 +3438,14 @@ const yankToNextParagraph = async () => {
   let targetLine = currentLine;
 
   // If we're on a blank line, skip forward through all consecutive blank lines
-  while (targetLine < maxLine && isParagraphBoundary(targetLine, "forward")) {
+  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
     targetLine++;
   }
 
   // Now skip forward through the next paragraph content
   while (
     targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1, "forward")
+    !isParagraphBoundary(targetLine + 1)
   ) {
     targetLine++;
   }
@@ -3456,7 +3453,7 @@ const yankToNextParagraph = async () => {
   // Now targetLine is at the last line of the next paragraph
   // Move down one more to land on the blank line below it (Vim behavior)
   // But only if there is a blank line below
-  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1, "forward")) {
+  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1)) {
     targetLine++;
   }
 
@@ -3493,12 +3490,12 @@ const deleteToPreviousParagraph = () => {
   let targetLine = currentLine;
 
   // If we're on a blank line, skip backward through all consecutive blank lines
-  while (targetLine > 0 && isParagraphBoundary(targetLine, "backward")) {
+  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
     targetLine--;
   }
 
   // Now skip backward through the previous paragraph content
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1, "backward")) {
+  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
     targetLine--;
   }
 
@@ -3578,14 +3575,14 @@ const deleteToNextParagraph = () => {
   let targetLine = currentLine;
 
   // If we're on a blank line, skip forward through all consecutive blank lines
-  while (targetLine < maxLine && isParagraphBoundary(targetLine, "forward")) {
+  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
     targetLine++;
   }
 
   // Now skip forward through the next paragraph content
   while (
     targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1, "forward")
+    !isParagraphBoundary(targetLine + 1)
   ) {
     targetLine++;
   }
@@ -3593,7 +3590,7 @@ const deleteToNextParagraph = () => {
   // Now targetLine is at the last line of the next paragraph
   // Move down one more to land on the blank line below it (Vim behavior)
   // But only if there is a blank line below
-  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1, "forward")) {
+  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1)) {
     targetLine++;
   }
 
@@ -3664,16 +3661,16 @@ const changeToPreviousParagraph = () => {
 
   // Find the target paragraph boundary
   let targetLine = currentLine;
-  while (targetLine > 0 && isParagraphBoundary(targetLine, "backward")) {
+  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
     targetLine--;
   }
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1, "backward")) {
+  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
     targetLine--;
   }
   // Now targetLine is at the first line of the previous paragraph
   // Move up one more to land on the blank line above it (Vim behavior)
   // But only if there is a blank line above
-  if (targetLine > 0 && isParagraphBoundary(targetLine - 1, "backward")) {
+  if (targetLine > 0 && isParagraphBoundary(targetLine - 1)) {
     targetLine--;
   }
 
@@ -3734,12 +3731,12 @@ const changeToNextParagraph = () => {
 
   // Find the target paragraph boundary
   let targetLine = currentLine;
-  while (targetLine < maxLine && isParagraphBoundary(targetLine, "forward")) {
+  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
     targetLine++;
   }
   while (
     targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1, "forward")
+    !isParagraphBoundary(targetLine + 1)
   ) {
     targetLine++;
   }
