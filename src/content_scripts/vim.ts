@@ -669,7 +669,8 @@ const jumpToPreviousParagraph = (): void => {
 
   // Now targetLine is at the first line of the previous paragraph
   // Move up one more to land on the blank line above it (Vim behavior)
-  if (targetLine > 0) {
+  // But only if there is a blank line above
+  if (targetLine > 0 && isParagraphBoundary(targetLine - 1, "backward")) {
     targetLine--;
   }
 
@@ -703,7 +704,8 @@ const jumpToNextParagraph = (): void => {
 
   // Now targetLine is at the last line of the next paragraph
   // Move down one more to land on the blank line below it (Vim behavior)
-  if (targetLine < maxLine) {
+  // But only if there is a blank line below
+  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1, "forward")) {
     targetLine++;
   }
 
@@ -2570,7 +2572,8 @@ const visualLineJumpToPreviousParagraph = (): void => {
 
   // Now targetLine is at the first line of the previous paragraph
   // Move up one more to land on the blank line above it (Vim behavior)
-  if (targetLine > 0) {
+  // But only if there is a blank line above
+  if (targetLine > 0 && isParagraphBoundary(targetLine - 1, "backward")) {
     targetLine--;
   }
 
@@ -2602,7 +2605,8 @@ const visualLineJumpToNextParagraph = (): void => {
 
   // Now targetLine is at the last line of the next paragraph
   // Move down one more to land on the blank line below it (Vim behavior)
-  if (targetLine < maxLine) {
+  // But only if there is a blank line below
+  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1, "forward")) {
     targetLine++;
   }
 
@@ -3398,7 +3402,8 @@ const yankToPreviousParagraph = async () => {
 
   // Now targetLine is at the first line of the previous paragraph
   // Move up one more to land on the blank line above it (Vim behavior)
-  if (targetLine > 0) {
+  // But only if there is a blank line above
+  if (targetLine > 0 && isParagraphBoundary(targetLine - 1, "backward")) {
     targetLine--;
   }
 
@@ -3450,7 +3455,8 @@ const yankToNextParagraph = async () => {
 
   // Now targetLine is at the last line of the next paragraph
   // Move down one more to land on the blank line below it (Vim behavior)
-  if (targetLine < maxLine) {
+  // But only if there is a blank line below
+  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1, "forward")) {
     targetLine++;
   }
 
@@ -3586,7 +3592,8 @@ const deleteToNextParagraph = () => {
 
   // Now targetLine is at the last line of the next paragraph
   // Move down one more to land on the blank line below it (Vim behavior)
-  if (targetLine < maxLine) {
+  // But only if there is a blank line below
+  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1, "forward")) {
     targetLine++;
   }
 
@@ -3663,7 +3670,10 @@ const changeToPreviousParagraph = () => {
   while (targetLine > 0 && !isParagraphBoundary(targetLine - 1, "backward")) {
     targetLine--;
   }
-  if (targetLine > 0) {
+  // Now targetLine is at the first line of the previous paragraph
+  // Move up one more to land on the blank line above it (Vim behavior)
+  // But only if there is a blank line above
+  if (targetLine > 0 && isParagraphBoundary(targetLine - 1, "backward")) {
     targetLine--;
   }
 
