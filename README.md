@@ -41,12 +41,12 @@ This fork has been extensively rebuilt with:
 ### New Features
 - **Link hint mode** (`gl`): Vimium-style link navigation with keyboard hints - type characters to filter and jump to any link instantly
 - **Link navigation** (`Enter`): Navigate and open links - supports external links, block links, and intelligent Notion page link selection with `j/k` navigation
-- **Enhanced motions**: Cross-line navigation (h/l/w/b wrap to previous/next lines)
+- **Enhanced motions**: Cross-line navigation (h/l/w/b wrap to previous/next lines), paragraph navigation (`{`/`}`)
 - **Line jumping**: `gg` (first line) and `G` (last line) support
 - **Page navigation**: `Ctrl+d/u` (half page), `Ctrl+f/b` (full page) with smooth scrolling
 - **Visual modes**: Character-wise (`v`) and line-wise (`V`) visual selection with full operator and text object support
-- **Operators with motions**: Comprehensive support for d/c/y with all motions (w/W/b/B/e/E/$0/iw)
-- **Text objects**: Full support for `i`(inner) and `a`(around) in both normal and visual modes with brackets, quotes, and more (e.g., `ci(`, `da"`, `yi{`, `vi(`, `va'`)
+- **Operators with motions**: Comprehensive support for d/c/y with all motions (w/W/b/B/e/E/$0/{/}/iw/ip/ap)
+- **Text objects**: Full support for `i`(inner) and `a`(around) in both normal and visual modes with brackets, quotes, paragraphs, and more (e.g., `ci(`, `da"`, `yi{`, `vi(`, `va'`, `cip`, `dap`)
 - **Undo/Redo**: `u` for undo, `r` for redo with intelligent grouping for multi-line operations
 - **Mouse support**: Click to position cursor in normal mode
 - **Better cursor visibility**: Enhanced block cursor with improved opacity and visibility on empty lines
@@ -87,6 +87,7 @@ To access the Options page:
 
 ### Motions
 **Basic**: `h` `j` `k` `l` (with line wrapping) • `w` `b` `e` `W` `B` `E` (word motions) • `0` `$` (line start/end) • `gg` `G` (document start/end)
+**Paragraph**: `{` (previous paragraph) • `}` (next paragraph)
 **History**: `H` (back) • `L` (forward)
 **Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character)
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
@@ -146,16 +147,18 @@ All operators (`d` delete, `c` change, `y` yank) work with all motions:
 - **Lines**: `dd` `cc` `yy`
 - **Words**: `dw` `cw` `yw` `de` `ce` `ye` `db` `cb` `yb` (also `W` `B` `E` variants)
 - **Line parts**: `d$` `c$` `y$` `d0` `c0` `y0` `D` `C`
+- **Paragraphs**: `d{` `c{` `y{` `d}` `c}` `y}` (delete/change/yank to paragraph boundary)
 - **Find**: `df{char}` `cf{char}` `dt{char}` `ct{char}` (also `F` `T` variants)
 
 ### Text Objects
 
 Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) and visual mode work with text objects:
 
-**Supported delimiters**: `w` (word) • `(` `)` `b` (parentheses) • `[` `]` (brackets) • `{` `}` `B` (braces) • `<` `>` (angle brackets) • `'` `"` `` ` `` (quotes) • `/` `*` (slashes/asterisks)
+**Supported delimiters**: `w` (word) • `p` (paragraph) • `(` `)` `b` (parentheses) • `[` `]` (brackets) • `{` `}` `B` (braces) • `<` `>` (angle brackets) • `'` `"` `` ` `` (quotes) • `/` `*` (slashes/asterisks)
 
 **Inner (`i`)**: Content only
 - `ciw` `diw` `yiw` - word under cursor
+- `cip` `dip` `yip` - paragraph (excludes blank lines)
 - `ci(` `di(` `yi(` - inside `()`
 - `ci[` `di[` `yi[` - inside `[]`
 - `ci{` `di{` `yi{` - inside `{}`
@@ -168,6 +171,7 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) and v
 
 **Around (`a`)**: Content + delimiters/whitespace
 - `caw` `daw` `yaw` - word + surrounding whitespace
+- `cap` `dap` `yap` - paragraph + surrounding blank lines
 - `ca(` `da(` `ya(` - including `()`
 - `ca[` `da[` `ya[` - including `[]`
 - `ca{` `da{` `ya{` - including `{}`
@@ -189,12 +193,13 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) and v
 - **Navigate**: `h` `l` `w` `b` `e` `0` `$`
 - **Text objects**: All `i` (inner) and `a` (around) text objects work in visual mode
   - Words: `viw` `vaw`
+  - Paragraphs: `vip` `vap`
   - Brackets: `vi(` `va(` `vi[` `va[` `vi{` `va{` `vi<` `va<`
   - Quotes: `vi'` `va'` `vi"` `va"` `` vi` va` ``
   - Other: `vi/` `va/` `vi*` `va*`
 - **Operate**: `d` `y` `c` or use Notion shortcuts (Cmd+B, Cmd+I, etc.)
 
-**Line-wise (`V`)**: Select with `j` `k` `gg` `G`, then `d` `y` `c`
+**Line-wise (`V`)**: Select with `j` `k` `gg` `G` `{` `}`, then `d` `y` `c`
 
 **Example**: With cursor inside `(example text)`:
 - `vi(` → selects `example text`
