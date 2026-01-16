@@ -38,3 +38,10 @@ export {
   createJumpToTop,
   createJumpToBottom,
 } from "./scroll";
+
+export {
+  findCharForward,
+  findCharBackward,
+  tillCharForward,
+  tillCharBackward,
+} from "./char-find";

@@ -40,7 +40,6 @@ import { findMatchingQuotes, findMatchingBrackets } from "./text-objects/bracket
 import {
   isInsideCodeBlock,
   getCodeBlockLines,
-  getBlockType,
   isParagraphBoundary,
   disableNotionUnsavedWarning,
   restoreNotionUnsavedWarning,
@@ -82,52 +81,41 @@ import {
   scrollAndMoveCursor,
   createJumpToTop,
   createJumpToBottom,
+  findCharForward,
+  findCharBackward,
+  tillCharForward,
+  tillCharBackward,
 } from "./navigation";
 
-// Helper functions for link selection mode
-function highlightSelectedLink() {
-  if (
-    availableLinks.length > 0 &&
-    selectedLinkIndex >= 0 &&
-    selectedLinkIndex < availableLinks.length
-  ) {
-    const visualHighlight = hexToRgba(
-      currentSettings.visualHighlightColor,
-      0.3,
-    );
-    const selectedLink = availableLinks[selectedLinkIndex];
-    selectedLink.style.backgroundColor = visualHighlight;
+// Import operator helpers and factories
+import { getInnerParagraphBounds, getAroundParagraphBounds, createParagraphOperators } from "./operators";
+import type { OperatorDeps } from "./operators";
 
-    // Scroll the selected link into view if it's outside the viewport
-    selectedLink.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "nearest",
-    });
-  }
-}
+// Import UI functions
+import { createInfoContainer, getModeText, updateInfoContainer } from "./ui/info-container";
 
-function clearAllLinkHighlights() {
-  availableLinks.forEach((link) => {
-    link.style.backgroundColor = "";
-  });
-}
+// Import link utilities
+import {
+  highlightSelectedLink,
+  clearAllLinkHighlights,
+  exitLinkSelectionMode,
+  enterLinkHintMode,
+  removeAllHintOverlays,
+  filterHintsByInput,
+  navigateToLink,
+  detectAllLinks,
+  generateHints,
+} from "./links";
 
-function exitLinkSelectionMode() {
-  clearAllLinkHighlights();
-  resetLinkSelection();
-}
-
-const createInfoContainer = () => {
-  const { vim_info } = window;
-  const infoContainer = document.createElement("div");
-  infoContainer.classList.add("vim-info-container");
-  const mode = document.createElement("div");
-  mode.innerText = getModeText(vim_info.mode);
-  mode.classList.add("vim-mode");
-  infoContainer.appendChild(mode);
-  document.body.appendChild(infoContainer);
-};
+// Import core utilities
+import {
+  clearAllBackgroundColors,
+  deleteNormalBlockWithKeyboardEvents,
+  deleteCodeBlockWithKeyboardEvents,
+  setActiveLine,
+  createRefreshLines,
+  createSetLines,
+} from "./core";
 
 // Get the block type of an element from its closest [data-block-id] ancestor
 const getBlockType = (element: HTMLElement): string => {
@@ -152,88 +140,7 @@ const getBlockType = (element: HTMLElement): string => {
   return "text"; // Default to text block
 };
 
-// Get bounds for inner paragraph text object (excludes blank lines)
-const getInnerParagraphBounds = (): {
-  startLine: number;
-  endLine: number;
-} | null => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const maxLine = vim_info.lines.length - 1;
-
-  // If we're on a blank line, inner paragraph is empty
-  if (isParagraphBoundary(currentLine)) {
-    return null;
-  }
-
-  // Find the start of the paragraph (first non-blank line after blank)
-  let startLine = currentLine;
-  while (startLine > 0 && !isParagraphBoundary(startLine - 1)) {
-    startLine--;
-  }
-
-  // Find the end of the paragraph (last non-blank line before blank)
-  let endLine = currentLine;
-  while (endLine < maxLine && !isParagraphBoundary(endLine + 1)) {
-    endLine++;
-  }
-
-  return { startLine, endLine };
-};
-
-// Get bounds for around paragraph text object (includes surrounding blank lines)
-const getAroundParagraphBounds = (): {
-  startLine: number;
-  endLine: number;
-} | null => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const maxLine = vim_info.lines.length - 1;
-
-  // If we're on a blank line, select it and adjacent blank lines
-  if (isParagraphBoundary(currentLine)) {
-    let startLine = currentLine;
-    let endLine = currentLine;
-
-    // Extend to include adjacent blank lines
-    while (startLine > 0 && isParagraphBoundary(startLine - 1)) {
-      startLine--;
-    }
-    while (endLine < maxLine && isParagraphBoundary(endLine + 1)) {
-      endLine++;
-    }
-
-    return { startLine, endLine };
-  }
-
-  // Find the content bounds first
-  let startLine = currentLine;
-  while (startLine > 0 && !isParagraphBoundary(startLine - 1)) {
-    startLine--;
-  }
-
-  let endLine = currentLine;
-  while (endLine < maxLine && !isParagraphBoundary(endLine + 1)) {
-    endLine++;
-  }
-
-  // Include trailing blank lines if present
-  if (endLine < maxLine && isParagraphBoundary(endLine + 1)) {
-    endLine++;
-    // Include all consecutive blank lines
-    while (endLine < maxLine && isParagraphBoundary(endLine + 1)) {
-      endLine++;
-    }
-  } else if (startLine > 0 && isParagraphBoundary(startLine - 1)) {
-    // No trailing blanks, so include leading blank lines instead
-    startLine--;
-    while (startLine > 0 && isParagraphBoundary(startLine - 1)) {
-      startLine--;
-    }
-  }
-
-  return { startLine, endLine };
-};
+// Paragraph bounds functions now imported from operators/helpers module
 
 // Yank inner paragraph (excludes blank lines)
 const yankInnerParagraph = async (): Promise<void> => {
@@ -544,7 +451,7 @@ const visualSelectInnerParagraph = (): void => {
   vim_info.visual_start_line = startLine;
   vim_info.active_line = endLine;
 
-  highlightVisualLineSelection();
+  updateVisualLineSelection();
   updateInfoContainer();
 };
 
@@ -563,70 +470,8 @@ const visualSelectAroundParagraph = (): void => {
   vim_info.visual_start_line = startLine;
   vim_info.active_line = endLine;
 
-  highlightVisualLineSelection();
+  updateVisualLineSelection();
   updateInfoContainer();
-};
-
-const findCharForward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Search for character after current position
-  const foundIndex = text.indexOf(char, currentPos + 1);
-  if (foundIndex !== -1) {
-    setCursorPosition(currentElement, foundIndex);
-    vim_info.desired_column = foundIndex;
-  } else {
-  }
-};
-
-const findCharBackward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Search for character before current position
-  const foundIndex = text.lastIndexOf(char, currentPos - 1);
-  if (foundIndex !== -1) {
-    setCursorPosition(currentElement, foundIndex);
-    vim_info.desired_column = foundIndex;
-  } else {
-  }
-};
-
-const tillCharForward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Search for character after current position, but stop one before it
-  const foundIndex = text.indexOf(char, currentPos + 1);
-  if (foundIndex !== -1) {
-    const targetPos = foundIndex - 1;
-    setCursorPosition(currentElement, targetPos);
-    vim_info.desired_column = targetPos;
-  } else {
-  }
-};
-
-const tillCharBackward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Search for character before current position, but stop one after it
-  const foundIndex = text.lastIndexOf(char, currentPos - 1);
-  if (foundIndex !== -1) {
-    const targetPos = foundIndex + 1;
-    setCursorPosition(currentElement, targetPos);
-    vim_info.desired_column = targetPos;
-  } else {
-  }
 };
 
 const insertAtLineEnd = () => {
@@ -822,12 +667,6 @@ const getLines = () => {
   return window.vim_info.lines;
 };
 
-const getModeText = (
-  mode: "insert" | "normal" | "visual" | "visual-line" | "link-hint",
-) => {
-  return `-- ${mode.toUpperCase()} --`;
-};
-
 const handleClick = (e: MouseEvent) => {
   const { vim_info } = window;
 
@@ -1021,7 +860,7 @@ const linkHintReducer = (e: KeyboardEvent): boolean => {
       const key = e.key.toLowerCase();
       if (key.length === 1 && /[a-z]/.test(key)) {
         vim_info.link_hint_input += key;
-        filterHintsByInput(vim_info.link_hint_input, e.shiftKey);
+        filterHintsByInput(vim_info.link_hint_input, e.shiftKey, updateInfoContainer);
         return true;
       }
       return false;
@@ -1040,15 +879,7 @@ const startVisualMode = () => {
   updateInfoContainer();
 };
 
-const clearAllBackgroundColors = () => {
-  // Clear background colors from ALL contenteditable elements in the document
-  const allEditableElements = document.querySelectorAll(
-    "[contenteditable=true]",
-  );
-  allEditableElements.forEach((elem) => {
-    (elem as HTMLElement).style.backgroundColor = "";
-  });
-};
+// clearAllBackgroundColors now imported from core module
 
 const startVisualLineMode = () => {
   const { vim_info } = window;
@@ -1071,305 +902,6 @@ const startVisualLineMode = () => {
 // Notion warning functions and beforeunload handler now imported from notion module
 // Setup beforeunload handler
 setupBeforeUnloadHandler();
-
-const enterLinkHintMode = () => {
-  // Check if link hints feature is enabled
-  if (!currentSettings.linkHintsEnabled) {
-    return;
-  }
-
-  const { vim_info } = window;
-
-  // Switch to link-hint mode
-  vim_info.mode = "link-hint";
-  vim_info.link_hint_input = "";
-
-  // Detect all links in the document
-  const links = detectAllLinks();
-
-  if (links.length === 0) {
-    // No links found, exit immediately
-    vim_info.mode = "normal";
-    updateInfoContainer();
-    return;
-  }
-
-  // Generate hints for each link
-  const hints = generateHints(links.length);
-
-  // Create and display hint overlays
-  vim_info.link_hints = [];
-  links.forEach((link, index) => {
-    const hint = hints[index];
-    const overlay = createHintOverlay(link, hint);
-    vim_info.link_hints.push({ link, hint, overlay });
-  });
-
-  updateInfoContainer();
-};
-
-const createHintOverlay = (
-  link: HTMLAnchorElement,
-  hint: string,
-): HTMLElement => {
-  const overlay = document.createElement("div");
-  overlay.className = "vim-link-hint";
-  overlay.textContent = hint;
-  overlay.style.cssText = `
-    position: fixed;
-    background: ${currentSettings.hintBackgroundColor};
-    color: ${currentSettings.hintTextColor};
-    font-family: inherit;
-    font-size: ${currentSettings.hintFontSize}px;
-    font-weight: bold;
-    padding: 2px 5px;
-    border-radius: 2px;
-    z-index: 99999;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    text-transform: lowercase;
-    pointer-events: none;
-  `;
-
-  // Position overlay at top-left of link
-  const rect = link.getBoundingClientRect();
-  overlay.style.top = `${rect.top}px`;
-  overlay.style.left = `${rect.left}px`;
-
-  document.body.appendChild(overlay);
-  return overlay;
-};
-
-const removeAllHintOverlays = () => {
-  const { vim_info } = window;
-  vim_info.link_hints.forEach(({ overlay }) => {
-    overlay.remove();
-  });
-  vim_info.link_hints = [];
-};
-
-const filterHintsByInput = (input: string, shiftKey: boolean) => {
-  const { vim_info } = window;
-  let matchedHint: LinkHint | null = null;
-
-  vim_info.link_hints.forEach(({ hint, overlay }) => {
-    if (hint.startsWith(input)) {
-      // Show this hint
-      overlay.style.display = "block";
-
-      // Highlight only the matched portion
-      if (input.length > 0) {
-        const matched = hint.substring(0, input.length);
-        const remaining = hint.substring(input.length);
-        overlay.innerHTML = `<span style="color: ${currentSettings.hintMatchedColor}">${matched}</span><span style="color: ${currentSettings.hintTextColor}">${remaining}</span>`;
-      } else {
-        overlay.textContent = hint;
-        overlay.style.color = currentSettings.hintTextColor;
-      }
-
-      // Check for exact match
-      if (hint === input) {
-        matchedHint = vim_info.link_hints.find((h) => h.hint === hint)!;
-      }
-    } else {
-      // Hide non-matching hints
-      overlay.style.display = "none";
-    }
-  });
-
-  // If we have an exact match, navigate to it
-  if (matchedHint) {
-    navigateToLink(matchedHint.link, shiftKey);
-  }
-};
-
-const navigateToLink = (
-  link: HTMLAnchorElement,
-  openInNewTab: boolean = false,
-) => {
-  const { vim_info } = window;
-
-  // Exit link-hint mode first
-  removeAllHintOverlays();
-  vim_info.mode = "normal";
-  updateInfoContainer();
-
-  // Check if this is a block link (same page anchor)
-  const extractPageId = (url: string) => {
-    const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
-    return match ? match[1] : null;
-  };
-
-  const linkPageId = extractPageId(link.href);
-  const currentPageId = extractPageId(window.location.href);
-  const isBlockLink = link.href.includes("#") && linkPageId === currentPageId;
-
-  // Note: cursor position is saved when entering link hint mode (gl command)
-  // or when pressing Shift+H/L, not here
-
-  // Disable unsaved changes warning before any navigation
-  disableNotionUnsavedWarning();
-
-  if (openInNewTab) {
-    // Open link in new tab
-    window.open(link.href, "_blank");
-    // Restore immediately for new tab
-    restoreNotionUnsavedWarning();
-  } else {
-    // Use click() for all navigation to let Notion handle it naturally
-    // Remove target attribute to force same-tab navigation
-    const originalTarget = link.target;
-    link.target = "";
-
-    // Delay click slightly to ensure suppression flag is set
-    setTimeout(() => {
-      link.click();
-      link.target = originalTarget;
-    }, 10);
-
-    // Reset flag after navigation
-    setTimeout(() => {
-      restoreNotionUnsavedWarning();
-    }, 100);
-
-    // For block links, update cursor position after navigation
-    if (isBlockLink) {
-      const blockId = link.href.split("#")[1].split("?")[0];
-
-      setTimeout(() => {
-        // Try to find the actual block element by its ID
-        let blockElement = document.querySelector(
-          `[data-block-id="${blockId}"]`,
-        );
-
-        // If not found, try with hyphens (UUID format)
-        if (!blockElement) {
-          const blockIdWithHyphens = blockId.replace(
-            /(.{8})(.{4})(.{4})(.{4})(.{12})/,
-            "$1-$2-$3-$4-$5",
-          );
-          blockElement = document.querySelector(
-            `[data-block-id="${blockIdWithHyphens}"]`,
-          );
-        }
-
-        if (blockElement) {
-          // Find the leaf element within this block
-          const leafElement = blockElement.querySelector(
-            '[data-content-editable-leaf="true"]',
-          );
-
-          if (leafElement && document.contains(leafElement)) {
-            // Find this leaf in vim_info.lines
-            const actualIndex = vim_info.lines.findIndex(
-              (line) => line.element === leafElement,
-            );
-
-            if (actualIndex !== -1) {
-              vim_info.active_line = actualIndex;
-              vim_info.cursor_position = 0;
-
-              // Ensure the element is still in the document before updating cursor
-              if (document.contains(vim_info.lines[actualIndex].element)) {
-                updateBlockCursor();
-              }
-            }
-          }
-        }
-      }, 300);
-    }
-  }
-};
-
-const detectAllLinks = (): HTMLAnchorElement[] => {
-  const links: HTMLAnchorElement[] = [];
-
-  // Strategy 1: Find all <a> tags with href in the main content area
-  const contentEditableLinks = document.querySelectorAll<HTMLAnchorElement>(
-    "[data-content-editable-root] a[href]",
-  );
-  contentEditableLinks.forEach((link) => links.push(link));
-
-  // Strategy 2: Find sidebar links using multiple selectors for robustness
-  const sidebarSelectors = [
-    ".notion-sidebar a[href]",
-    "[data-sidebar] a[href]",
-    ".notion-frame-sidebar a[href]",
-    "aside a[href]",
-    '[role="navigation"] a[href]',
-  ];
-
-  let sidebarLinkCount = 0;
-  sidebarSelectors.forEach((selector) => {
-    const sidebarLinks = document.querySelectorAll<HTMLAnchorElement>(selector);
-    sidebarLinks.forEach((link) => {
-      // Only add if not already in the list (avoid duplicates)
-      if (!links.includes(link)) {
-        links.push(link);
-        sidebarLinkCount++;
-      }
-    });
-  });
-
-  // Strategy 3: Find all other links in the document
-  const allLinks = document.querySelectorAll<HTMLAnchorElement>("a[href]");
-  let otherLinkCount = 0;
-  allLinks.forEach((link) => {
-    // Only add if not already in the list
-    if (!links.includes(link)) {
-      links.push(link);
-      otherLinkCount++;
-    }
-  });
-
-  // Filter out invisible links (zero dimensions or off-screen)
-  const visibleLinks = links.filter((link) => {
-    const rect = link.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  });
-
-  // Sort links by position: top to bottom, left to right
-  visibleLinks.sort((a, b) => {
-    const rectA = a.getBoundingClientRect();
-    const rectB = b.getBoundingClientRect();
-
-    // First compare top position
-    if (Math.abs(rectA.top - rectB.top) > 5) {
-      // 5px tolerance for same line
-      return rectA.top - rectB.top;
-    }
-
-    // If on same line, compare left position
-    return rectA.left - rectB.left;
-  });
-
-  return visibleLinks;
-};
-
-const generateHints = (count: number): string[] => {
-  const chars = currentSettings.hintCharacters; // Use custom hint characters from settings
-  const hints: string[] = [];
-
-  if (count === 0 || chars.length === 0) return hints;
-
-  // Calculate required hint length to avoid prefix conflicts
-  // All hints must have the same length to be prefix-free
-  const hintLength = Math.ceil(Math.log(count) / Math.log(chars.length));
-
-  for (let i = 0; i < count; i++) {
-    let hint = "";
-    let num = i;
-
-    // Generate hint with fixed length
-    for (let j = 0; j < hintLength; j++) {
-      hint = chars[num % chars.length] + hint;
-      num = Math.floor(num / chars.length);
-    }
-
-    hints.push(hint);
-  }
-
-  return hints;
-};
 
 const updateVisualLineSelection = () => {
   const { vim_info } = window;
@@ -2150,101 +1682,9 @@ const visualLineJumpToNextParagraph = (): void => {
   updateInfoContainer();
 };
 
-// Helper function to dispatch Delete and Backspace events to delete a code block
-const deleteCodeBlockWithKeyboardEvents = (
-  element: HTMLElement,
-  delay: number = 0,
-) => {
-  setTimeout(() => {
-    // Check if element is still in the document
-    if (!document.contains(element)) {
-      return;
-    }
+// deleteCodeBlockWithKeyboardEvents now imported from core module
 
-    // Select entire content
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-
-    // Focus and delete with Delete key
-    element.focus();
-
-    // Dispatch Delete key event immediately (no delay for code blocks)
-    const deleteEvent = new KeyboardEvent("keydown", {
-      key: "Delete",
-      code: "Delete",
-      keyCode: 46,
-      which: 46,
-      bubbles: true,
-      cancelable: true,
-    });
-    element.dispatchEvent(deleteEvent);
-
-    // After deleting content, dispatch Backspace to delete the empty block
-    setTimeout(() => {
-      const backspaceEvent = new KeyboardEvent("keydown", {
-        key: "Backspace",
-        code: "Backspace",
-        keyCode: 8,
-        which: 8,
-        bubbles: true,
-        cancelable: true,
-      });
-      element.dispatchEvent(backspaceEvent);
-    }, 20);
-  }, delay);
-};
-
-// Helper function to dispatch Delete and Backspace events to delete a normal block
-const deleteNormalBlockWithKeyboardEvents = (
-  element: HTMLElement,
-  delay: number = 0,
-) => {
-  setTimeout(() => {
-    // Check if element is still in the document
-    if (!document.contains(element)) {
-      return;
-    }
-
-    // Select entire content
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-
-    // Focus the element
-    element.focus();
-
-    // Dispatch Delete key event after a small delay to ensure focus is set
-    setTimeout(() => {
-      const deleteEvent = new KeyboardEvent("keydown", {
-        key: "Delete",
-        code: "Delete",
-        keyCode: 46,
-        which: 46,
-        bubbles: true,
-        cancelable: true,
-      });
-      element.dispatchEvent(deleteEvent);
-
-      // After deleting content, dispatch Backspace to delete the empty block
-      setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent("keydown", {
-          key: "Backspace",
-          code: "Backspace",
-          keyCode: 8,
-          which: 8,
-          bubbles: true,
-          cancelable: true,
-        });
-        element.dispatchEvent(backspaceEvent);
-      }, 20);
-    }, 10);
-  }, delay);
-};
+// deleteNormalBlockWithKeyboardEvents now imported from core module
 
 // Helper function to delete lines within a code block (Visual-line mode)
 // Returns the cursor position where deletion started
@@ -4228,7 +3668,7 @@ const handlePendingOperator = (key: string): boolean => {
         // Save cursor position before entering link hint mode
         // (so we can restore it when navigating back)
         saveCursorPosition();
-        enterLinkHintMode();
+        enterLinkHintMode(updateInfoContainer);
         return true;
       default:
         return true;
@@ -5081,7 +4521,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
             // Use navigateToLink to handle all link types consistently
             // Shift+Enter opens in new tab
-            navigateToLink(closestLink, e.shiftKey);
+            navigateToLink(closestLink, e.shiftKey, updateInfoContainer);
 
             // For block links, update cursor position after navigation
             const linkPageId = extractPageId(closestLink.href);
@@ -5405,160 +4845,13 @@ const getFirstVisibleLine = (): number => {
   return vim_info.active_line; // Fallback to current line if none found
 };
 
-// Find the actual scrollable element in Notion's DOM
-const setActiveLine = (idx: number) => {
-  const {
-    vim_info: { lines, desired_column },
-  } = window;
-  let i = idx;
+// setActiveLine now imported from core module
 
-  if (idx >= lines.length) i = lines.length - 1;
-  if (i < 0) i = 0;
+// refreshLines created via factory below after handleKeydown and handleClick are defined
 
-  const previousActiveLine = window.vim_info.active_line;
-  window.vim_info.active_line = i;
-
-  const targetElement = lines[i].element;
-
-  // Check if we're inside a code block
-  const inCodeBlock = isInsideCodeBlock(targetElement);
-
-  // For code blocks, avoid .click() as it triggers Notion's internal logic
-  // that can cause cursor to jump outside the block
-  if (inCodeBlock) {
-    // Only use setCursorPosition() for code blocks - no click or focus
-    // Don't call focus() or click() - just set cursor position directly
-
-    // For code blocks, we need to position the cursor on the correct line
-    // If moving up (idx < previous active_line), go to the last line of the code block
-    // If moving down (idx > previous active_line), go to the first line
-    const text = targetElement.textContent || "";
-    const lines = text.split("\n");
-    const movingUp = i < previousActiveLine;
-
-    let cursorPosition = 0;
-    if (movingUp) {
-      // Moving up: go to the last line
-      for (let j = 0; j < lines.length - 1; j++) {
-        cursorPosition += lines[j].length + 1; // +1 for newline
-      }
-      // Add desired column on the last line
-      const lastLineLength = lines[lines.length - 1].length;
-      cursorPosition += Math.min(desired_column, lastLineLength);
-    } else {
-      // Moving down: go to the first line at desired column
-      const firstLineLength = lines[0].length;
-      cursorPosition = Math.min(desired_column, firstLineLength);
-    }
-
-    setCursorPosition(targetElement, cursorPosition);
-  } else {
-    // For normal blocks, use click() and focus() with preventScroll to avoid unwanted page jumps
-    targetElement.click();
-    targetElement.focus({ preventScroll: true });
-
-    // Set cursor to desired column, or end of line if line is shorter
-    const lineLength = targetElement.textContent?.length || 0;
-    const targetColumn = Math.min(desired_column, lineLength);
-    setCursorPosition(targetElement, targetColumn);
-  }
-};
-
-const refreshLines = () => {
-  const { vim_info } = window;
-  const allEditableElements = Array.from(
-    document.querySelectorAll("[contenteditable=true]"),
-  ) as HTMLDivElement[];
-
-  // Store the current active element to find its new index later
-  const currentActiveElement = vim_info.lines[vim_info.active_line]?.element;
-
-  // Find new elements that aren't in our lines array yet
-  const existingElements = new Set(vim_info.lines.map((line) => line.element));
-  const newElements = allEditableElements.filter(
-    (elem) => !existingElements.has(elem),
-  );
-
-  if (newElements.length > 0) {
-    // Add event listeners to new elements
-    newElements.forEach((elem) => {
-      elem.addEventListener("keydown", handleKeydown, true);
-      elem.addEventListener("click", handleClick, true);
-    });
-  }
-
-  // Rebuild lines array in DOM order
-  vim_info.lines = allEditableElements.map((elem) => ({
-    cursor_position: 0,
-    element: elem,
-  }));
-
-  // Update active line index to match the current active element
-  if (currentActiveElement) {
-    const newIndex = vim_info.lines.findIndex(
-      (line) => line.element === currentActiveElement,
-    );
-    if (newIndex !== -1) {
-      vim_info.active_line = newIndex;
-    }
-  }
-};
-
-const setLines = (f: HTMLDivElement[]) => {
-  const { vim_info } = window;
-
-  vim_info.lines = f.map((elem) => ({
-    cursor_position: 0,
-    element: elem as HTMLDivElement,
-  }));
-
-  // Set initial active line to 0 BEFORE adding event listeners
-  // (to prevent Notion's auto-focus from changing it)
-  setActiveLine(0);
-
-  // Add event listeners to ALL lines at once
-  vim_info.lines.forEach((line) => {
-    line.element.addEventListener("keydown", handleKeydown, true);
-    line.element.addEventListener("click", handleClick, true);
-  });
-
-  // Set up MutationObserver to detect new lines
-  const observer = new MutationObserver(() => {
-    refreshLines();
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
-};
-
-const updateInfoContainer = () => {
-  const mode = document.querySelector(".vim-mode") as HTMLDivElement;
-  const { vim_info } = window;
-  mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}`;
-
-  // Update body class for cursor styling
-  document.body.classList.remove(
-    "vim-normal-mode",
-    "vim-insert-mode",
-    "vim-visual-mode",
-    "vim-visual-line-mode",
-  );
-
-  if (vim_info.mode === "normal") {
-    document.body.classList.add("vim-normal-mode");
-  } else if (vim_info.mode === "visual") {
-    document.body.classList.add("vim-visual-mode");
-  } else if (vim_info.mode === "visual-line") {
-    document.body.classList.add("vim-visual-line-mode");
-  } else {
-    document.body.classList.add("vim-insert-mode");
-  }
-
-  // Update block cursor position
-  updateBlockCursor();
-};
+// Create refreshLines and setLines using factories (must be after handleKeydown and handleClick are defined)
+const refreshLines = createRefreshLines({ handleKeydown, handleClick });
+const setLines = createSetLines({ handleKeydown, handleClick }, refreshLines);
 
 // Create navigation wrappers that need access to updateInfoContainer and refreshLines
 const jumpToTop = createJumpToTop(updateInfoContainer);
