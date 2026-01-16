@@ -30,11 +30,19 @@ import {
 } from "./state";
 
 // Import settings functions
-import { loadSettings, applySettings, hexToRgba, adjustColor } from "./settings";
+import {
+  loadSettings,
+  applySettings,
+  hexToRgba,
+  adjustColor,
+} from "./settings";
 
 // Import text object functions
 import { getInnerWordBounds, getAroundWordBounds } from "./text-objects/word";
-import { findMatchingQuotes, findMatchingBrackets } from "./text-objects/bracket";
+import {
+  findMatchingQuotes,
+  findMatchingBrackets,
+} from "./text-objects/bracket";
 
 // Import Notion helpers
 import {
@@ -121,10 +129,19 @@ import {
   createChangeTillCharForward,
   createChangeTillCharBackward,
 } from "./operators";
-import type { OperatorDeps, MotionDeleteDeps, CharDeleteDeps, MotionChangeDeps } from "./operators";
+import type {
+  OperatorDeps,
+  MotionDeleteDeps,
+  CharDeleteDeps,
+  MotionChangeDeps,
+} from "./operators";
 
 // Import UI functions
-import { createInfoContainer, getModeText, updateInfoContainer } from "./ui/info-container";
+import {
+  createInfoContainer,
+  getModeText,
+  updateInfoContainer,
+} from "./ui/info-container";
 
 // Import link utilities
 import {
@@ -615,7 +632,11 @@ const linkHintReducer = (e: KeyboardEvent): boolean => {
       const key = e.key.toLowerCase();
       if (key.length === 1 && /[a-z]/.test(key)) {
         vim_info.link_hint_input += key;
-        filterHintsByInput(vim_info.link_hint_input, e.shiftKey, updateInfoContainer);
+        filterHintsByInput(
+          vim_info.link_hint_input,
+          e.shiftKey,
+          updateInfoContainer,
+        );
         return true;
       }
       return false;
@@ -1415,10 +1436,7 @@ const visualLineJumpToNextParagraph = (): void => {
   }
 
   // Now skip forward through the next paragraph content
-  while (
-    targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1)
-  ) {
+  while (targetLine < maxLine && !isParagraphBoundary(targetLine + 1)) {
     targetLine++;
   }
 
@@ -2042,7 +2060,9 @@ const pasteAfterCursor = async () => {
 
       const text = currentElement.textContent || "";
       const newText =
-        text.slice(0, pastePosition) + clipboardText + text.slice(pastePosition);
+        text.slice(0, pastePosition) +
+        clipboardText +
+        text.slice(pastePosition);
       currentElement.textContent = newText;
 
       // Move cursor to end of pasted text
@@ -2115,7 +2135,8 @@ const pasteBeforeCursor = async () => {
               // Insert text into the line above
               const targetLineIndex = vim_info.active_line;
               if (targetLineIndex < vim_info.lines.length) {
-                const targetLineElement = vim_info.lines[targetLineIndex].element;
+                const targetLineElement =
+                  vim_info.lines[targetLineIndex].element;
                 targetLineElement.textContent = textWithoutNewline;
                 setCursorPosition(targetLineElement, 0);
                 vim_info.desired_column = 0;
@@ -2148,7 +2169,8 @@ const pasteBeforeCursor = async () => {
       currentElement.textContent = newText;
 
       // Move cursor to end of pasted text
-      const newCursorPosition = currentCursorPosition + clipboardText.length - 1;
+      const newCursorPosition =
+        currentCursorPosition + clipboardText.length - 1;
       setCursorPosition(currentElement, newCursorPosition);
       vim_info.desired_column = newCursorPosition;
     }
@@ -2156,7 +2178,6 @@ const pasteBeforeCursor = async () => {
     console.error("[Vim-Notion] Failed to paste:", err);
   }
 };
-
 
 const undo = () => {
   const { vim_info } = window;
@@ -2936,7 +2957,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         clearAllLinkHighlights();
         setSelectedLinkIndex(
           (selectedLinkIndex - 1 + availableLinks.length) %
-          availableLinks.length
+            availableLinks.length,
         );
         highlightSelectedLink();
         return true;
@@ -3679,7 +3700,11 @@ const {
   deleteAroundParagraph,
   changeInnerParagraph,
   changeAroundParagraph,
-} = createParagraphOperators({ updateInfoContainer, refreshLines, setActiveLine });
+} = createParagraphOperators({
+  updateInfoContainer,
+  refreshLines,
+  setActiveLine,
+});
 
 // Create word operators using factory
 const {
@@ -3710,28 +3735,72 @@ const yankToPreviousParagraph = createYankToPreviousParagraph();
 const yankToNextParagraph = createYankToNextParagraph();
 
 // Create motion delete operators using factory
-const deleteCurrentLine = createDeleteCurrentLine({ refreshLines, updateInfoContainer });
+const deleteCurrentLine = createDeleteCurrentLine({
+  refreshLines,
+  updateInfoContainer,
+});
 const deleteToNextWord = createDeleteToNextWord();
 const deleteToEndOfLine = createDeleteToEndOfLine();
 const deleteToBeginningOfLine = createDeleteToBeginningOfLine();
-const deleteToPreviousParagraph = createDeleteToPreviousParagraph({ refreshLines, updateInfoContainer });
-const deleteToNextParagraph = createDeleteToNextParagraph({ refreshLines, updateInfoContainer });
-const deleteFindCharForward = createDeleteFindCharForward({ updateInfoContainer });
-const deleteFindCharBackward = createDeleteFindCharBackward({ updateInfoContainer });
-const deleteTillCharForward = createDeleteTillCharForward({ updateInfoContainer });
-const deleteTillCharBackward = createDeleteTillCharBackward({ updateInfoContainer });
+const deleteToPreviousParagraph = createDeleteToPreviousParagraph({
+  refreshLines,
+  updateInfoContainer,
+});
+const deleteToNextParagraph = createDeleteToNextParagraph({
+  refreshLines,
+  updateInfoContainer,
+});
+const deleteFindCharForward = createDeleteFindCharForward({
+  updateInfoContainer,
+});
+const deleteFindCharBackward = createDeleteFindCharBackward({
+  updateInfoContainer,
+});
+const deleteTillCharForward = createDeleteTillCharForward({
+  updateInfoContainer,
+});
+const deleteTillCharBackward = createDeleteTillCharBackward({
+  updateInfoContainer,
+});
 
 // Create motion change operators using factory (these depend on delete operators)
 const changeCurrentLine = createChangeCurrentLine({ updateInfoContainer });
-const changeToNextWord = createChangeToNextWord({ deleteToNextWord, updateInfoContainer });
-const changeToEndOfLine = createChangeToEndOfLine({ deleteToEndOfLine, updateInfoContainer });
-const changeToBeginningOfLine = createChangeToBeginningOfLine({ deleteToBeginningOfLine, updateInfoContainer });
-const changeToPreviousParagraph = createChangeToPreviousParagraph({ refreshLines, updateInfoContainer });
-const changeToNextParagraph = createChangeToNextParagraph({ refreshLines, updateInfoContainer });
-const changeFindCharForward = createChangeFindCharForward({ deleteFindCharForward, updateInfoContainer });
-const changeFindCharBackward = createChangeFindCharBackward({ deleteFindCharBackward, updateInfoContainer });
-const changeTillCharForward = createChangeTillCharForward({ deleteTillCharForward, updateInfoContainer });
-const changeTillCharBackward = createChangeTillCharBackward({ deleteTillCharBackward, updateInfoContainer });
+const changeToNextWord = createChangeToNextWord({
+  deleteToNextWord,
+  updateInfoContainer,
+});
+const changeToEndOfLine = createChangeToEndOfLine({
+  deleteToEndOfLine,
+  updateInfoContainer,
+});
+const changeToBeginningOfLine = createChangeToBeginningOfLine({
+  deleteToBeginningOfLine,
+  updateInfoContainer,
+});
+const changeToPreviousParagraph = createChangeToPreviousParagraph({
+  refreshLines,
+  updateInfoContainer,
+});
+const changeToNextParagraph = createChangeToNextParagraph({
+  refreshLines,
+  updateInfoContainer,
+});
+const changeFindCharForward = createChangeFindCharForward({
+  deleteFindCharForward,
+  updateInfoContainer,
+});
+const changeFindCharBackward = createChangeFindCharBackward({
+  deleteFindCharBackward,
+  updateInfoContainer,
+});
+const changeTillCharForward = createChangeTillCharForward({
+  deleteTillCharForward,
+  updateInfoContainer,
+});
+const changeTillCharBackward = createChangeTillCharBackward({
+  deleteTillCharBackward,
+  updateInfoContainer,
+});
 
 // Create navigation wrappers that need access to updateInfoContainer and refreshLines
 const jumpToTop = createJumpToTop(updateInfoContainer);

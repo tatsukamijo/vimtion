@@ -2,7 +2,7 @@
 
 interface VimtionSettings {
   showStatusBar: boolean;
-  statusBarPosition: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  statusBarPosition: "bottom-right" | "bottom-left" | "top-right" | "top-left";
   statusBarColor: string;
   cursorBlink: boolean;
   cursorColor: string;
@@ -18,17 +18,17 @@ interface VimtionSettings {
 
 const DEFAULT_SETTINGS: VimtionSettings = {
   showStatusBar: true,
-  statusBarPosition: 'bottom-right',
-  statusBarColor: '#667eea',
+  statusBarPosition: "bottom-right",
+  statusBarColor: "#667eea",
   cursorBlink: true,
-  cursorColor: '#667eea',
-  visualHighlightColor: '#667eea',
+  cursorColor: "#667eea",
+  visualHighlightColor: "#667eea",
   showUpdateNotifications: true,
   linkHintsEnabled: true,
-  hintCharacters: 'asdfghjklqwertyuiopzxcvbnm',
-  hintBackgroundColor: '#333333',
-  hintTextColor: '#ffffff',
-  hintMatchedColor: '#ff4458',
+  hintCharacters: "asdfghjklqwertyuiopzxcvbnm",
+  hintBackgroundColor: "#333333",
+  hintTextColor: "#ffffff",
+  hintMatchedColor: "#ff4458",
   hintFontSize: 14,
 };
 
@@ -36,91 +36,149 @@ const DEFAULT_SETTINGS: VimtionSettings = {
 function loadSettings() {
   chrome.storage.sync.get(DEFAULT_SETTINGS, (settings: VimtionSettings) => {
     // Status Bar
-    (document.getElementById('showStatusBar') as HTMLInputElement).checked = settings.showStatusBar;
-    (document.getElementById('statusBarPosition') as HTMLSelectElement).value = settings.statusBarPosition;
+    (document.getElementById("showStatusBar") as HTMLInputElement).checked =
+      settings.showStatusBar;
+    (document.getElementById("statusBarPosition") as HTMLSelectElement).value =
+      settings.statusBarPosition;
 
     // Appearance
-    (document.getElementById('cursorBlink') as HTMLInputElement).checked = settings.cursorBlink;
-    (document.getElementById('statusBarColor') as HTMLInputElement).value = settings.statusBarColor;
-    (document.getElementById('statusBarColorText') as HTMLInputElement).value = settings.statusBarColor;
-    (document.getElementById('cursorColor') as HTMLInputElement).value = settings.cursorColor;
-    (document.getElementById('cursorColorText') as HTMLInputElement).value = settings.cursorColor;
-    (document.getElementById('visualHighlightColor') as HTMLInputElement).value = settings.visualHighlightColor;
-    (document.getElementById('visualHighlightColorText') as HTMLInputElement).value = settings.visualHighlightColor;
+    (document.getElementById("cursorBlink") as HTMLInputElement).checked =
+      settings.cursorBlink;
+    (document.getElementById("statusBarColor") as HTMLInputElement).value =
+      settings.statusBarColor;
+    (document.getElementById("statusBarColorText") as HTMLInputElement).value =
+      settings.statusBarColor;
+    (document.getElementById("cursorColor") as HTMLInputElement).value =
+      settings.cursorColor;
+    (document.getElementById("cursorColorText") as HTMLInputElement).value =
+      settings.cursorColor;
+    (
+      document.getElementById("visualHighlightColor") as HTMLInputElement
+    ).value = settings.visualHighlightColor;
+    (
+      document.getElementById("visualHighlightColorText") as HTMLInputElement
+    ).value = settings.visualHighlightColor;
 
     // Apply theme color to page
     applyThemeColor(settings.statusBarColor);
 
     // Link Hints
-    (document.getElementById('linkHintsEnabled') as HTMLInputElement).checked = settings.linkHintsEnabled;
-    (document.getElementById('hintCharacters') as HTMLInputElement).value = settings.hintCharacters;
-    (document.getElementById('hintBackgroundColor') as HTMLInputElement).value = settings.hintBackgroundColor;
-    (document.getElementById('hintBackgroundColorText') as HTMLInputElement).value = settings.hintBackgroundColor;
-    (document.getElementById('hintTextColor') as HTMLInputElement).value = settings.hintTextColor;
-    (document.getElementById('hintTextColorText') as HTMLInputElement).value = settings.hintTextColor;
-    (document.getElementById('hintMatchedColor') as HTMLInputElement).value = settings.hintMatchedColor;
-    (document.getElementById('hintMatchedColorText') as HTMLInputElement).value = settings.hintMatchedColor;
-    (document.getElementById('hintFontSize') as HTMLInputElement).value = settings.hintFontSize.toString();
+    (document.getElementById("linkHintsEnabled") as HTMLInputElement).checked =
+      settings.linkHintsEnabled;
+    (document.getElementById("hintCharacters") as HTMLInputElement).value =
+      settings.hintCharacters;
+    (document.getElementById("hintBackgroundColor") as HTMLInputElement).value =
+      settings.hintBackgroundColor;
+    (
+      document.getElementById("hintBackgroundColorText") as HTMLInputElement
+    ).value = settings.hintBackgroundColor;
+    (document.getElementById("hintTextColor") as HTMLInputElement).value =
+      settings.hintTextColor;
+    (document.getElementById("hintTextColorText") as HTMLInputElement).value =
+      settings.hintTextColor;
+    (document.getElementById("hintMatchedColor") as HTMLInputElement).value =
+      settings.hintMatchedColor;
+    (
+      document.getElementById("hintMatchedColorText") as HTMLInputElement
+    ).value = settings.hintMatchedColor;
+    (document.getElementById("hintFontSize") as HTMLInputElement).value =
+      settings.hintFontSize.toString();
 
     // Notifications
-    (document.getElementById('showUpdateNotifications') as HTMLInputElement).checked = settings.showUpdateNotifications;
+    (
+      document.getElementById("showUpdateNotifications") as HTMLInputElement
+    ).checked = settings.showUpdateNotifications;
   });
 }
 
 // Save settings to storage
 function saveSettings() {
   const settings: VimtionSettings = {
-    showStatusBar: (document.getElementById('showStatusBar') as HTMLInputElement).checked,
-    statusBarPosition: (document.getElementById('statusBarPosition') as HTMLSelectElement).value as VimtionSettings['statusBarPosition'],
-    statusBarColor: (document.getElementById('statusBarColor') as HTMLInputElement).value,
-    cursorBlink: (document.getElementById('cursorBlink') as HTMLInputElement).checked,
-    cursorColor: (document.getElementById('cursorColor') as HTMLInputElement).value,
-    visualHighlightColor: (document.getElementById('visualHighlightColor') as HTMLInputElement).value,
-    showUpdateNotifications: (document.getElementById('showUpdateNotifications') as HTMLInputElement).checked,
-    linkHintsEnabled: (document.getElementById('linkHintsEnabled') as HTMLInputElement).checked,
-    hintCharacters: (document.getElementById('hintCharacters') as HTMLInputElement).value,
-    hintBackgroundColor: (document.getElementById('hintBackgroundColor') as HTMLInputElement).value,
-    hintTextColor: (document.getElementById('hintTextColor') as HTMLInputElement).value,
-    hintMatchedColor: (document.getElementById('hintMatchedColor') as HTMLInputElement).value,
-    hintFontSize: parseInt((document.getElementById('hintFontSize') as HTMLInputElement).value, 10),
+    showStatusBar: (
+      document.getElementById("showStatusBar") as HTMLInputElement
+    ).checked,
+    statusBarPosition: (
+      document.getElementById("statusBarPosition") as HTMLSelectElement
+    ).value as VimtionSettings["statusBarPosition"],
+    statusBarColor: (
+      document.getElementById("statusBarColor") as HTMLInputElement
+    ).value,
+    cursorBlink: (document.getElementById("cursorBlink") as HTMLInputElement)
+      .checked,
+    cursorColor: (document.getElementById("cursorColor") as HTMLInputElement)
+      .value,
+    visualHighlightColor: (
+      document.getElementById("visualHighlightColor") as HTMLInputElement
+    ).value,
+    showUpdateNotifications: (
+      document.getElementById("showUpdateNotifications") as HTMLInputElement
+    ).checked,
+    linkHintsEnabled: (
+      document.getElementById("linkHintsEnabled") as HTMLInputElement
+    ).checked,
+    hintCharacters: (
+      document.getElementById("hintCharacters") as HTMLInputElement
+    ).value,
+    hintBackgroundColor: (
+      document.getElementById("hintBackgroundColor") as HTMLInputElement
+    ).value,
+    hintTextColor: (
+      document.getElementById("hintTextColor") as HTMLInputElement
+    ).value,
+    hintMatchedColor: (
+      document.getElementById("hintMatchedColor") as HTMLInputElement
+    ).value,
+    hintFontSize: parseInt(
+      (document.getElementById("hintFontSize") as HTMLInputElement).value,
+      10,
+    ),
   };
 
   chrome.storage.sync.set(settings, () => {
-    showStatus('Settings saved successfully!', 'success');
+    showStatus("Settings saved successfully!", "success");
   });
 }
 
 // Reset to default settings
 function resetSettings() {
-  if (confirm('Are you sure you want to reset all settings to defaults?')) {
+  if (confirm("Are you sure you want to reset all settings to defaults?")) {
     chrome.storage.sync.set(DEFAULT_SETTINGS, () => {
       loadSettings();
-      showStatus('Settings reset to defaults', 'success');
+      showStatus("Settings reset to defaults", "success");
     });
   }
 }
 
 // Show status message
-function showStatus(message: string, type: 'success' | 'error') {
-  const statusElement = document.getElementById('status');
+function showStatus(message: string, type: "success" | "error") {
+  const statusElement = document.getElementById("status");
   if (!statusElement) return;
 
   statusElement.textContent = message;
   statusElement.className = `status-message ${type}`;
-  statusElement.style.display = 'block';
+  statusElement.style.display = "block";
 
   setTimeout(() => {
-    statusElement.style.display = 'none';
+    statusElement.style.display = "none";
   }, 3000);
 }
 
 // Helper function to adjust color brightness
 function adjustColor(color: string, amount: number): string {
-  const hex = color.replace('#', '');
-  const r = Math.max(0, Math.min(255, parseInt(hex.substring(0, 2), 16) + amount));
-  const g = Math.max(0, Math.min(255, parseInt(hex.substring(2, 4), 16) + amount));
-  const b = Math.max(0, Math.min(255, parseInt(hex.substring(4, 6), 16) + amount));
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  const hex = color.replace("#", "");
+  const r = Math.max(
+    0,
+    Math.min(255, parseInt(hex.substring(0, 2), 16) + amount),
+  );
+  const g = Math.max(
+    0,
+    Math.min(255, parseInt(hex.substring(2, 4), 16) + amount),
+  );
+  const b = Math.max(
+    0,
+    Math.min(255, parseInt(hex.substring(4, 6), 16) + amount),
+  );
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
 // Apply theme color to page background and elements
@@ -131,15 +189,15 @@ function applyThemeColor(color: string) {
   document.body.style.background = `linear-gradient(135deg, ${color} 0%, ${gradientEnd} 100%)`;
 
   // Update header gradient
-  const header = document.querySelector('header') as HTMLElement;
+  const header = document.querySelector("header") as HTMLElement;
   if (header) {
     header.style.background = `linear-gradient(135deg, ${color} 0%, ${gradientEnd} 100%)`;
   }
 
   // Update primary button gradient
-  const style = document.createElement('style');
-  style.id = 'vimtion-theme-styles';
-  const existingStyle = document.getElementById('vimtion-theme-styles');
+  const style = document.createElement("style");
+  style.id = "vimtion-theme-styles";
+  const existingStyle = document.getElementById("vimtion-theme-styles");
   if (existingStyle) {
     existingStyle.remove();
   }
@@ -180,38 +238,38 @@ function applyThemeColor(color: string) {
 // Sync color picker with text input
 function setupColorPickers() {
   const colorInputs = [
-    { picker: 'statusBarColor', text: 'statusBarColorText' },
-    { picker: 'cursorColor', text: 'cursorColorText' },
-    { picker: 'visualHighlightColor', text: 'visualHighlightColorText' },
-    { picker: 'hintBackgroundColor', text: 'hintBackgroundColorText' },
-    { picker: 'hintTextColor', text: 'hintTextColorText' },
-    { picker: 'hintMatchedColor', text: 'hintMatchedColorText' },
+    { picker: "statusBarColor", text: "statusBarColorText" },
+    { picker: "cursorColor", text: "cursorColorText" },
+    { picker: "visualHighlightColor", text: "visualHighlightColorText" },
+    { picker: "hintBackgroundColor", text: "hintBackgroundColorText" },
+    { picker: "hintTextColor", text: "hintTextColorText" },
+    { picker: "hintMatchedColor", text: "hintMatchedColorText" },
   ];
 
   colorInputs.forEach(({ picker, text }) => {
     const pickerElement = document.getElementById(picker) as HTMLInputElement;
     const textElement = document.getElementById(text) as HTMLInputElement;
 
-    pickerElement.addEventListener('input', () => {
+    pickerElement.addEventListener("input", () => {
       textElement.value = pickerElement.value;
       // Live preview for status bar color
-      if (picker === 'statusBarColor') {
+      if (picker === "statusBarColor") {
         applyThemeColor(pickerElement.value);
       }
     });
 
-    textElement.addEventListener('input', () => {
+    textElement.addEventListener("input", () => {
       const color = textElement.value;
       if (/^#[0-9A-F]{6}$/i.test(color)) {
         pickerElement.value = color;
         // Live preview for status bar color
-        if (picker === 'statusBarColor') {
+        if (picker === "statusBarColor") {
           applyThemeColor(color);
         }
       }
     });
 
-    textElement.addEventListener('blur', () => {
+    textElement.addEventListener("blur", () => {
       const color = textElement.value;
       if (!/^#[0-9A-F]{6}$/i.test(color)) {
         textElement.value = pickerElement.value;
@@ -221,26 +279,26 @@ function setupColorPickers() {
 }
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener("DOMContentLoaded", () => {
   loadSettings();
   setupColorPickers();
 
   // Display version from manifest
   const version = chrome.runtime.getManifest().version;
-  const versionElement = document.querySelector('.footer-info p');
+  const versionElement = document.querySelector(".footer-info p");
   if (versionElement) {
     versionElement.innerHTML = `Vimtion v${version} | <a href="https://github.com/tatsukamijo/vimtion" target="_blank">GitHub</a>`;
   }
 
-  const saveButton = document.getElementById('save');
-  const resetButton = document.getElementById('reset');
+  const saveButton = document.getElementById("save");
+  const resetButton = document.getElementById("reset");
 
-  saveButton?.addEventListener('click', saveSettings);
-  resetButton?.addEventListener('click', resetSettings);
+  saveButton?.addEventListener("click", saveSettings);
+  resetButton?.addEventListener("click", resetSettings);
 
   // Save on Enter key
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       saveSettings();
     }
   });

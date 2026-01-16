@@ -96,7 +96,9 @@ export const createRefreshLines = (handlers: EventHandlers) => {
     const currentActiveElement = vim_info.lines[vim_info.active_line]?.element;
 
     // Find new elements that aren't in our lines array yet
-    const existingElements = new Set(vim_info.lines.map((line) => line.element));
+    const existingElements = new Set(
+      vim_info.lines.map((line) => line.element),
+    );
     const newElements = allEditableElements.filter(
       (elem) => !existingElements.has(elem),
     );

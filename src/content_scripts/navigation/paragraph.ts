@@ -48,10 +48,7 @@ export const jumpToNextParagraph = (): void => {
   }
 
   // Now skip forward through the next paragraph content
-  while (
-    targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1)
-  ) {
+  while (targetLine < maxLine && !isParagraphBoundary(targetLine + 1)) {
     targetLine++;
   }
 

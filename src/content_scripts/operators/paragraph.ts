@@ -128,7 +128,10 @@ export const createParagraphOperators = (deps: OperatorDeps) => {
       vim_info.mode = "normal";
       refreshLines();
 
-      const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
+      const newActiveLine = Math.max(
+        0,
+        Math.min(startLine, vim_info.lines.length - 1),
+      );
       if (vim_info.lines.length > 0) {
         setActiveLine(newActiveLine);
       }
@@ -179,7 +182,10 @@ export const createParagraphOperators = (deps: OperatorDeps) => {
       vim_info.mode = "normal";
       refreshLines();
 
-      const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
+      const newActiveLine = Math.max(
+        0,
+        Math.min(startLine, vim_info.lines.length - 1),
+      );
       if (vim_info.lines.length > 0) {
         setActiveLine(newActiveLine);
       }
@@ -230,7 +236,10 @@ export const createParagraphOperators = (deps: OperatorDeps) => {
       refreshLines();
 
       // Position cursor at the line where the paragraph was
-      const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
+      const newActiveLine = Math.max(
+        0,
+        Math.min(startLine, vim_info.lines.length - 1),
+      );
       if (vim_info.lines.length > 0) {
         const element = vim_info.lines[newActiveLine].element;
         element.textContent = "";
@@ -285,7 +294,10 @@ export const createParagraphOperators = (deps: OperatorDeps) => {
       refreshLines();
 
       // Insert a new empty line at the position where the paragraph was
-      const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
+      const newActiveLine = Math.max(
+        0,
+        Math.min(startLine, vim_info.lines.length - 1),
+      );
       if (vim_info.lines.length > 0) {
         const element = vim_info.lines[newActiveLine].element;
 

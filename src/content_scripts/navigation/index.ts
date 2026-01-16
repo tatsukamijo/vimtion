@@ -18,10 +18,7 @@ export {
   jumpToPreviousWORD,
 } from "./word";
 
-export {
-  jumpToPreviousParagraph,
-  jumpToNextParagraph,
-} from "./paragraph";
+export { jumpToPreviousParagraph, jumpToNextParagraph } from "./paragraph";
 
 export {
   moveCursorDownInCodeBlock,

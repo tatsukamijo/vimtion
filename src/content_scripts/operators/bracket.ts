@@ -3,7 +3,10 @@
  * Text object operations for brackets and quotes (yank, delete, change)
  */
 
-import { findMatchingQuotes, findMatchingBrackets } from "../text-objects/bracket";
+import {
+  findMatchingQuotes,
+  findMatchingBrackets,
+} from "../text-objects/bracket";
 import { getCursorIndexInElement, setCursorPosition } from "../cursor";
 
 /**
@@ -32,7 +35,12 @@ export const createBracketOperators = (deps: OperatorDeps) => {
     const result =
       openChar === closeChar
         ? findMatchingQuotes(text, currentCursorPosition, openChar)
-        : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+        : findMatchingBrackets(
+            text,
+            currentCursorPosition,
+            openChar,
+            closeChar,
+          );
 
     if (!result) {
       vim_info.pending_operator = null;
@@ -60,7 +68,12 @@ export const createBracketOperators = (deps: OperatorDeps) => {
     const result =
       openChar === closeChar
         ? findMatchingQuotes(text, currentCursorPosition, openChar)
-        : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+        : findMatchingBrackets(
+            text,
+            currentCursorPosition,
+            openChar,
+            closeChar,
+          );
 
     if (!result) {
       vim_info.pending_operator = null;
@@ -88,7 +101,12 @@ export const createBracketOperators = (deps: OperatorDeps) => {
     const result =
       openChar === closeChar
         ? findMatchingQuotes(text, currentCursorPosition, openChar)
-        : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+        : findMatchingBrackets(
+            text,
+            currentCursorPosition,
+            openChar,
+            closeChar,
+          );
 
     if (!result) {
       vim_info.pending_operator = null;
@@ -126,7 +144,12 @@ export const createBracketOperators = (deps: OperatorDeps) => {
     const result =
       openChar === closeChar
         ? findMatchingQuotes(text, currentCursorPosition, openChar)
-        : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
+        : findMatchingBrackets(
+            text,
+            currentCursorPosition,
+            openChar,
+            closeChar,
+          );
 
     if (!result) {
       vim_info.pending_operator = null;

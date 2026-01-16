@@ -264,89 +264,90 @@ export const createDeleteToBeginningOfLine = () => () => {
 /**
  * Delete from cursor to previous paragraph boundary
  */
-export const createDeleteToPreviousParagraph = (deps: MotionDeleteDeps) => () => {
-  const { refreshLines, updateInfoContainer } = deps;
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const currentElement = vim_info.lines[currentLine].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
+export const createDeleteToPreviousParagraph =
+  (deps: MotionDeleteDeps) => () => {
+    const { refreshLines, updateInfoContainer } = deps;
+    const { vim_info } = window;
+    const currentLine = vim_info.active_line;
+    const currentElement = vim_info.lines[currentLine].element;
+    const currentCursorPosition = getCursorIndexInElement(currentElement);
 
-  // Find the target paragraph boundary
-  let targetLine = currentLine;
+    // Find the target paragraph boundary
+    let targetLine = currentLine;
 
-  // If we're on a blank line, skip backward through all consecutive blank lines
-  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
-    targetLine--;
-  }
-
-  // Now skip backward through the previous paragraph content
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-
-  // Now targetLine is at the first line of the previous paragraph
-  // Move up one more to land on the blank line above it (Vim behavior)
-  if (targetLine > 0) {
-    targetLine--;
-  }
-
-  // Collect text from all lines between current and target for clipboard
-  const lines: string[] = [];
-
-  // Add partial text from current line (from start to cursor)
-  const currentText = currentElement.textContent || "";
-  lines.push(currentText.slice(0, currentCursorPosition));
-
-  // Add all lines in between (in reverse order since we're going backward)
-  for (let i = currentLine - 1; i >= targetLine; i--) {
-    const lineText = vim_info.lines[i].element.textContent || "";
-    lines.unshift(lineText);
-  }
-
-  const clipboardText = lines.join("\n");
-
-  // Copy to clipboard
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // If we're deleting across multiple lines
-  if (currentLine !== targetLine) {
-    // Switch to insert mode temporarily
-    vim_info.mode = "insert";
-
-    // Delete all blocks from targetLine to currentLine - 1
-    let currentDelay = 10;
-    for (let i = currentLine - 1; i >= targetLine; i--) {
-      const element = vim_info.lines[i].element;
-      deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-      currentDelay += 50;
+    // If we're on a blank line, skip backward through all consecutive blank lines
+    while (targetLine > 0 && isParagraphBoundary(targetLine)) {
+      targetLine--;
     }
 
-    // Delete partial content from current line (from start to cursor)
-    setTimeout(() => {
+    // Now skip backward through the previous paragraph content
+    while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
+      targetLine--;
+    }
+
+    // Now targetLine is at the first line of the previous paragraph
+    // Move up one more to land on the blank line above it (Vim behavior)
+    if (targetLine > 0) {
+      targetLine--;
+    }
+
+    // Collect text from all lines between current and target for clipboard
+    const lines: string[] = [];
+
+    // Add partial text from current line (from start to cursor)
+    const currentText = currentElement.textContent || "";
+    lines.push(currentText.slice(0, currentCursorPosition));
+
+    // Add all lines in between (in reverse order since we're going backward)
+    for (let i = currentLine - 1; i >= targetLine; i--) {
+      const lineText = vim_info.lines[i].element.textContent || "";
+      lines.unshift(lineText);
+    }
+
+    const clipboardText = lines.join("\n");
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(clipboardText).catch((err) => {
+      console.error("[Vim-Notion] Failed to copy to clipboard:", err);
+    });
+
+    // If we're deleting across multiple lines
+    if (currentLine !== targetLine) {
+      // Switch to insert mode temporarily
+      vim_info.mode = "insert";
+
+      // Delete all blocks from targetLine to currentLine - 1
+      let currentDelay = 10;
+      for (let i = currentLine - 1; i >= targetLine; i--) {
+        const element = vim_info.lines[i].element;
+        deleteNormalBlockWithKeyboardEvents(element, currentDelay);
+        currentDelay += 50;
+      }
+
+      // Delete partial content from current line (from start to cursor)
+      setTimeout(() => {
+        const text = currentElement.textContent || "";
+        const newText = text.slice(currentCursorPosition);
+        currentElement.textContent = newText;
+        setCursorPosition(currentElement, 0);
+        vim_info.desired_column = 0;
+
+        // Return to normal mode
+        setTimeout(() => {
+          vim_info.mode = "normal";
+          refreshLines();
+          updateInfoContainer();
+        }, 50);
+      }, currentDelay + 50);
+    } else {
+      // Same line - just delete text from start to cursor
       const text = currentElement.textContent || "";
       const newText = text.slice(currentCursorPosition);
       currentElement.textContent = newText;
       setCursorPosition(currentElement, 0);
       vim_info.desired_column = 0;
-
-      // Return to normal mode
-      setTimeout(() => {
-        vim_info.mode = "normal";
-        refreshLines();
-        updateInfoContainer();
-      }, 50);
-    }, currentDelay + 50);
-  } else {
-    // Same line - just delete text from start to cursor
-    const text = currentElement.textContent || "";
-    const newText = text.slice(currentCursorPosition);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, 0);
-    vim_info.desired_column = 0;
-  }
-};
+    }
+  };
 
 /**
  * Delete from cursor to next paragraph boundary
@@ -368,10 +369,7 @@ export const createDeleteToNextParagraph = (deps: MotionDeleteDeps) => () => {
   }
 
   // Now skip forward through the next paragraph content
-  while (
-    targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1)
-  ) {
+  while (targetLine < maxLine && !isParagraphBoundary(targetLine + 1)) {
     targetLine++;
   }
 
@@ -442,83 +440,87 @@ export const createDeleteToNextParagraph = (deps: MotionDeleteDeps) => () => {
 /**
  * Delete from cursor to and including the next occurrence of char (f)
  */
-export const createDeleteFindCharForward = (deps: CharDeleteDeps) => (char: string) => {
-  const { updateInfoContainer } = deps;
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
+export const createDeleteFindCharForward =
+  (deps: CharDeleteDeps) => (char: string) => {
+    const { updateInfoContainer } = deps;
+    const { vim_info } = window;
+    const currentElement = vim_info.lines[vim_info.active_line].element;
+    const text = currentElement.textContent || "";
+    const currentPos = getCursorIndexInElement(currentElement);
 
-  const foundIndex = text.indexOf(char, currentPos + 1);
-  if (foundIndex !== -1) {
-    // Delete from current position to and including the found character
-    const newText = text.slice(0, currentPos) + text.slice(foundIndex + 1);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, currentPos);
-    vim_info.desired_column = currentPos;
-    updateInfoContainer();
-  }
-};
+    const foundIndex = text.indexOf(char, currentPos + 1);
+    if (foundIndex !== -1) {
+      // Delete from current position to and including the found character
+      const newText = text.slice(0, currentPos) + text.slice(foundIndex + 1);
+      currentElement.textContent = newText;
+      setCursorPosition(currentElement, currentPos);
+      vim_info.desired_column = currentPos;
+      updateInfoContainer();
+    }
+  };
 
 /**
  * Delete from and including the previous occurrence of char to cursor (F)
  */
-export const createDeleteFindCharBackward = (deps: CharDeleteDeps) => (char: string) => {
-  const { updateInfoContainer } = deps;
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
+export const createDeleteFindCharBackward =
+  (deps: CharDeleteDeps) => (char: string) => {
+    const { updateInfoContainer } = deps;
+    const { vim_info } = window;
+    const currentElement = vim_info.lines[vim_info.active_line].element;
+    const text = currentElement.textContent || "";
+    const currentPos = getCursorIndexInElement(currentElement);
 
-  const foundIndex = text.lastIndexOf(char, currentPos - 1);
-  if (foundIndex !== -1) {
-    // Delete from and including the found character to current position
-    const newText = text.slice(0, foundIndex) + text.slice(currentPos);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, foundIndex);
-    vim_info.desired_column = foundIndex;
-    updateInfoContainer();
-  }
-};
+    const foundIndex = text.lastIndexOf(char, currentPos - 1);
+    if (foundIndex !== -1) {
+      // Delete from and including the found character to current position
+      const newText = text.slice(0, foundIndex) + text.slice(currentPos);
+      currentElement.textContent = newText;
+      setCursorPosition(currentElement, foundIndex);
+      vim_info.desired_column = foundIndex;
+      updateInfoContainer();
+    }
+  };
 
 /**
  * Delete from cursor till (but not including) the next occurrence of char (t)
  */
-export const createDeleteTillCharForward = (deps: CharDeleteDeps) => (char: string) => {
-  const { updateInfoContainer } = deps;
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
+export const createDeleteTillCharForward =
+  (deps: CharDeleteDeps) => (char: string) => {
+    const { updateInfoContainer } = deps;
+    const { vim_info } = window;
+    const currentElement = vim_info.lines[vim_info.active_line].element;
+    const text = currentElement.textContent || "";
+    const currentPos = getCursorIndexInElement(currentElement);
 
-  const foundIndex = text.indexOf(char, currentPos + 1);
-  if (foundIndex !== -1) {
-    // Delete from current position till (not including) the found character
-    const newText = text.slice(0, currentPos) + text.slice(foundIndex);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, currentPos);
-    vim_info.desired_column = currentPos;
-    updateInfoContainer();
-  }
-};
+    const foundIndex = text.indexOf(char, currentPos + 1);
+    if (foundIndex !== -1) {
+      // Delete from current position till (not including) the found character
+      const newText = text.slice(0, currentPos) + text.slice(foundIndex);
+      currentElement.textContent = newText;
+      setCursorPosition(currentElement, currentPos);
+      vim_info.desired_column = currentPos;
+      updateInfoContainer();
+    }
+  };
 
 /**
  * Delete from after the previous occurrence of char to cursor (T)
  */
-export const createDeleteTillCharBackward = (deps: CharDeleteDeps) => (char: string) => {
-  const { updateInfoContainer } = deps;
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
+export const createDeleteTillCharBackward =
+  (deps: CharDeleteDeps) => (char: string) => {
+    const { updateInfoContainer } = deps;
+    const { vim_info } = window;
+    const currentElement = vim_info.lines[vim_info.active_line].element;
+    const text = currentElement.textContent || "";
+    const currentPos = getCursorIndexInElement(currentElement);
 
-  const foundIndex = text.lastIndexOf(char, currentPos - 1);
-  if (foundIndex !== -1) {
-    // Delete from after the found character to current position
-    const newText = text.slice(0, foundIndex + 1) + text.slice(currentPos);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, foundIndex + 1);
-    vim_info.desired_column = foundIndex + 1;
-    updateInfoContainer();
-  }
-};
+    const foundIndex = text.lastIndexOf(char, currentPos - 1);
+    if (foundIndex !== -1) {
+      // Delete from after the found character to current position
+      const newText = text.slice(0, foundIndex + 1) + text.slice(currentPos);
+      currentElement.textContent = newText;
+      setCursorPosition(currentElement, foundIndex + 1);
+      vim_info.desired_column = foundIndex + 1;
+      updateInfoContainer();
+    }
+  };

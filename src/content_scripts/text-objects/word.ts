@@ -2,7 +2,10 @@
  * Word text object functions
  */
 
-export const getInnerWordBounds = (text: string, pos: number): [number, number] => {
+export const getInnerWordBounds = (
+  text: string,
+  pos: number,
+): [number, number] => {
   let start = pos;
   let end = pos;
 
@@ -24,7 +27,10 @@ export const getInnerWordBounds = (text: string, pos: number): [number, number] 
   return [start, end];
 };
 
-export const getAroundWordBounds = (text: string, pos: number): [number, number] => {
+export const getAroundWordBounds = (
+  text: string,
+  pos: number,
+): [number, number] => {
   let start = pos;
   let end = pos;
 

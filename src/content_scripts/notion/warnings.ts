@@ -2,7 +2,10 @@
  * Notion beforeunload warning management
  */
 
-import { setSuppressBeforeUnloadWarning, getSuppressBeforeUnloadWarning } from "../state";
+import {
+  setSuppressBeforeUnloadWarning,
+  getSuppressBeforeUnloadWarning,
+} from "../state";
 
 export const disableNotionUnsavedWarning = () => {
   setSuppressBeforeUnloadWarning(true);
