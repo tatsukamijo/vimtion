@@ -39,5 +39,5 @@ export {
   createChangeTillCharBackward,
 } from "./motion-change";
 export type { OperatorDeps } from "./paragraph";
-export type { MotionDeleteDeps } from "./motion-delete";
+export type { MotionDeleteDeps, CharDeleteDeps } from "./motion-delete";
 export type { MotionChangeDeps } from "./motion-change";

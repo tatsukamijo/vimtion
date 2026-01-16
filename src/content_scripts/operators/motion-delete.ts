@@ -17,6 +17,13 @@ export interface MotionDeleteDeps {
 }
 
 /**
+ * Dependencies for character-find delete operators
+ */
+export interface CharDeleteDeps {
+  updateInfoContainer: () => void;
+}
+
+/**
  * Delete current line
  * Handles both normal blocks (deletes entire block) and code blocks (deletes line within block)
  */
@@ -435,7 +442,8 @@ export const createDeleteToNextParagraph = (deps: MotionDeleteDeps) => () => {
 /**
  * Delete from cursor to and including the next occurrence of char (f)
  */
-export const createDeleteFindCharForward = () => (char: string) => {
+export const createDeleteFindCharForward = (deps: CharDeleteDeps) => (char: string) => {
+  const { updateInfoContainer } = deps;
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const text = currentElement.textContent || "";
@@ -448,13 +456,15 @@ export const createDeleteFindCharForward = () => (char: string) => {
     currentElement.textContent = newText;
     setCursorPosition(currentElement, currentPos);
     vim_info.desired_column = currentPos;
+    updateInfoContainer();
   }
 };
 
 /**
  * Delete from and including the previous occurrence of char to cursor (F)
  */
-export const createDeleteFindCharBackward = () => (char: string) => {
+export const createDeleteFindCharBackward = (deps: CharDeleteDeps) => (char: string) => {
+  const { updateInfoContainer } = deps;
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const text = currentElement.textContent || "";
@@ -467,13 +477,15 @@ export const createDeleteFindCharBackward = () => (char: string) => {
     currentElement.textContent = newText;
     setCursorPosition(currentElement, foundIndex);
     vim_info.desired_column = foundIndex;
+    updateInfoContainer();
   }
 };
 
 /**
  * Delete from cursor till (but not including) the next occurrence of char (t)
  */
-export const createDeleteTillCharForward = () => (char: string) => {
+export const createDeleteTillCharForward = (deps: CharDeleteDeps) => (char: string) => {
+  const { updateInfoContainer } = deps;
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const text = currentElement.textContent || "";
@@ -486,13 +498,15 @@ export const createDeleteTillCharForward = () => (char: string) => {
     currentElement.textContent = newText;
     setCursorPosition(currentElement, currentPos);
     vim_info.desired_column = currentPos;
+    updateInfoContainer();
   }
 };
 
 /**
  * Delete from after the previous occurrence of char to cursor (T)
  */
-export const createDeleteTillCharBackward = () => (char: string) => {
+export const createDeleteTillCharBackward = (deps: CharDeleteDeps) => (char: string) => {
+  const { updateInfoContainer } = deps;
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const text = currentElement.textContent || "";
@@ -505,5 +519,6 @@ export const createDeleteTillCharBackward = () => (char: string) => {
     currentElement.textContent = newText;
     setCursorPosition(currentElement, foundIndex + 1);
     vim_info.desired_column = foundIndex + 1;
+    updateInfoContainer();
   }
 };

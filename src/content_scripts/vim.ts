@@ -121,7 +121,7 @@ import {
   createChangeTillCharForward,
   createChangeTillCharBackward,
 } from "./operators";
-import type { OperatorDeps, MotionDeleteDeps, MotionChangeDeps } from "./operators";
+import type { OperatorDeps, MotionDeleteDeps, CharDeleteDeps, MotionChangeDeps } from "./operators";
 
 // Import UI functions
 import { createInfoContainer, getModeText, updateInfoContainer } from "./ui/info-container";
@@ -148,6 +148,22 @@ import {
   createRefreshLines,
   createSetLines,
 } from "./core";
+
+/**
+ * Safely adds a range to the selection, catching any errors that may occur
+ * if the range is no longer valid in the document
+ */
+const safeAddRange = (selection: Selection | null, range: Range): boolean => {
+  if (!selection) return false;
+  try {
+    selection.addRange(range);
+    return true;
+  } catch (e) {
+    // Range is no longer in document, silently ignore
+    console.warn("[Vim-Notion] Failed to add range to selection:", e);
+    return false;
+  }
+};
 
 // Get the block type of an element from its closest [data-block-id] ancestor
 const getBlockType = (element: HTMLElement): string => {
@@ -333,7 +349,7 @@ const deleteCharacter = () => {
     r.setStart(r.startContainer, r.startOffset);
     r.setEnd(r.startContainer, r.startOffset + 1);
     sel.removeAllRanges();
-    sel.addRange(r);
+    safeAddRange(sel, r);
 
     // Cut to clipboard like vim's 'x' command
     document.execCommand("cut");
@@ -385,7 +401,7 @@ const substituteCharacter = () => {
     r.setStart(r.startContainer, r.startOffset);
     r.setEnd(r.startContainer, r.startOffset + 1);
     sel.removeAllRanges();
-    sel.addRange(r);
+    safeAddRange(sel, r);
 
     // Delete the selection using execCommand
     document.execCommand("delete");
@@ -768,7 +784,7 @@ const updateVisualLineSelection = () => {
   }
 
   selection?.removeAllRanges();
-  selection?.addRange(range);
+  safeAddRange(selection, range);
 };
 
 // Helper function to set range in an element
@@ -838,7 +854,7 @@ const updateVisualSelection = () => {
 
   setRangeInElement(range, currentElement, selStart, selEnd);
   selection?.removeAllRanges();
-  selection?.addRange(range);
+  safeAddRange(selection, range);
 };
 
 const visualSelectInnerWord = () => {
@@ -859,7 +875,7 @@ const visualSelectInnerWord = () => {
 
   setRangeInElement(range, currentElement, start, end);
   selection?.removeAllRanges();
-  selection?.addRange(range);
+  safeAddRange(selection, range);
 };
 
 const visualSelectAroundWord = () => {
@@ -880,7 +896,7 @@ const visualSelectAroundWord = () => {
 
   setRangeInElement(range, currentElement, start, end);
   selection?.removeAllRanges();
-  selection?.addRange(range);
+  safeAddRange(selection, range);
 };
 
 const visualSelectInnerBracket = (openChar: string, closeChar: string) => {
@@ -911,7 +927,7 @@ const visualSelectInnerBracket = (openChar: string, closeChar: string) => {
 
   setRangeInElement(range, currentElement, openIndex + 1, closeIndex);
   selection?.removeAllRanges();
-  selection?.addRange(range);
+  safeAddRange(selection, range);
 };
 
 const visualSelectAroundBracket = (openChar: string, closeChar: string) => {
@@ -942,7 +958,7 @@ const visualSelectAroundBracket = (openChar: string, closeChar: string) => {
 
   setRangeInElement(range, currentElement, openIndex, closeIndex + 1);
   selection?.removeAllRanges();
-  selection?.addRange(range);
+  safeAddRange(selection, range);
 };
 
 const visualReducer = (e: KeyboardEvent): boolean => {
@@ -1499,7 +1515,7 @@ const deleteCodeBlockLines = (firstLine: number, lastLine: number): number => {
 
     const selection = window.getSelection();
     selection?.removeAllRanges();
-    selection?.addRange(range);
+    safeAddRange(selection, range);
 
     // Delete the content
     document.execCommand("delete");
@@ -1526,7 +1542,7 @@ const changeCodeBlockLines = (firstLine: number, lastLine: number) => {
 
     const selection = window.getSelection();
     selection?.removeAllRanges();
-    selection?.addRange(range);
+    safeAddRange(selection, range);
 
     // Delete the content
     document.execCommand("delete");
@@ -1766,7 +1782,7 @@ const changeVisualLineSelection = () => {
     range.selectNodeContents(element);
     const selection = window.getSelection();
     selection?.removeAllRanges();
-    selection?.addRange(range);
+    safeAddRange(selection, range);
 
     // Delete content
     document.execCommand("delete");
@@ -1809,7 +1825,7 @@ const changeVisualLineSelection = () => {
 
         const selection = window.getSelection();
         selection?.removeAllRanges();
-        selection?.addRange(range);
+        safeAddRange(selection, range);
 
         // Delete the content
         document.execCommand("delete");
@@ -1846,7 +1862,7 @@ const changeVisualLineSelection = () => {
           range.selectNodeContents(element);
           const selection = window.getSelection();
           selection?.removeAllRanges();
-          selection?.addRange(range);
+          safeAddRange(selection, range);
 
           // Delete content
           document.execCommand("delete");
@@ -1897,7 +1913,7 @@ const changeVisualLineSelection = () => {
     range.selectNodeContents(editableElement);
     const selection = window.getSelection();
     selection?.removeAllRanges();
-    selection?.addRange(range);
+    safeAddRange(selection, range);
 
     // Focus and delete
     editableElement.focus();
@@ -2916,7 +2932,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
             range.selectNodeContents(editableElement);
             const sel = window.getSelection();
             sel?.removeAllRanges();
-            sel?.addRange(range);
+            safeAddRange(sel, range);
 
             editableElement.focus();
 
@@ -3581,10 +3597,10 @@ const deleteToEndOfLine = createDeleteToEndOfLine();
 const deleteToBeginningOfLine = createDeleteToBeginningOfLine();
 const deleteToPreviousParagraph = createDeleteToPreviousParagraph({ refreshLines, updateInfoContainer });
 const deleteToNextParagraph = createDeleteToNextParagraph({ refreshLines, updateInfoContainer });
-const deleteFindCharForward = createDeleteFindCharForward();
-const deleteFindCharBackward = createDeleteFindCharBackward();
-const deleteTillCharForward = createDeleteTillCharForward();
-const deleteTillCharBackward = createDeleteTillCharBackward();
+const deleteFindCharForward = createDeleteFindCharForward({ updateInfoContainer });
+const deleteFindCharBackward = createDeleteFindCharBackward({ updateInfoContainer });
+const deleteTillCharForward = createDeleteTillCharForward({ updateInfoContainer });
+const deleteTillCharBackward = createDeleteTillCharBackward({ updateInfoContainer });
 
 // Create motion change operators using factory (these depend on delete operators)
 const changeCurrentLine = createChangeCurrentLine({ updateInfoContainer });
