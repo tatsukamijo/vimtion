@@ -8,46 +8,44 @@
  * See LICENSE file for details
  */
 
-// Settings interface
-interface VimtionSettings {
-  showStatusBar: boolean;
-  statusBarPosition: "bottom-right" | "bottom-left" | "top-right" | "top-left";
-  statusBarColor: string;
-  cursorBlink: boolean;
-  cursorColor: string;
-  visualHighlightColor: string;
-  showUpdateNotifications: boolean;
-  linkHintsEnabled: boolean;
-  hintCharacters: string;
-  hintBackgroundColor: string;
-  hintTextColor: string;
-  hintMatchedColor: string;
-  hintFontSize: number;
-}
+// Import types and state
+import type { VimtionSettings, VimLine, LinkHint } from "./types";
+import { DEFAULT_SETTINGS } from "./types";
+import {
+  currentSettings,
+  updateCurrentSettings,
+  linkSelectionMode,
+  availableLinks,
+  selectedLinkIndex,
+  setLinkSelectionMode,
+  setAvailableLinks,
+  setSelectedLinkIndex,
+  resetLinkSelection,
+  lastInsertKey,
+  lastInsertKeyTime,
+  JK_TIMEOUT_MS,
+  setLastInsertKey,
+  setLastInsertKeyTime,
+  initVimInfo,
+} from "./state";
 
-// Default settings
-const DEFAULT_SETTINGS: VimtionSettings = {
-  showStatusBar: true,
-  statusBarPosition: "bottom-right",
-  statusBarColor: "#667eea",
-  cursorBlink: true,
-  cursorColor: "#667eea",
-  visualHighlightColor: "#667eea",
-  showUpdateNotifications: true,
-  linkHintsEnabled: true,
-  hintCharacters: "asdfghjklqwertyuiopzxcvbnm",
-  hintBackgroundColor: "#333333",
-  hintTextColor: "#ffffff",
-  hintMatchedColor: "#ff4458",
-  hintFontSize: 14,
-};
+// Import settings functions
+import { loadSettings, applySettings, hexToRgba, adjustColor } from "./settings";
 
-// Current settings (loaded from storage)
-let currentSettings: VimtionSettings = { ...DEFAULT_SETTINGS };
+// Import text object functions
+import { getInnerWordBounds, getAroundWordBounds } from "./text-objects/word";
+import { findMatchingQuotes, findMatchingBrackets } from "./text-objects/bracket";
 
-// Link selection mode state
-let linkSelectionMode = false;
-let availableLinks: HTMLAnchorElement[] = [];
+// Import Notion helpers
+import {
+  isInsideCodeBlock,
+  getCodeBlockLines,
+  getBlockType,
+  isParagraphBoundary,
+  disableNotionUnsavedWarning,
+  restoreNotionUnsavedWarning,
+  setupBeforeUnloadHandler,
+} from "./notion";
 
 // Cursor position storage helpers
 const saveCursorPosition = () => {
@@ -168,8 +166,6 @@ const restoreCursorPosition = () => {
     // Ignore errors
   }
 };
-let selectedLinkIndex = 0;
-
 // Helper functions for link selection mode
 function highlightSelectedLink() {
   if (
@@ -201,127 +197,7 @@ function clearAllLinkHighlights() {
 
 function exitLinkSelectionMode() {
   clearAllLinkHighlights();
-  linkSelectionMode = false;
-  availableLinks = [];
-  selectedLinkIndex = 0;
-}
-
-// Helper function to adjust color brightness
-function adjustColor(color: string, amount: number): string {
-  const hex = color.replace("#", "");
-  const r = Math.max(
-    0,
-    Math.min(255, parseInt(hex.substring(0, 2), 16) + amount),
-  );
-  const g = Math.max(
-    0,
-    Math.min(255, parseInt(hex.substring(2, 4), 16) + amount),
-  );
-  const b = Math.max(
-    0,
-    Math.min(255, parseInt(hex.substring(4, 6), 16) + amount),
-  );
-  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
-}
-
-// Load settings from storage
-function loadSettings(callback?: () => void) {
-  chrome.storage.sync.get(DEFAULT_SETTINGS, (settings: VimtionSettings) => {
-    currentSettings = settings;
-    applySettings();
-    if (callback) callback();
-  });
-}
-
-// Helper to convert hex to rgba
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-// Apply settings to the page
-function applySettings() {
-  // Apply status bar visibility and position
-  const infoContainer = document.querySelector(
-    ".vim-info-container",
-  ) as HTMLElement;
-
-  if (infoContainer) {
-    if (currentSettings.showStatusBar) {
-      infoContainer.style.display = "block";
-    } else {
-      infoContainer.style.display = "none";
-    }
-
-    // Apply position
-    infoContainer.classList.remove(
-      "bottom-right",
-      "bottom-left",
-      "top-right",
-      "top-left",
-    );
-    infoContainer.classList.add(currentSettings.statusBarPosition);
-
-    // Apply status bar color with gradient
-    const gradientEnd = adjustColor(currentSettings.statusBarColor, -20);
-    infoContainer.style.background = `linear-gradient(135deg, ${currentSettings.statusBarColor} 0%, ${gradientEnd} 100%)`;
-  }
-
-  // Apply cursor color and visual highlight
-  const style = document.createElement("style");
-  style.id = "vimtion-custom-styles";
-  const existingStyle = document.getElementById("vimtion-custom-styles");
-  if (existingStyle) {
-    existingStyle.remove();
-  }
-
-  const visualHighlight = hexToRgba(currentSettings.visualHighlightColor, 0.3);
-
-  style.textContent = `
-    .vim-block-cursor {
-      background-color: ${currentSettings.cursorColor} !important;
-      box-shadow: 0 0 4px ${hexToRgba(currentSettings.cursorColor, 0.6)} !important;
-      ${currentSettings.cursorBlink ? "animation: blink 1s step-end infinite !important;" : "animation: none !important;"}
-    }
-    body.vim-normal-mode [contenteditable="true"]:focus::selection,
-    body.vim-normal-mode [contenteditable="true"]::selection {
-      background-color: transparent !important;
-    }
-    body.vim-visual-mode [contenteditable="true"]::selection,
-    body.vim-visual-mode [contenteditable="true"] *::selection,
-    body.vim-visual-mode ::selection {
-      background-color: ${visualHighlight} !important;
-    }
-    body.vim-visual-line-mode [contenteditable="true"]::selection,
-    body.vim-visual-line-mode [contenteditable="true"] *::selection,
-    body.vim-visual-line-mode ::selection {
-      background-color: ${visualHighlight} !important;
-    }
-    body.vim-visual-line-mode [contenteditable="true"]:empty::selection {
-      background-color: ${visualHighlight} !important;
-      display: block;
-      min-height: 1em;
-    }
-    body.vim-insert-mode [contenteditable="true"] {
-      caret-color: ${currentSettings.cursorColor} !important;
-    }
-    body.vim-visual-mode [contenteditable="true"] {
-      caret-color: ${currentSettings.cursorColor} !important;
-    }
-    body.vim-visual-line-mode [contenteditable="true"] {
-      caret-color: ${currentSettings.cursorColor} !important;
-    }
-  `;
-
-  // Insert style at the end to ensure it overrides everything
-  const lastStyle = document.head.querySelector("style:last-of-type");
-  if (lastStyle) {
-    lastStyle.insertAdjacentElement("afterend", style);
-  } else {
-    document.head.appendChild(style);
-  }
+  resetLinkSelection();
 }
 
 const createInfoContainer = () => {
@@ -636,18 +512,7 @@ const getBlockType = (element: HTMLElement): string => {
 };
 
 // Check if a line is a paragraph boundary (empty line)
-const isParagraphBoundary = (lineIndex: number): boolean => {
-  const { vim_info } = window;
-
-  if (lineIndex < 0 || lineIndex >= vim_info.lines.length) {
-    return false;
-  }
-
-  const line = vim_info.lines[lineIndex];
-
-  // Empty line is a paragraph boundary
-  return line.element.textContent?.trim() === "";
-};
+// isParagraphBoundary now imported from notion module
 
 // Jump to the beginning of the previous paragraph
 const jumpToPreviousParagraph = (): void => {
@@ -1738,58 +1603,7 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 };
 
-const initVimInfo = () => {
-  const vim_info = {
-    active_line: 0,
-    cursor_position: 0,
-    desired_column: 0, // Remember cursor column for j/k navigation
-    lines: [] as any,
-    mode: "normal" as
-      | "normal"
-      | "insert"
-      | "visual"
-      | "visual-line"
-      | "link-hint",
-    visual_start_line: 0,
-    visual_start_pos: 0,
-    pending_operator: null as
-      | "y"
-      | "d"
-      | "c"
-      | "yi"
-      | "di"
-      | "ci"
-      | "ya"
-      | "da"
-      | "ca"
-      | "vi"
-      | "va"
-      | "g"
-      | "f"
-      | "F"
-      | "t"
-      | "T"
-      | "df"
-      | "dF"
-      | "dt"
-      | "dT"
-      | "cf"
-      | "cF"
-      | "ct"
-      | "cT"
-      | null, // For commands like yy, dd, gg, ff, df, etc.
-    undo_count: 0, // Track number of native undo operations in current group
-    in_undo_group: false, // Whether we're currently in a grouped operation
-    link_hints: [] as LinkHint[],
-    link_hint_input: "",
-  };
-  window.vim_info = vim_info;
-};
-
-// Track last key press for jk escape sequence
-let lastInsertKey: string | null = null;
-let lastInsertKeyTime = 0;
-const JK_TIMEOUT_MS = 200; // Time window for jk sequence
+// initVimInfo and jk escape tracking now imported from state module
 
 const insertReducer = (e: KeyboardEvent) => {
   const now = Date.now();
@@ -1800,12 +1614,12 @@ const insertReducer = (e: KeyboardEvent) => {
       e.stopPropagation();
       window.vim_info.mode = "normal";
       updateInfoContainer();
-      lastInsertKey = null;
+      setLastInsertKey(null);
       break;
     case "j":
       // Track 'j' press
-      lastInsertKey = "j";
-      lastInsertKeyTime = now;
+      setLastInsertKey("j");
+      setLastInsertKeyTime(now);
       break;
     case "k":
       // Check if 'k' follows 'j' within timeout
@@ -1853,15 +1667,15 @@ const insertReducer = (e: KeyboardEvent) => {
         // Switch to normal mode
         window.vim_info.mode = "normal";
         updateInfoContainer();
-        lastInsertKey = null;
+        setLastInsertKey(null);
       } else {
-        lastInsertKey = "k";
-        lastInsertKeyTime = now;
+        setLastInsertKey("k");
+        setLastInsertKeyTime(now);
       }
       break;
     default:
       // Reset tracking on any other key
-      lastInsertKey = null;
+      setLastInsertKey(null);
       break;
   }
   return;
@@ -1930,35 +1744,9 @@ const startVisualLineMode = () => {
   updateInfoContainer();
 };
 
-// Flag to suppress beforeunload warning
-let suppressBeforeUnloadWarning = false;
-
-const disableNotionUnsavedWarning = () => {
-  suppressBeforeUnloadWarning = true;
-};
-
-const restoreNotionUnsavedWarning = () => {
-  suppressBeforeUnloadWarning = false;
-};
-
-// Intercept beforeunload events to prevent Notion's warning during Vimtion operations
-window.addEventListener(
-  "beforeunload",
-  (e) => {
-    if (suppressBeforeUnloadWarning) {
-      // Prevent the warning dialog
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      delete e.returnValue;
-
-      // Immediately reset flag to allow warnings for actual reloads
-      suppressBeforeUnloadWarning = false;
-
-      return undefined;
-    }
-  },
-  true,
-); // Use capture phase to intercept before Notion's handler
+// Notion warning functions and beforeunload handler now imported from notion module
+// Setup beforeunload handler
+setupBeforeUnloadHandler();
 
 const enterLinkHintMode = () => {
   // Check if link hints feature is enabled
@@ -4214,64 +4002,7 @@ const changeToNextParagraph = () => {
   }
 };
 
-const getInnerWordBounds = (text: string, pos: number): [number, number] => {
-  let start = pos;
-  let end = pos;
-
-  // If not on a word character, return empty range
-  if (!/\w/.test(text[pos])) {
-    return [pos, pos];
-  }
-
-  // Find start of word
-  while (start > 0 && /\w/.test(text[start - 1])) {
-    start--;
-  }
-
-  // Find end of word
-  while (end < text.length && /\w/.test(text[end])) {
-    end++;
-  }
-
-  return [start, end];
-};
-
-const getAroundWordBounds = (text: string, pos: number): [number, number] => {
-  let start = pos;
-  let end = pos;
-
-  // If not on a word character, return empty range
-  if (!/\w/.test(text[pos])) {
-    return [pos, pos];
-  }
-
-  // Find start of word
-  while (start > 0 && /\w/.test(text[start - 1])) {
-    start--;
-  }
-
-  // Find end of word
-  while (end < text.length && /\w/.test(text[end])) {
-    end++;
-  }
-
-  // Include trailing whitespace if present
-  while (end < text.length && /\s/.test(text[end])) {
-    end++;
-  }
-
-  // If no trailing whitespace, include leading whitespace instead
-  if (
-    end ===
-    start + (pos - start) + (text.slice(pos).match(/^\w+/)?.[0].length || 0)
-  ) {
-    while (start > 0 && /\s/.test(text[start - 1])) {
-      start--;
-    }
-  }
-
-  return [start, end];
-};
+// Text object bounds functions now imported from text-objects module
 
 const yankInnerWord = async () => {
   const { vim_info } = window;
@@ -4539,126 +4270,7 @@ const deleteInnerWord = () => {
 };
 
 // Helper function to find matching quotes (where open and close are the same)
-const findMatchingQuotes = (
-  text: string,
-  cursorPos: number,
-  quoteChar: string,
-): [number, number] | null => {
-  // Support both regular quotes and smart quotes (typographic quotes)
-  // Notion uses various quote characters inconsistently
-  let allQuoteChars: string[];
-
-  if (quoteChar === '"') {
-    // All possible double quote characters
-    allQuoteChars = ['"', "\u201C", "\u201D"]; // " " "
-  } else if (quoteChar === "'") {
-    // All possible single quote characters
-    allQuoteChars = ["'", "\u2018", "\u2019"]; // ' ' '
-  } else {
-    allQuoteChars = [quoteChar];
-  }
-
-  // Find all quote positions in the text
-  const quotePositions: number[] = [];
-  for (let i = 0; i < text.length; i++) {
-    if (allQuoteChars.includes(text[i])) {
-      quotePositions.push(i);
-    }
-  }
-
-  if (quotePositions.length < 2) {
-    return null;
-  }
-
-  // Pair quotes sequentially: positions 0-1, 2-3, 4-5, etc.
-  // This mimics Vim's behavior where quotes toggle between open/close
-  const pairs: Array<[number, number]> = [];
-  for (let i = 0; i < quotePositions.length - 1; i += 2) {
-    pairs.push([quotePositions[i], quotePositions[i + 1]]);
-  }
-
-  if (pairs.length === 0) {
-    return null;
-  }
-
-  // Try to find an enclosing pair (cursor is inside quotes)
-  for (const [openIndex, closeIndex] of pairs) {
-    if (cursorPos > openIndex && cursorPos <= closeIndex) {
-      return [openIndex, closeIndex];
-    }
-  }
-
-  // If not inside a pair, find the next pair after cursor
-  for (const [openIndex, closeIndex] of pairs) {
-    if (openIndex >= cursorPos) {
-      return [openIndex, closeIndex];
-    }
-  }
-
-  return null;
-};
-
-// Helper function to find matching brackets/quotes
-const findMatchingBrackets = (
-  text: string,
-  cursorPos: number,
-  openChar: string,
-  closeChar: string,
-): [number, number] | null => {
-  // Find the opening bracket before cursor
-  let openIndex = -1;
-  let closeIndex = -1;
-  let depth = 0;
-
-  // Search backward for opening bracket
-  for (let i = cursorPos; i >= 0; i--) {
-    if (text[i] === closeChar) {
-      depth++;
-    } else if (text[i] === openChar) {
-      if (depth === 0) {
-        openIndex = i;
-        break;
-      }
-      depth--;
-    }
-  }
-
-  // If not found backward, search forward
-  if (openIndex === -1) {
-    depth = 0;
-    for (let i = cursorPos; i < text.length; i++) {
-      if (text[i] === closeChar) {
-        depth++;
-      } else if (text[i] === openChar) {
-        if (depth === 0) {
-          openIndex = i;
-          break;
-        }
-        depth--;
-      }
-    }
-  }
-
-  if (openIndex === -1) return null;
-
-  // Search forward for matching closing bracket
-  depth = 0;
-  for (let i = openIndex + 1; i < text.length; i++) {
-    if (text[i] === openChar) {
-      depth++;
-    } else if (text[i] === closeChar) {
-      if (depth === 0) {
-        closeIndex = i;
-        break;
-      }
-      depth--;
-    }
-  }
-
-  if (closeIndex === -1) return null;
-
-  return [openIndex, closeIndex];
-};
+// Bracket matching functions now imported from text-objects module
 
 const deleteInnerBracket = (openChar: string, closeChar: string) => {
   const { vim_info } = window;
@@ -5252,27 +4864,7 @@ const deleteVisualSelection = () => {
   updateInfoContainer();
 };
 
-// Helper function to check if an element is inside a code block
-const isInsideCodeBlock = (element: Element): boolean => {
-  // Notion code blocks typically have a specific structure
-  // Check if the element or its parents have code-related selectors
-  const codeContainer =
-    element.closest('[class*="code"]') ||
-    element.closest("code") ||
-    element.closest("pre");
-  const isCodeBlock = !!codeContainer;
-
-  return isCodeBlock;
-};
-
-// Helper function to get all contenteditable lines within the same code block
-const getCodeBlockLines = (element: Element): Element[] => {
-  const codeContainer =
-    element.closest('[class*="code"]') || element.closest("[data-block-id]");
-  if (!codeContainer) return [];
-
-  return Array.from(codeContainer.querySelectorAll('[contenteditable="true"]'));
-};
+// Notion DOM helper functions now imported from notion module
 
 const getCursorIndexInElement = (element: Element): number => {
   const selection = document.getSelection();
@@ -5826,7 +5418,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         e.preventDefault();
         e.stopPropagation();
         clearAllLinkHighlights();
-        selectedLinkIndex = (selectedLinkIndex + 1) % availableLinks.length;
+        setSelectedLinkIndex((selectedLinkIndex + 1) % availableLinks.length);
         highlightSelectedLink();
         return true;
 
@@ -5834,9 +5426,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         e.preventDefault();
         e.stopPropagation();
         clearAllLinkHighlights();
-        selectedLinkIndex =
+        setSelectedLinkIndex(
           (selectedLinkIndex - 1 + availableLinks.length) %
-          availableLinks.length;
+          availableLinks.length
+        );
         highlightSelectedLink();
         return true;
 
@@ -6355,9 +5948,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
           }
 
           // Enter selection mode
-          linkSelectionMode = true;
-          availableLinks = allNotionLinks.map((item) => item.link);
-          selectedLinkIndex = closestIndex;
+          setLinkSelectionMode(true);
+          setAvailableLinks(allNotionLinks.map((item) => item.link));
+          setSelectedLinkIndex(closestIndex);
           highlightSelectedLink();
           return true;
         }
