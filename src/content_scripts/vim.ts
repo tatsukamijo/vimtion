@@ -1980,31 +1980,76 @@ const pasteAfterCursor = async () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const lineLength = currentElement.textContent?.length || 0;
 
-  // Move cursor one position forward (unless at end of line)
-  let pastePosition = currentCursorPosition;
-  if (currentCursorPosition < lineLength) {
-    pastePosition = currentCursorPosition + 1;
-  }
-
-  // Set cursor to paste position
-  setCursorPosition(currentElement, pastePosition);
-
-  // Try to read from clipboard and insert
   try {
     const clipboardText = await navigator.clipboard.readText();
 
-    // Insert text at cursor position
-    const text = currentElement.textContent || "";
-    const newText =
-      text.slice(0, pastePosition) + clipboardText + text.slice(pastePosition);
-    currentElement.textContent = newText;
+    // Check if clipboard contains a line (ends with newline)
+    const isLinePaste = clipboardText.endsWith("\n");
 
-    // Move cursor to end of pasted text
-    const newCursorPosition = pastePosition + clipboardText.length - 1;
-    setCursorPosition(currentElement, newCursorPosition);
-    vim_info.desired_column = newCursorPosition;
+    if (isLinePaste) {
+      // Line paste: create new line below current line
+      // Remove the trailing newline from clipboard text
+      const textWithoutNewline = clipboardText.slice(0, -1);
+
+      // Move to end of current line
+      const lineLength = currentElement.textContent?.length || 0;
+      setCursorPosition(currentElement, lineLength);
+
+      // Switch to insert mode temporarily
+      vim_info.mode = "insert";
+
+      // Simulate Enter to create new line
+      setTimeout(() => {
+        const enterEvent = new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true,
+        });
+        currentElement.dispatchEvent(enterEvent);
+
+        // Wait for new line to be created
+        setTimeout(() => {
+          refreshLines();
+
+          // Insert the text into the new line
+          const newLineIndex = vim_info.active_line + 1;
+          if (newLineIndex < vim_info.lines.length) {
+            const newLineElement = vim_info.lines[newLineIndex].element;
+            newLineElement.textContent = textWithoutNewline;
+            setCursorPosition(newLineElement, 0);
+            vim_info.active_line = newLineIndex;
+            vim_info.desired_column = 0;
+          }
+
+          // Return to normal mode
+          vim_info.mode = "normal";
+          updateInfoContainer();
+        }, 100);
+      }, 0);
+    } else {
+      // Character paste: insert at cursor position
+      const lineLength = currentElement.textContent?.length || 0;
+      let pastePosition = currentCursorPosition;
+      if (currentCursorPosition < lineLength) {
+        pastePosition = currentCursorPosition + 1;
+      }
+
+      setCursorPosition(currentElement, pastePosition);
+
+      const text = currentElement.textContent || "";
+      const newText =
+        text.slice(0, pastePosition) + clipboardText + text.slice(pastePosition);
+      currentElement.textContent = newText;
+
+      // Move cursor to end of pasted text
+      const newCursorPosition = pastePosition + clipboardText.length - 1;
+      setCursorPosition(currentElement, newCursorPosition);
+      vim_info.desired_column = newCursorPosition;
+    }
   } catch (err) {
     console.error("[Vim-Notion] Failed to paste:", err);
   }
@@ -2015,24 +2060,98 @@ const pasteBeforeCursor = async () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
 
-  // Paste at current cursor position (before cursor)
-  setCursorPosition(currentElement, currentCursorPosition);
-
   try {
     const clipboardText = await navigator.clipboard.readText();
 
-    // Insert text at cursor position
-    const text = currentElement.textContent || "";
-    const newText =
-      text.slice(0, currentCursorPosition) +
-      clipboardText +
-      text.slice(currentCursorPosition);
-    currentElement.textContent = newText;
+    // Check if clipboard contains a line (ends with newline)
+    const isLinePaste = clipboardText.endsWith("\n");
 
-    // Move cursor to end of pasted text
-    const newCursorPosition = currentCursorPosition + clipboardText.length - 1;
-    setCursorPosition(currentElement, newCursorPosition);
-    vim_info.desired_column = newCursorPosition;
+    if (isLinePaste) {
+      // Line paste: create new line above current line
+      // Remove the trailing newline from clipboard text
+      const textWithoutNewline = clipboardText.slice(0, -1);
+
+      // Move to beginning of current line
+      setCursorPosition(currentElement, 0);
+
+      // Switch to insert mode temporarily
+      vim_info.mode = "insert";
+
+      // Simulate Enter to create new line
+      setTimeout(() => {
+        const enterEvent = new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true,
+        });
+        currentElement.dispatchEvent(enterEvent);
+
+        // Wait for new line to be created
+        setTimeout(() => {
+          refreshLines();
+
+          // The new line is created below, but we need to move content up
+          // After Enter at position 0, cursor is on the new line below
+          // So we need to move up and insert into the line above
+          const newLineIndex = vim_info.active_line;
+          if (newLineIndex > 0) {
+            // Move cursor up to the empty line we just created
+            const arrowUpEvent = new KeyboardEvent("keydown", {
+              key: "ArrowUp",
+              code: "ArrowUp",
+              keyCode: 38,
+              which: 38,
+              bubbles: true,
+              cancelable: true,
+            });
+            document.activeElement?.dispatchEvent(arrowUpEvent);
+
+            setTimeout(() => {
+              refreshLines();
+
+              // Insert text into the line above
+              const targetLineIndex = vim_info.active_line;
+              if (targetLineIndex < vim_info.lines.length) {
+                const targetLineElement = vim_info.lines[targetLineIndex].element;
+                targetLineElement.textContent = textWithoutNewline;
+                setCursorPosition(targetLineElement, 0);
+                vim_info.desired_column = 0;
+              }
+
+              // Return to normal mode
+              vim_info.mode = "normal";
+              updateInfoContainer();
+            }, 50);
+          } else {
+            // Couldn't move up, just insert at current position
+            const targetLineElement = vim_info.lines[newLineIndex].element;
+            targetLineElement.textContent = textWithoutNewline;
+            setCursorPosition(targetLineElement, 0);
+            vim_info.desired_column = 0;
+            vim_info.mode = "normal";
+            updateInfoContainer();
+          }
+        }, 100);
+      }, 0);
+    } else {
+      // Character paste: insert at cursor position (before cursor)
+      setCursorPosition(currentElement, currentCursorPosition);
+
+      const text = currentElement.textContent || "";
+      const newText =
+        text.slice(0, currentCursorPosition) +
+        clipboardText +
+        text.slice(currentCursorPosition);
+      currentElement.textContent = newText;
+
+      // Move cursor to end of pasted text
+      const newCursorPosition = currentCursorPosition + clipboardText.length - 1;
+      setCursorPosition(currentElement, newCursorPosition);
+      vim_info.desired_column = newCursorPosition;
+    }
   } catch (err) {
     console.error("[Vim-Notion] Failed to paste:", err);
   }

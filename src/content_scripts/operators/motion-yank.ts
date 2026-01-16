@@ -15,7 +15,8 @@ export const createYankCurrentLine = () => async () => {
   const text = currentElement.textContent || "";
 
   try {
-    await navigator.clipboard.writeText(text);
+    // Add newline to indicate line-wise yank (Vim behavior)
+    await navigator.clipboard.writeText(text + "\n");
   } catch (err) {
     console.error("[Vim-Notion] Failed to yank:", err);
   }
