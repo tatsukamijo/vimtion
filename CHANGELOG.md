@@ -5,6 +5,20 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-01-16
+
+### Changed
+- **Internal refactoring**: Modularized monolithic `vim.ts` (~6800 lines) into subsystem architecture
+  - Organized code into focused modules: core, cursor, navigation, operators, text-objects, visual, links, reducers
+  - Reduced main file to ~2000 lines across 40+ modules for better maintainability
+  - No functionality changes - purely internal code organization improvements
+
+### Fixed
+- **Visual-line selection**: Fixed background color clearing and immediate UI updates after operations
+- **Line-wise yank**: Ensured newline inclusion for proper paste behavior
+- **Multi-line change**: Corrected visual-line mode change operation
+- **Character find delete**: Optimized with deferred UI updates for better performance
+
 ## [1.5.0] - 2026-01-16
 
 ### Added
