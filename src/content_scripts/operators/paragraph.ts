@@ -1,0 +1,351 @@
+/**
+ * Paragraph Operators Module
+ * Text object operations for paragraphs (yank, delete, change)
+ */
+
+import { getInnerParagraphBounds, getAroundParagraphBounds } from "./helpers";
+import { deleteNormalBlockWithKeyboardEvents } from "../core";
+import { setCursorPosition } from "../cursor";
+
+/**
+ * Dependencies injected from vim.ts
+ */
+export type OperatorDeps = {
+  updateInfoContainer: () => void;
+  refreshLines: () => void;
+  setActiveLine: (idx: number) => void;
+};
+
+/**
+ * Create paragraph operator functions with injected dependencies
+ */
+export const createParagraphOperators = (deps: OperatorDeps) => {
+  const { updateInfoContainer, refreshLines, setActiveLine } = deps;
+
+  /**
+   * Yank inner paragraph (excludes blank lines)
+   */
+  const yankInnerParagraph = async (): Promise<void> => {
+    const bounds = getInnerParagraphBounds();
+    if (!bounds) {
+      const { vim_info } = window;
+      vim_info.pending_operator = null;
+      updateInfoContainer();
+      return;
+    }
+
+    const { vim_info } = window;
+    const { startLine, endLine } = bounds;
+    const lines: string[] = [];
+
+    for (let i = startLine; i <= endLine; i++) {
+      lines.push(vim_info.lines[i].element.textContent || "");
+    }
+
+    const yankedText = lines.join("\n");
+
+    try {
+      await navigator.clipboard.writeText(yankedText);
+    } catch (err) {
+      console.error("[Vim-Notion] Failed to yank:", err);
+    }
+
+    vim_info.pending_operator = null;
+    updateInfoContainer();
+  };
+
+  /**
+   * Yank around paragraph (includes surrounding blank lines)
+   */
+  const yankAroundParagraph = async (): Promise<void> => {
+    const bounds = getAroundParagraphBounds();
+    if (!bounds) {
+      const { vim_info } = window;
+      vim_info.pending_operator = null;
+      updateInfoContainer();
+      return;
+    }
+
+    const { vim_info } = window;
+    const { startLine, endLine } = bounds;
+    const lines: string[] = [];
+
+    for (let i = startLine; i <= endLine; i++) {
+      lines.push(vim_info.lines[i].element.textContent || "");
+    }
+
+    const yankedText = lines.join("\n");
+
+    try {
+      await navigator.clipboard.writeText(yankedText);
+    } catch (err) {
+      console.error("[Vim-Notion] Failed to yank:", err);
+    }
+
+    vim_info.pending_operator = null;
+    updateInfoContainer();
+  };
+
+  /**
+   * Delete inner paragraph
+   */
+  const deleteInnerParagraph = (): void => {
+    const bounds = getInnerParagraphBounds();
+    if (!bounds) {
+      const { vim_info } = window;
+      vim_info.pending_operator = null;
+      updateInfoContainer();
+      return;
+    }
+
+    const { vim_info } = window;
+    const { startLine, endLine } = bounds;
+
+    // Collect text for clipboard
+    const lines: string[] = [];
+    for (let i = startLine; i <= endLine; i++) {
+      lines.push(vim_info.lines[i].element.textContent || "");
+    }
+    const clipboardText = lines.join("\n");
+
+    navigator.clipboard.writeText(clipboardText).catch((err) => {
+      console.error("[Vim-Notion] Failed to copy to clipboard:", err);
+    });
+
+    // Switch to insert mode temporarily
+    vim_info.mode = "insert";
+
+    // Delete all blocks
+    let currentDelay = 10;
+    for (let i = endLine; i >= startLine; i--) {
+      const element = vim_info.lines[i].element;
+      deleteNormalBlockWithKeyboardEvents(element, currentDelay);
+      currentDelay += 50;
+    }
+
+    // Return to normal mode after deletion
+    setTimeout(() => {
+      vim_info.mode = "normal";
+      refreshLines();
+
+      const newActiveLine = Math.max(
+        0,
+        Math.min(startLine, vim_info.lines.length - 1),
+      );
+      if (vim_info.lines.length > 0) {
+        setActiveLine(newActiveLine);
+      }
+      vim_info.pending_operator = null;
+      updateInfoContainer();
+    }, currentDelay + 100);
+  };
+
+  /**
+   * Delete around paragraph
+   */
+  const deleteAroundParagraph = (): void => {
+    const bounds = getAroundParagraphBounds();
+    if (!bounds) {
+      const { vim_info } = window;
+      vim_info.pending_operator = null;
+      updateInfoContainer();
+      return;
+    }
+
+    const { vim_info } = window;
+    const { startLine, endLine } = bounds;
+
+    // Collect text for clipboard
+    const lines: string[] = [];
+    for (let i = startLine; i <= endLine; i++) {
+      lines.push(vim_info.lines[i].element.textContent || "");
+    }
+    const clipboardText = lines.join("\n");
+
+    navigator.clipboard.writeText(clipboardText).catch((err) => {
+      console.error("[Vim-Notion] Failed to copy to clipboard:", err);
+    });
+
+    // Switch to insert mode temporarily
+    vim_info.mode = "insert";
+
+    // Delete all blocks
+    let currentDelay = 10;
+    for (let i = endLine; i >= startLine; i--) {
+      const element = vim_info.lines[i].element;
+      deleteNormalBlockWithKeyboardEvents(element, currentDelay);
+      currentDelay += 50;
+    }
+
+    // Return to normal mode after deletion
+    setTimeout(() => {
+      vim_info.mode = "normal";
+      refreshLines();
+
+      const newActiveLine = Math.max(
+        0,
+        Math.min(startLine, vim_info.lines.length - 1),
+      );
+      if (vim_info.lines.length > 0) {
+        setActiveLine(newActiveLine);
+      }
+      vim_info.pending_operator = null;
+      updateInfoContainer();
+    }, currentDelay + 100);
+  };
+
+  /**
+   * Change inner paragraph
+   */
+  const changeInnerParagraph = (): void => {
+    const bounds = getInnerParagraphBounds();
+    if (!bounds) {
+      const { vim_info } = window;
+      vim_info.pending_operator = null;
+      updateInfoContainer();
+      return;
+    }
+
+    const { vim_info } = window;
+    const { startLine, endLine } = bounds;
+
+    // Collect text for clipboard
+    const lines: string[] = [];
+    for (let i = startLine; i <= endLine; i++) {
+      lines.push(vim_info.lines[i].element.textContent || "");
+    }
+    const clipboardText = lines.join("\n");
+
+    navigator.clipboard.writeText(clipboardText).catch((err) => {
+      console.error("[Vim-Notion] Failed to copy to clipboard:", err);
+    });
+
+    // Switch to insert mode
+    vim_info.mode = "insert";
+
+    // Delete all blocks including the first one
+    let currentDelay = 10;
+    for (let i = endLine; i >= startLine; i--) {
+      const element = vim_info.lines[i].element;
+      deleteNormalBlockWithKeyboardEvents(element, currentDelay);
+      currentDelay += 50;
+    }
+
+    // After deletion, create a new empty line and enter insert mode
+    setTimeout(() => {
+      refreshLines();
+
+      // Position cursor at the line where the paragraph was
+      const newActiveLine = Math.max(
+        0,
+        Math.min(startLine, vim_info.lines.length - 1),
+      );
+      if (vim_info.lines.length > 0) {
+        const element = vim_info.lines[newActiveLine].element;
+        element.textContent = "";
+        setCursorPosition(element, 0);
+        element.focus();
+        vim_info.active_line = newActiveLine;
+      }
+      vim_info.pending_operator = null;
+      updateInfoContainer();
+    }, currentDelay + 100);
+  };
+
+  /**
+   * Change around paragraph
+   */
+  const changeAroundParagraph = (): void => {
+    const bounds = getAroundParagraphBounds();
+    if (!bounds) {
+      const { vim_info } = window;
+      vim_info.pending_operator = null;
+      updateInfoContainer();
+      return;
+    }
+
+    const { vim_info } = window;
+    const { startLine, endLine } = bounds;
+
+    // Collect text for clipboard
+    const lines: string[] = [];
+    for (let i = startLine; i <= endLine; i++) {
+      lines.push(vim_info.lines[i].element.textContent || "");
+    }
+    const clipboardText = lines.join("\n");
+
+    navigator.clipboard.writeText(clipboardText).catch((err) => {
+      console.error("[Vim-Notion] Failed to copy to clipboard:", err);
+    });
+
+    // Switch to insert mode
+    vim_info.mode = "insert";
+
+    // Delete all blocks including the first one
+    let currentDelay = 10;
+    for (let i = endLine; i >= startLine; i--) {
+      const element = vim_info.lines[i].element;
+      deleteNormalBlockWithKeyboardEvents(element, currentDelay);
+      currentDelay += 50;
+    }
+
+    // After deletion, position cursor at the deleted paragraph location
+    setTimeout(() => {
+      refreshLines();
+
+      // Insert a new empty line at the position where the paragraph was
+      const newActiveLine = Math.max(
+        0,
+        Math.min(startLine, vim_info.lines.length - 1),
+      );
+      if (vim_info.lines.length > 0) {
+        const element = vim_info.lines[newActiveLine].element;
+
+        // Create a new line before the current line by pressing Enter at the end of the previous line
+        if (newActiveLine > 0) {
+          const prevElement = vim_info.lines[newActiveLine - 1].element;
+          const textContent = prevElement.textContent || "";
+          setCursorPosition(prevElement, textContent.length);
+          prevElement.focus();
+
+          // Press Enter to create a new line
+          const enterEvent = new KeyboardEvent("keydown", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+          });
+          prevElement.dispatchEvent(enterEvent);
+
+          setTimeout(() => {
+            refreshLines();
+            vim_info.active_line = newActiveLine;
+            vim_info.pending_operator = null;
+            updateInfoContainer();
+          }, 100);
+        } else {
+          // If at the beginning, just focus the first line
+          setCursorPosition(element, 0);
+          element.focus();
+          vim_info.active_line = newActiveLine;
+          vim_info.pending_operator = null;
+          updateInfoContainer();
+        }
+      } else {
+        vim_info.pending_operator = null;
+        updateInfoContainer();
+      }
+    }, currentDelay + 100);
+  };
+
+  return {
+    yankInnerParagraph,
+    yankAroundParagraph,
+    deleteInnerParagraph,
+    deleteAroundParagraph,
+    changeInnerParagraph,
+    changeAroundParagraph,
+  };
+};

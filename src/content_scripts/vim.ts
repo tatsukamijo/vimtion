@@ -8,609 +8,196 @@
  * See LICENSE file for details
  */
 
-// Settings interface
-interface VimtionSettings {
-  showStatusBar: boolean;
-  statusBarPosition: "bottom-right" | "bottom-left" | "top-right" | "top-left";
-  statusBarColor: string;
-  cursorBlink: boolean;
-  cursorColor: string;
-  visualHighlightColor: string;
-  showUpdateNotifications: boolean;
-  linkHintsEnabled: boolean;
-  hintCharacters: string;
-  hintBackgroundColor: string;
-  hintTextColor: string;
-  hintMatchedColor: string;
-  hintFontSize: number;
-}
-
-// Default settings
-const DEFAULT_SETTINGS: VimtionSettings = {
-  showStatusBar: true,
-  statusBarPosition: "bottom-right",
-  statusBarColor: "#667eea",
-  cursorBlink: true,
-  cursorColor: "#667eea",
-  visualHighlightColor: "#667eea",
-  showUpdateNotifications: true,
-  linkHintsEnabled: true,
-  hintCharacters: "asdfghjklqwertyuiopzxcvbnm",
-  hintBackgroundColor: "#333333",
-  hintTextColor: "#ffffff",
-  hintMatchedColor: "#ff4458",
-  hintFontSize: 14,
-};
-
-// Current settings (loaded from storage)
-let currentSettings: VimtionSettings = { ...DEFAULT_SETTINGS };
-
-// Link selection mode state
-let linkSelectionMode = false;
-let availableLinks: HTMLAnchorElement[] = [];
-
-// Cursor position storage helpers
-const saveCursorPosition = () => {
-  const { vim_info } = window;
-  // Remove hash from URL to normalize it (block links have hashes)
-  const currentUrl = window.location.href.split("#")[0];
-
-  const currentElement = vim_info.lines[vim_info.active_line]?.element;
-
-  // Try to find block ID from element or its ancestors
-  let blockId = "N/A";
-  let elem = currentElement;
-  while (elem) {
-    const foundId = elem.getAttribute("data-block-id");
-    if (foundId) {
-      blockId = foundId;
-      break;
-    }
-    elem = elem.parentElement;
-  }
-
-  try {
-    // Get existing positions map
-    const savedPositions = sessionStorage.getItem("vimtion_cursor_positions");
-    const positionsMap: Record<string, any> = savedPositions
-      ? JSON.parse(savedPositions)
-      : {};
-
-    // Save position for current URL with block ID
-    positionsMap[currentUrl] = {
-      active_line: vim_info.active_line,
-      cursor_position: vim_info.cursor_position,
-      block_id: blockId !== "N/A" ? blockId : null,
-    };
-
-    sessionStorage.setItem(
-      "vimtion_cursor_positions",
-      JSON.stringify(positionsMap),
-    );
-
-    // Set a flag to indicate this is an intentional navigation (not a reload)
-    // This flag will be checked in reinitializeAfterNavigation
-    sessionStorage.setItem("vimtion_intentional_navigation", "true");
-  } catch (e) {
-    // Ignore storage errors
-  }
-};
-
-const restoreCursorPosition = () => {
-  const currentUrl = window.location.href.split("#")[0];
-
-  try {
-    const savedPositions = sessionStorage.getItem("vimtion_cursor_positions");
-
-    if (savedPositions) {
-      const positionsMap: Record<string, any> = JSON.parse(savedPositions);
-      const data = positionsMap[currentUrl];
-
-      if (data) {
-        const { vim_info } = window;
-
-        // Try to find the element by block ID first (more reliable)
-        let targetLineIndex = data.active_line;
-        if (data.block_id) {
-          const foundIndex = vim_info.lines.findIndex((line) => {
-            let elem = line.element;
-            while (elem) {
-              const foundId = elem.getAttribute("data-block-id");
-              if (foundId === data.block_id) {
-                return true;
-              }
-              elem = elem.parentElement;
-            }
-            return false;
-          });
-
-          if (foundIndex !== -1) {
-            targetLineIndex = foundIndex;
-          }
-        }
-
-        if (targetLineIndex < vim_info.lines.length) {
-          vim_info.active_line = targetLineIndex;
-          vim_info.cursor_position = data.cursor_position;
-
-          const targetElement = vim_info.lines[targetLineIndex]?.element;
-          if (targetElement && document.contains(targetElement)) {
-            // Scroll to the target element first (before Notion does its own scrolling)
-            // Use 'nearest' to avoid creating white space at the bottom
-            targetElement.scrollIntoView({
-              behavior: "auto",
-              block: "nearest",
-            });
-
-            // Then restore cursor position with delay to allow DOM to settle
-            setTimeout(() => {
-              // Re-set cursor position in case Notion moved it during re-render
-              const currentElement =
-                vim_info.lines[vim_info.active_line]?.element;
-              if (currentElement && document.contains(currentElement)) {
-                setCursorPosition(currentElement, vim_info.cursor_position);
-              }
-
-              updateBlockCursor();
-            }, 100);
-          }
-        }
-
-        // Delete the restored position after use
-        delete positionsMap[currentUrl];
-        sessionStorage.setItem(
-          "vimtion_cursor_positions",
-          JSON.stringify(positionsMap),
-        );
-      }
-    }
-  } catch (e) {
-    // Ignore errors
-  }
-};
-let selectedLinkIndex = 0;
-
-// Helper functions for link selection mode
-function highlightSelectedLink() {
-  if (
-    availableLinks.length > 0 &&
-    selectedLinkIndex >= 0 &&
-    selectedLinkIndex < availableLinks.length
-  ) {
-    const visualHighlight = hexToRgba(
-      currentSettings.visualHighlightColor,
-      0.3,
-    );
-    const selectedLink = availableLinks[selectedLinkIndex];
-    selectedLink.style.backgroundColor = visualHighlight;
-
-    // Scroll the selected link into view if it's outside the viewport
-    selectedLink.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "nearest",
-    });
-  }
-}
-
-function clearAllLinkHighlights() {
-  availableLinks.forEach((link) => {
-    link.style.backgroundColor = "";
-  });
-}
-
-function exitLinkSelectionMode() {
-  clearAllLinkHighlights();
-  linkSelectionMode = false;
-  availableLinks = [];
-  selectedLinkIndex = 0;
-}
-
-// Helper function to adjust color brightness
-function adjustColor(color: string, amount: number): string {
-  const hex = color.replace("#", "");
-  const r = Math.max(
-    0,
-    Math.min(255, parseInt(hex.substring(0, 2), 16) + amount),
-  );
-  const g = Math.max(
-    0,
-    Math.min(255, parseInt(hex.substring(2, 4), 16) + amount),
-  );
-  const b = Math.max(
-    0,
-    Math.min(255, parseInt(hex.substring(4, 6), 16) + amount),
-  );
-  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
-}
-
-// Load settings from storage
-function loadSettings(callback?: () => void) {
-  chrome.storage.sync.get(DEFAULT_SETTINGS, (settings: VimtionSettings) => {
-    currentSettings = settings;
-    applySettings();
-    if (callback) callback();
-  });
-}
-
-// Helper to convert hex to rgba
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-// Apply settings to the page
-function applySettings() {
-  // Apply status bar visibility and position
-  const infoContainer = document.querySelector(
-    ".vim-info-container",
-  ) as HTMLElement;
-
-  if (infoContainer) {
-    if (currentSettings.showStatusBar) {
-      infoContainer.style.display = "block";
-    } else {
-      infoContainer.style.display = "none";
-    }
-
-    // Apply position
-    infoContainer.classList.remove(
-      "bottom-right",
-      "bottom-left",
-      "top-right",
-      "top-left",
-    );
-    infoContainer.classList.add(currentSettings.statusBarPosition);
-
-    // Apply status bar color with gradient
-    const gradientEnd = adjustColor(currentSettings.statusBarColor, -20);
-    infoContainer.style.background = `linear-gradient(135deg, ${currentSettings.statusBarColor} 0%, ${gradientEnd} 100%)`;
-  }
-
-  // Apply cursor color and visual highlight
-  const style = document.createElement("style");
-  style.id = "vimtion-custom-styles";
-  const existingStyle = document.getElementById("vimtion-custom-styles");
-  if (existingStyle) {
-    existingStyle.remove();
-  }
-
-  const visualHighlight = hexToRgba(currentSettings.visualHighlightColor, 0.3);
-
-  style.textContent = `
-    .vim-block-cursor {
-      background-color: ${currentSettings.cursorColor} !important;
-      box-shadow: 0 0 4px ${hexToRgba(currentSettings.cursorColor, 0.6)} !important;
-      ${currentSettings.cursorBlink ? "animation: blink 1s step-end infinite !important;" : "animation: none !important;"}
-    }
-    body.vim-normal-mode [contenteditable="true"]:focus::selection,
-    body.vim-normal-mode [contenteditable="true"]::selection {
-      background-color: transparent !important;
-    }
-    body.vim-visual-mode [contenteditable="true"]::selection,
-    body.vim-visual-mode [contenteditable="true"] *::selection,
-    body.vim-visual-mode ::selection {
-      background-color: ${visualHighlight} !important;
-    }
-    body.vim-visual-line-mode [contenteditable="true"]::selection,
-    body.vim-visual-line-mode [contenteditable="true"] *::selection,
-    body.vim-visual-line-mode ::selection {
-      background-color: ${visualHighlight} !important;
-    }
-    body.vim-visual-line-mode [contenteditable="true"]:empty::selection {
-      background-color: ${visualHighlight} !important;
-      display: block;
-      min-height: 1em;
-    }
-    body.vim-insert-mode [contenteditable="true"] {
-      caret-color: ${currentSettings.cursorColor} !important;
-    }
-    body.vim-visual-mode [contenteditable="true"] {
-      caret-color: ${currentSettings.cursorColor} !important;
-    }
-    body.vim-visual-line-mode [contenteditable="true"] {
-      caret-color: ${currentSettings.cursorColor} !important;
-    }
-  `;
-
-  // Insert style at the end to ensure it overrides everything
-  const lastStyle = document.head.querySelector("style:last-of-type");
-  if (lastStyle) {
-    lastStyle.insertAdjacentElement("afterend", style);
-  } else {
-    document.head.appendChild(style);
-  }
-}
-
-const createInfoContainer = () => {
-  const { vim_info } = window;
-  const infoContainer = document.createElement("div");
-  infoContainer.classList.add("vim-info-container");
-  const mode = document.createElement("div");
-  mode.innerText = getModeText(vim_info.mode);
-  mode.classList.add("vim-mode");
-  infoContainer.appendChild(mode);
-  document.body.appendChild(infoContainer);
-};
-
-const createBlockCursor = () => {
-  const cursor = document.createElement("div");
-  cursor.classList.add("vim-block-cursor");
-  cursor.style.display = "none";
-  document.body.appendChild(cursor);
-  return cursor;
-};
-
-const updateBlockCursor = () => {
-  const { vim_info } = window;
-  let blockCursor = document.querySelector(
-    ".vim-block-cursor",
-  ) as HTMLDivElement;
-
-  if (!blockCursor) {
-    blockCursor = createBlockCursor();
-  }
-
-  if (vim_info.mode !== "normal") {
-    blockCursor.style.display = "none";
-    return;
-  }
-
-  // Get current cursor position
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    blockCursor.style.display = "none";
-    return;
-  }
-
-  const range = selection.getRangeAt(0);
-  let rect = range.getBoundingClientRect();
-
-  // For empty lines or lines with only newline, we need special handling
-  if (rect.width === 0 && rect.height === 0) {
-    const currentElement = vim_info.lines[vim_info.active_line]?.element;
-    if (!currentElement) {
-      blockCursor.style.display = "none";
-      return;
-    }
-
-    // Check if inside a code block
-    const inCodeBlock = isInsideCodeBlock(currentElement);
-
-    if (inCodeBlock) {
-      // For code blocks on empty lines, temporarily insert a zero-width space to get the cursor position
-      try {
-        if (
-          range.startContainer &&
-          range.startContainer.nodeType === Node.TEXT_NODE
-        ) {
-          const textNode = range.startContainer as Text;
-          const offset = range.startOffset;
-
-          // Insert a zero-width space temporarily
-          const zws = "\u200B";
-          const originalText = textNode.textContent || "";
-          textNode.textContent =
-            originalText.slice(0, offset) + zws + originalText.slice(offset);
-
-          // Create a range around the zero-width space
-          const tempRange = document.createRange();
-          tempRange.setStart(textNode, offset);
-          tempRange.setEnd(textNode, offset + 1);
-
-          const tempRect = tempRange.getBoundingClientRect();
-
-          // Remove the zero-width space
-          textNode.textContent = originalText;
-
-          // Restore the selection
-          range.setStart(textNode, offset);
-          range.setEnd(textNode, offset);
-
-          // If we got a valid rect, use it
-          if (tempRect.height > 0) {
-            blockCursor.style.display = "block";
-            blockCursor.style.left = `${tempRect.left + window.scrollX}px`;
-            blockCursor.style.top = `${tempRect.top + window.scrollY}px`;
-            blockCursor.style.height = `${tempRect.height}px`;
-            return;
-          }
-        }
-      } catch (e) {
-        // Fall through to default handling
-      }
-    }
-
-    // Default: use element rect (for normal blocks or if code block handling failed)
-    const elementRect = currentElement.getBoundingClientRect();
-    blockCursor.style.display = "block";
-    blockCursor.style.left = `${elementRect.left + window.scrollX}px`;
-    blockCursor.style.top = `${elementRect.top + window.scrollY}px`;
-    blockCursor.style.height = `${elementRect.height || 20}px`;
-    return;
-  }
-
-  // Position the block cursor
-  blockCursor.style.display = "block";
-  blockCursor.style.left = `${rect.left + window.scrollX}px`;
-  blockCursor.style.top = `${rect.top + window.scrollY}px`;
-  blockCursor.style.height = `${rect.height || 20}px`;
-};
-
-const jumpToNextWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  let pos = currentCursorPosition;
-
-  // Skip current word (alphanumeric characters)
-  while (pos < text.length && /\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip non-word characters (spaces, punctuation)
-  while (pos < text.length && !/\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // If we reached end of line, move to next line
-  if (pos >= text.length && vim_info.active_line < vim_info.lines.length - 1) {
-    setActiveLine(vim_info.active_line + 1);
-    const nextElement = vim_info.lines[vim_info.active_line].element;
-    setCursorPosition(nextElement, 0);
-    vim_info.desired_column = 0;
-    return;
-  }
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToPreviousWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // If at beginning of line, move to end of previous line
-  if (currentCursorPosition === 0) {
-    if (vim_info.active_line > 0) {
-      setActiveLine(vim_info.active_line - 1);
-      const prevElement = vim_info.lines[vim_info.active_line].element;
-      const prevLineLength = prevElement.textContent?.length || 0;
-      setCursorPosition(prevElement, prevLineLength);
-      vim_info.desired_column = prevLineLength;
-    }
-    return;
-  }
-
-  let pos = currentCursorPosition - 1;
-
-  // Skip non-word characters (spaces, punctuation) backwards
-  while (pos > 0 && !/\w/.test(text[pos])) {
-    pos--;
-  }
-
-  // Skip current word backwards
-  while (pos > 0 && /\w/.test(text[pos - 1])) {
-    pos--;
-  }
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToEndOfWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  let pos = currentCursorPosition;
-
-  // Always move at least one character forward
-  pos++;
-
-  // Skip non-word characters
-  while (pos < text.length && !/\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip to end of next word
-  while (pos < text.length && /\w/.test(text[pos])) {
-    pos++;
-  }
-
-  pos--; // Move back to last character of the word
-
-  if (pos >= text.length) pos = text.length - 1;
-  if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToEndOfWORD = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  let pos = currentCursorPosition;
-
-  // Always move at least one character forward
-  pos++;
-
-  // Skip whitespace
-  while (pos < text.length && /\s/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip to end of next WORD
-  while (pos < text.length && !/\s/.test(text[pos])) {
-    pos++;
-  }
-
-  pos--; // Move back to last character of the WORD
-
-  if (pos >= text.length) pos = text.length - 1;
-  if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToNextWORD = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  let pos = currentCursorPosition;
-
-  // Skip non-whitespace characters
-  while (pos < text.length && !/\s/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip whitespace
-  while (pos < text.length && /\s/.test(text[pos])) {
-    pos++;
-  }
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToPreviousWORD = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  if (currentCursorPosition === 0) return;
-
-  let pos = currentCursorPosition - 1;
-
-  // Skip whitespace backwards
-  while (pos > 0 && /\s/.test(text[pos])) {
-    pos--;
-  }
-
-  // Skip non-whitespace backwards to find WORD start
-  while (pos > 0 && !/\s/.test(text[pos - 1])) {
-    pos--;
-  }
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-// Paragraph navigation helper functions
+// Import types and state
+import type { VimtionSettings, VimLine, LinkHint } from "./types";
+import { DEFAULT_SETTINGS } from "./types";
+import {
+  currentSettings,
+  updateCurrentSettings,
+  linkSelectionMode,
+  availableLinks,
+  selectedLinkIndex,
+  setLinkSelectionMode,
+  setAvailableLinks,
+  setSelectedLinkIndex,
+  resetLinkSelection,
+  lastInsertKey,
+  lastInsertKeyTime,
+  JK_TIMEOUT_MS,
+  setLastInsertKey,
+  setLastInsertKeyTime,
+  initVimInfo,
+} from "./state";
+
+// Import settings functions
+import {
+  loadSettings,
+  applySettings,
+  hexToRgba,
+  adjustColor,
+} from "./settings";
+
+// Import text object functions
+import { getInnerWordBounds, getAroundWordBounds } from "./text-objects/word";
+import {
+  findMatchingQuotes,
+  findMatchingBrackets,
+} from "./text-objects/bracket";
+
+// Import Notion helpers
+import {
+  isInsideCodeBlock,
+  getCodeBlockLines,
+  isParagraphBoundary,
+  disableNotionUnsavedWarning,
+  restoreNotionUnsavedWarning,
+  setupBeforeUnloadHandler,
+} from "./notion";
+
+// Import cursor functions
+import {
+  getCursorIndex,
+  getCursorIndexInElement,
+  setCursorPosition,
+  createBlockCursor,
+  updateBlockCursor,
+  saveCursorPosition,
+  restoreCursorPosition,
+} from "./cursor";
+
+// Import navigation functions
+import {
+  moveCursorBackwards,
+  moveCursorForwards,
+  jumpToLineStart,
+  jumpToLineEnd,
+  jumpToNextWord,
+  jumpToPreviousWord,
+  jumpToEndOfWord,
+  jumpToEndOfWORD,
+  jumpToNextWORD,
+  jumpToPreviousWORD,
+  jumpToPreviousParagraph,
+  jumpToNextParagraph,
+  moveCursorDownInCodeBlock,
+  moveCursorUpInCodeBlock,
+  moveCursorBackwardsInCodeBlock,
+  moveCursorForwardsInCodeBlock,
+  openLineBelowInCodeBlock,
+  openLineAboveInCodeBlock,
+  findScrollableContainer,
+  scrollAndMoveCursor,
+  createJumpToTop,
+  createJumpToBottom,
+  findCharForward,
+  findCharBackward,
+  tillCharForward,
+  tillCharBackward,
+} from "./navigation";
+
+// Import operator helpers and factories
+import {
+  getInnerParagraphBounds,
+  getAroundParagraphBounds,
+  createParagraphOperators,
+  createWordOperators,
+  createBracketOperators,
+  createYankCurrentLine,
+  createYankToNextWord,
+  createYankToEndOfLine,
+  createYankToBeginningOfLine,
+  createYankToPreviousParagraph,
+  createYankToNextParagraph,
+  createDeleteCurrentLine,
+  createDeleteToNextWord,
+  createDeleteToEndOfLine,
+  createDeleteToBeginningOfLine,
+  createDeleteToPreviousParagraph,
+  createDeleteToNextParagraph,
+  createDeleteFindCharForward,
+  createDeleteFindCharBackward,
+  createDeleteTillCharForward,
+  createDeleteTillCharBackward,
+  createChangeCurrentLine,
+  createChangeToNextWord,
+  createChangeToEndOfLine,
+  createChangeToBeginningOfLine,
+  createChangeToPreviousParagraph,
+  createChangeToNextParagraph,
+  createChangeFindCharForward,
+  createChangeFindCharBackward,
+  createChangeTillCharForward,
+  createChangeTillCharBackward,
+} from "./operators";
+import type {
+  OperatorDeps,
+  MotionDeleteDeps,
+  CharDeleteDeps,
+  MotionChangeDeps,
+} from "./operators";
+
+// Import UI functions
+import {
+  createInfoContainer,
+  getModeText,
+  updateInfoContainer,
+} from "./ui/info-container";
+
+// Import link utilities
+import {
+  highlightSelectedLink,
+  clearAllLinkHighlights,
+  exitLinkSelectionMode,
+  enterLinkHintMode,
+  removeAllHintOverlays,
+  filterHintsByInput,
+  navigateToLink,
+  detectAllLinks,
+  generateHints,
+} from "./links";
+
+// Import core utilities
+import {
+  clearAllBackgroundColors,
+  deleteNormalBlockWithKeyboardEvents,
+  deleteCodeBlockWithKeyboardEvents,
+  setActiveLine,
+  createRefreshLines,
+  createSetLines,
+} from "./core";
+
+// Import visual mode helpers
+import {
+  safeAddRange,
+  setRangeInElement,
+  updateVisualSelection,
+  createStartVisualMode,
+  visualSelectInnerWord,
+  visualSelectAroundWord,
+  visualSelectInnerBracket,
+  visualSelectAroundBracket,
+  createVisualSelectInnerParagraph,
+  createVisualSelectAroundParagraph,
+  visualMoveCursorBackwards,
+  visualMoveCursorForwards,
+  visualJumpToNextWord,
+  visualJumpToPreviousWord,
+  visualJumpToEndOfWord,
+  visualJumpToNextWORD,
+  visualJumpToPreviousWORD,
+  visualJumpToEndOfWORD,
+  visualJumpToBeginningOfLine,
+  visualJumpToEndOfLine,
+  createDeleteVisualSelection,
+  createYankVisualSelection,
+  createYankVisualLineSelection,
+} from "./visual/helpers";
+
+// Import reducer factories
+import { createInsertReducer } from "./reducers/insert";
+import { createLinkHintReducer } from "./reducers/link-hint";
+
+// safeAddRange now imported from visual/helpers
 
 // Get the block type of an element from its closest [data-block-id] ancestor
 const getBlockType = (element: HTMLElement): string => {
@@ -635,737 +222,10 @@ const getBlockType = (element: HTMLElement): string => {
   return "text"; // Default to text block
 };
 
-// Check if a line is a paragraph boundary (empty line)
-const isParagraphBoundary = (lineIndex: number): boolean => {
-  const { vim_info } = window;
+// Paragraph operators (yank/delete/change × inner/around paragraph) now created via factory below
+// This ensures they have access to updateInfoContainer, refreshLines, and setActiveLine
 
-  if (lineIndex < 0 || lineIndex >= vim_info.lines.length) {
-    return false;
-  }
-
-  const line = vim_info.lines[lineIndex];
-
-  // Empty line is a paragraph boundary
-  return line.element.textContent?.trim() === "";
-};
-
-// Jump to the beginning of the previous paragraph
-const jumpToPreviousParagraph = (): void => {
-  const { vim_info } = window;
-  let targetLine = vim_info.active_line;
-
-  // If we're on a blank line, skip backward through all consecutive blank lines
-  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
-    targetLine--;
-  }
-
-  // Now skip backward through the previous paragraph content
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-
-  // Now targetLine is at the first line of the previous paragraph
-  // Move up one more to land on the blank line above it (Vim behavior)
-  // But only if there is a blank line above
-  if (targetLine > 0 && isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-
-  // Move to target line
-  vim_info.active_line = targetLine;
-  vim_info.cursor_position = 0;
-  vim_info.desired_column = 0;
-
-  const targetElement = vim_info.lines[targetLine].element;
-  setCursorPosition(targetElement, 0);
-};
-
-// Jump to the beginning of the next paragraph
-const jumpToNextParagraph = (): void => {
-  const { vim_info } = window;
-  const maxLine = vim_info.lines.length - 1;
-  let targetLine = vim_info.active_line;
-
-  // If we're on a blank line, skip forward through all consecutive blank lines
-  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
-    targetLine++;
-  }
-
-  // Now skip forward through the next paragraph content
-  while (
-    targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1)
-  ) {
-    targetLine++;
-  }
-
-  // Now targetLine is at the last line of the next paragraph
-  // Move down one more to land on the blank line below it (Vim behavior)
-  // But only if there is a blank line below
-  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1)) {
-    targetLine++;
-  }
-
-  // Move to target line
-  vim_info.active_line = targetLine;
-
-  const targetElement = vim_info.lines[targetLine].element;
-
-  // If at the last line, move cursor to end of line (like Vim)
-  if (targetLine === maxLine) {
-    const lineLength = targetElement.textContent?.length || 0;
-    vim_info.cursor_position = lineLength;
-    vim_info.desired_column = lineLength;
-    setCursorPosition(targetElement, lineLength);
-  } else {
-    vim_info.cursor_position = 0;
-    vim_info.desired_column = 0;
-    setCursorPosition(targetElement, 0);
-  }
-};
-
-// Get bounds for inner paragraph text object (excludes blank lines)
-const getInnerParagraphBounds = (): {
-  startLine: number;
-  endLine: number;
-} | null => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const maxLine = vim_info.lines.length - 1;
-
-  // If we're on a blank line, inner paragraph is empty
-  if (isParagraphBoundary(currentLine)) {
-    return null;
-  }
-
-  // Find the start of the paragraph (first non-blank line after blank)
-  let startLine = currentLine;
-  while (startLine > 0 && !isParagraphBoundary(startLine - 1)) {
-    startLine--;
-  }
-
-  // Find the end of the paragraph (last non-blank line before blank)
-  let endLine = currentLine;
-  while (endLine < maxLine && !isParagraphBoundary(endLine + 1)) {
-    endLine++;
-  }
-
-  return { startLine, endLine };
-};
-
-// Get bounds for around paragraph text object (includes surrounding blank lines)
-const getAroundParagraphBounds = (): {
-  startLine: number;
-  endLine: number;
-} | null => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const maxLine = vim_info.lines.length - 1;
-
-  // If we're on a blank line, select it and adjacent blank lines
-  if (isParagraphBoundary(currentLine)) {
-    let startLine = currentLine;
-    let endLine = currentLine;
-
-    // Extend to include adjacent blank lines
-    while (startLine > 0 && isParagraphBoundary(startLine - 1)) {
-      startLine--;
-    }
-    while (endLine < maxLine && isParagraphBoundary(endLine + 1)) {
-      endLine++;
-    }
-
-    return { startLine, endLine };
-  }
-
-  // Find the content bounds first
-  let startLine = currentLine;
-  while (startLine > 0 && !isParagraphBoundary(startLine - 1)) {
-    startLine--;
-  }
-
-  let endLine = currentLine;
-  while (endLine < maxLine && !isParagraphBoundary(endLine + 1)) {
-    endLine++;
-  }
-
-  // Include trailing blank lines if present
-  if (endLine < maxLine && isParagraphBoundary(endLine + 1)) {
-    endLine++;
-    // Include all consecutive blank lines
-    while (endLine < maxLine && isParagraphBoundary(endLine + 1)) {
-      endLine++;
-    }
-  } else if (startLine > 0 && isParagraphBoundary(startLine - 1)) {
-    // No trailing blanks, so include leading blank lines instead
-    startLine--;
-    while (startLine > 0 && isParagraphBoundary(startLine - 1)) {
-      startLine--;
-    }
-  }
-
-  return { startLine, endLine };
-};
-
-// Yank inner paragraph (excludes blank lines)
-const yankInnerParagraph = async (): Promise<void> => {
-  const bounds = getInnerParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-  const lines: string[] = [];
-
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-
-  const yankedText = lines.join("\n");
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-// Yank around paragraph (includes surrounding blank lines)
-const yankAroundParagraph = async (): Promise<void> => {
-  const bounds = getAroundParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-  const lines: string[] = [];
-
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-
-  const yankedText = lines.join("\n");
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-// Delete inner paragraph
-const deleteInnerParagraph = (): void => {
-  const bounds = getInnerParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-  const clipboardText = lines.join("\n");
-
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // Switch to insert mode temporarily
-  vim_info.mode = "insert";
-
-  // Delete all blocks
-  let currentDelay = 10;
-  for (let i = endLine; i >= startLine; i--) {
-    const element = vim_info.lines[i].element;
-    deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-    currentDelay += 50;
-  }
-
-  // Return to normal mode after deletion
-  setTimeout(() => {
-    vim_info.mode = "normal";
-    refreshLines();
-
-    const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
-    if (vim_info.lines.length > 0) {
-      setActiveLine(newActiveLine);
-    }
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-  }, currentDelay + 100);
-};
-
-// Delete around paragraph
-const deleteAroundParagraph = (): void => {
-  const bounds = getAroundParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-  const clipboardText = lines.join("\n");
-
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // Switch to insert mode temporarily
-  vim_info.mode = "insert";
-
-  // Delete all blocks
-  let currentDelay = 10;
-  for (let i = endLine; i >= startLine; i--) {
-    const element = vim_info.lines[i].element;
-    deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-    currentDelay += 50;
-  }
-
-  // Return to normal mode after deletion
-  setTimeout(() => {
-    vim_info.mode = "normal";
-    refreshLines();
-
-    const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
-    if (vim_info.lines.length > 0) {
-      setActiveLine(newActiveLine);
-    }
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-  }, currentDelay + 100);
-};
-
-// Change inner paragraph
-const changeInnerParagraph = (): void => {
-  const bounds = getInnerParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-  const clipboardText = lines.join("\n");
-
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // Switch to insert mode
-  vim_info.mode = "insert";
-
-  // Delete all blocks including the first one
-  let currentDelay = 10;
-  for (let i = endLine; i >= startLine; i--) {
-    const element = vim_info.lines[i].element;
-    deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-    currentDelay += 50;
-  }
-
-  // After deletion, create a new empty line and enter insert mode
-  setTimeout(() => {
-    refreshLines();
-
-    // Position cursor at the line where the paragraph was
-    const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
-    if (vim_info.lines.length > 0) {
-      const element = vim_info.lines[newActiveLine].element;
-      element.textContent = "";
-      setCursorPosition(element, 0);
-      element.focus();
-      vim_info.active_line = newActiveLine;
-    }
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-  }, currentDelay + 100);
-};
-
-// Change around paragraph
-const changeAroundParagraph = (): void => {
-  const bounds = getAroundParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-  const clipboardText = lines.join("\n");
-
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // Switch to insert mode
-  vim_info.mode = "insert";
-
-  // Delete all blocks including the first one
-  let currentDelay = 10;
-  for (let i = endLine; i >= startLine; i--) {
-    const element = vim_info.lines[i].element;
-    deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-    currentDelay += 50;
-  }
-
-  // After deletion, position cursor at the deleted paragraph location
-  setTimeout(() => {
-    refreshLines();
-
-    // Insert a new empty line at the position where the paragraph was
-    const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
-    if (vim_info.lines.length > 0) {
-      const element = vim_info.lines[newActiveLine].element;
-
-      // Create a new line before the current line by pressing Enter at the end of the previous line
-      if (newActiveLine > 0) {
-        const prevElement = vim_info.lines[newActiveLine - 1].element;
-        const textContent = prevElement.textContent || "";
-        setCursorPosition(prevElement, textContent.length);
-        prevElement.focus();
-
-        // Press Enter to create a new line
-        const enterEvent = new KeyboardEvent("keydown", {
-          key: "Enter",
-          code: "Enter",
-          keyCode: 13,
-          which: 13,
-          bubbles: true,
-          cancelable: true,
-        });
-        prevElement.dispatchEvent(enterEvent);
-
-        setTimeout(() => {
-          refreshLines();
-          vim_info.active_line = newActiveLine;
-          vim_info.pending_operator = null;
-          updateInfoContainer();
-        }, 100);
-      } else {
-        // If at the beginning, just focus the first line
-        setCursorPosition(element, 0);
-        element.focus();
-        vim_info.active_line = newActiveLine;
-        vim_info.pending_operator = null;
-        updateInfoContainer();
-      }
-    } else {
-      vim_info.pending_operator = null;
-      updateInfoContainer();
-    }
-  }, currentDelay + 100);
-};
-
-// Visual select inner paragraph
-const visualSelectInnerParagraph = (): void => {
-  const bounds = getInnerParagraphBounds();
-  if (!bounds) {
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Switch to visual line mode for paragraph selection
-  vim_info.mode = "visual-line";
-  vim_info.visual_start_line = startLine;
-  vim_info.active_line = endLine;
-
-  highlightVisualLineSelection();
-  updateInfoContainer();
-};
-
-// Visual select around paragraph
-const visualSelectAroundParagraph = (): void => {
-  const bounds = getAroundParagraphBounds();
-  if (!bounds) {
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Switch to visual line mode for paragraph selection
-  vim_info.mode = "visual-line";
-  vim_info.visual_start_line = startLine;
-  vim_info.active_line = endLine;
-
-  highlightVisualLineSelection();
-  updateInfoContainer();
-};
-
-const jumpToLineStart = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-
-  setCursorPosition(currentElement, 0);
-  vim_info.desired_column = 0;
-};
-
-// Move cursor down within a code block (handles multi-line code blocks)
-const moveCursorDownInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Find current line start
-  let lineStart = text.lastIndexOf("\n", currentPos - 1);
-  if (lineStart === -1) lineStart = -1; // Before first character
-
-  // Find current line end (next newline)
-  let lineEnd = text.indexOf("\n", currentPos);
-  if (lineEnd === -1) {
-    // Already on last line of code block, move to next block
-    setActiveLine(vim_info.active_line + 1);
-    return;
-  }
-
-  // Column position in current line
-  const columnInLine = currentPos - lineStart - 1;
-
-  // Next line starts after the newline
-  const nextLineStart = lineEnd + 1;
-
-  // Find next line end
-  let nextLineEnd = text.indexOf("\n", nextLineStart);
-  if (nextLineEnd === -1) nextLineEnd = text.length;
-
-  // Calculate target position in next line
-  const nextLineLength = nextLineEnd - nextLineStart;
-  const targetColumn = Math.min(vim_info.desired_column, nextLineLength);
-  const targetPos = nextLineStart + targetColumn;
-
-  setCursorPosition(currentElement, targetPos);
-};
-
-// Move cursor up within a code block
-const moveCursorUpInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Find current line start
-  let lineStart = text.lastIndexOf("\n", currentPos - 1);
-
-  if (lineStart === -1) {
-    // Already on first line of code block, move to previous block
-    setActiveLine(vim_info.active_line - 1);
-    return;
-  }
-
-  // Find previous line start
-  let prevLineStart = text.lastIndexOf("\n", lineStart - 1);
-  if (prevLineStart === -1) prevLineStart = -1; // Before first character
-
-  // Previous line is between prevLineStart and lineStart
-  const prevLineLength = lineStart - prevLineStart - 1;
-  const targetColumn = Math.min(vim_info.desired_column, prevLineLength);
-  const targetPos = prevLineStart + 1 + targetColumn;
-
-  setCursorPosition(currentElement, targetPos);
-};
-
-// Move cursor left within a code block, wrapping to previous line if at start
-const moveCursorBackwardsInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // If at very beginning of code block, can't go back
-  if (currentPos === 0) {
-    return;
-  }
-
-  // Just move back one character
-  const newPos = currentPos - 1;
-  setCursorPosition(currentElement, newPos);
-  vim_info.desired_column = newPos;
-};
-
-// Move cursor right within a code block, wrapping to next line if at end
-const moveCursorForwardsInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-  const textLength = text.length;
-
-  // If at very end of code block, can't go forward
-  if (currentPos >= textLength) {
-    return;
-  }
-
-  // Just move forward one character
-  const newPos = currentPos + 1;
-  setCursorPosition(currentElement, newPos);
-  vim_info.desired_column = newPos;
-};
-
-// Open line below in code block (o command)
-const openLineBelowInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Find the end of the current line (next \n or end of text)
-  let lineEnd = text.indexOf("\n", currentPos);
-  if (lineEnd === -1) lineEnd = text.length;
-
-  // Move cursor to end of current line
-  setCursorPosition(currentElement, lineEnd);
-
-  // Insert a newline character using execCommand (works better in contenteditable)
-  document.execCommand("insertText", false, "\n");
-
-  // Switch to insert mode
-  vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-// Open line above in code block (O command)
-const openLineAboveInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Find the start of the current line (previous \n or start of text)
-  let lineStart = text.lastIndexOf("\n", currentPos - 1);
-  lineStart = lineStart === -1 ? 0 : lineStart + 1;
-
-  // Move cursor to start of current line
-  setCursorPosition(currentElement, lineStart);
-
-  // Insert a newline character
-  document.execCommand("insertText", false, "\n");
-
-  // Move cursor back to the newly created empty line
-  setCursorPosition(currentElement, lineStart);
-
-  // Switch to insert mode
-  vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const jumpToLineEnd = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const lineLength = currentElement.textContent?.length || 0;
-
-  setCursorPosition(currentElement, lineLength);
-  vim_info.desired_column = lineLength;
-};
-
-const findCharForward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Search for character after current position
-  const foundIndex = text.indexOf(char, currentPos + 1);
-  if (foundIndex !== -1) {
-    setCursorPosition(currentElement, foundIndex);
-    vim_info.desired_column = foundIndex;
-  } else {
-  }
-};
-
-const findCharBackward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Search for character before current position
-  const foundIndex = text.lastIndexOf(char, currentPos - 1);
-  if (foundIndex !== -1) {
-    setCursorPosition(currentElement, foundIndex);
-    vim_info.desired_column = foundIndex;
-  } else {
-  }
-};
-
-const tillCharForward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Search for character after current position, but stop one before it
-  const foundIndex = text.indexOf(char, currentPos + 1);
-  if (foundIndex !== -1) {
-    const targetPos = foundIndex - 1;
-    setCursorPosition(currentElement, targetPos);
-    vim_info.desired_column = targetPos;
-  } else {
-  }
-};
-
-const tillCharBackward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Search for character before current position, but stop one after it
-  const foundIndex = text.lastIndexOf(char, currentPos - 1);
-  if (foundIndex !== -1) {
-    const targetPos = foundIndex + 1;
-    setCursorPosition(currentElement, targetPos);
-    vim_info.desired_column = targetPos;
-  } else {
-  }
-};
+// Visual select paragraph functions now created via factory below (after updateVisualLineSelection is defined)
 
 const insertAtLineEnd = () => {
   jumpToLineEnd();
@@ -1487,7 +347,7 @@ const deleteCharacter = () => {
     r.setStart(r.startContainer, r.startOffset);
     r.setEnd(r.startContainer, r.startOffset + 1);
     sel.removeAllRanges();
-    sel.addRange(r);
+    safeAddRange(sel, r);
 
     // Cut to clipboard like vim's 'x' command
     document.execCommand("cut");
@@ -1539,7 +399,7 @@ const substituteCharacter = () => {
     r.setStart(r.startContainer, r.startOffset);
     r.setEnd(r.startContainer, r.startOffset + 1);
     sel.removeAllRanges();
-    sel.addRange(r);
+    safeAddRange(sel, r);
 
     // Delete the selection using execCommand
     document.execCommand("delete");
@@ -1558,85 +418,6 @@ const getActiveLine = () => {
 
 const getLines = () => {
   return window.vim_info.lines;
-};
-
-const getCursorIndex = () => {
-  const selection = document.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return 0;
-  }
-
-  const range = selection.getRangeAt(0);
-  let i = 0;
-
-  const checkElementNode = (element: Element) => {
-    for (const node of Array.from(element.childNodes)) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        if (checkElementNode(node as Element)) {
-          break;
-        } else {
-          continue;
-        }
-      }
-      if (node.isSameNode(range.startContainer)) {
-        i += range.startOffset;
-        return true;
-      }
-      i += node.textContent.length;
-    }
-    return false;
-  };
-
-  checkElementNode(document.activeElement);
-  return i;
-};
-
-const getModeText = (
-  mode: "insert" | "normal" | "visual" | "visual-line" | "link-hint",
-) => {
-  return `-- ${mode.toUpperCase()} --`;
-};
-
-const setCursorPosition = (element: Element, index: number) => {
-  const childNodes = Array.from(element.childNodes);
-
-  // Handle empty elements (no child nodes or only empty text)
-  if (childNodes.length === 0 || (element.textContent?.length || 0) === 0) {
-    const range = document.createRange();
-    const selection = window.getSelection();
-
-    // Select the element itself for empty lines
-    range.selectNodeContents(element);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    updateBlockCursor();
-    return;
-  }
-
-  let i = 0;
-  for (const node of childNodes) {
-    const nodeLength = node.textContent?.length || 0;
-    const isInRange = index >= i && index <= i + nodeLength;
-    if (isInRange && node.nodeType === Node.ELEMENT_NODE) {
-      setCursorPosition(node as Element, index - i);
-      break;
-    }
-    if (isInRange) {
-      const range = document.createRange();
-      const selection = window.getSelection();
-
-      // Clamp the offset to be within the node's length
-      const offset = Math.min(index - i, nodeLength);
-      range.setStart(node, offset);
-      range.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      updateBlockCursor();
-      break;
-    }
-    i += nodeLength;
-  }
 };
 
 const handleClick = (e: MouseEvent) => {
@@ -1738,179 +519,13 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 };
 
-const initVimInfo = () => {
-  const vim_info = {
-    active_line: 0,
-    cursor_position: 0,
-    desired_column: 0, // Remember cursor column for j/k navigation
-    lines: [] as any,
-    mode: "normal" as
-      | "normal"
-      | "insert"
-      | "visual"
-      | "visual-line"
-      | "link-hint",
-    visual_start_line: 0,
-    visual_start_pos: 0,
-    pending_operator: null as
-      | "y"
-      | "d"
-      | "c"
-      | "yi"
-      | "di"
-      | "ci"
-      | "ya"
-      | "da"
-      | "ca"
-      | "vi"
-      | "va"
-      | "g"
-      | "f"
-      | "F"
-      | "t"
-      | "T"
-      | "df"
-      | "dF"
-      | "dt"
-      | "dT"
-      | "cf"
-      | "cF"
-      | "ct"
-      | "cT"
-      | null, // For commands like yy, dd, gg, ff, df, etc.
-    undo_count: 0, // Track number of native undo operations in current group
-    in_undo_group: false, // Whether we're currently in a grouped operation
-    link_hints: [] as LinkHint[],
-    link_hint_input: "",
-  };
-  window.vim_info = vim_info;
-};
+// initVimInfo and jk escape tracking now imported from state module
 
-// Track last key press for jk escape sequence
-let lastInsertKey: string | null = null;
-let lastInsertKeyTime = 0;
-const JK_TIMEOUT_MS = 200; // Time window for jk sequence
+// insertReducer and linkHintReducer now created via factories below (after updateInfoContainer and state are available)
 
-const insertReducer = (e: KeyboardEvent) => {
-  const now = Date.now();
+// startVisualMode created via factory below (after updateInfoContainer is defined)
 
-  switch (e.key) {
-    case "Escape":
-      e.preventDefault();
-      e.stopPropagation();
-      window.vim_info.mode = "normal";
-      updateInfoContainer();
-      lastInsertKey = null;
-      break;
-    case "j":
-      // Track 'j' press
-      lastInsertKey = "j";
-      lastInsertKeyTime = now;
-      break;
-    case "k":
-      // Check if 'k' follows 'j' within timeout
-      if (lastInsertKey === "j" && now - lastInsertKeyTime < JK_TIMEOUT_MS) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Delete the 'j' character that was just typed
-        const currentElement =
-          window.vim_info.lines[window.vim_info.active_line]?.element;
-        if (currentElement) {
-          const selection = window.getSelection();
-          const range = document.createRange();
-
-          // Get current cursor position
-          const cursorPos = getCursorIndexInElement(currentElement);
-
-          // Create a range that selects the 'j' character (one character back)
-          const walker = document.createTreeWalker(
-            currentElement,
-            NodeFilter.SHOW_TEXT,
-            null,
-          );
-
-          let currentNode: Text | null = null;
-          let currentOffset = 0;
-
-          while ((currentNode = walker.nextNode() as Text | null)) {
-            const nodeLength = currentNode.length;
-            const nodeEnd = currentOffset + nodeLength;
-
-            // Check if the position for 'j' (cursorPos - 1) falls within this node
-            if (cursorPos - 1 >= currentOffset && cursorPos - 1 < nodeEnd) {
-              const offsetInNode = cursorPos - 1 - currentOffset;
-              range.setStart(currentNode, offsetInNode);
-              range.setEnd(currentNode, offsetInNode + 1);
-              range.deleteContents();
-              break;
-            }
-
-            currentOffset = nodeEnd;
-          }
-        }
-
-        // Switch to normal mode
-        window.vim_info.mode = "normal";
-        updateInfoContainer();
-        lastInsertKey = null;
-      } else {
-        lastInsertKey = "k";
-        lastInsertKeyTime = now;
-      }
-      break;
-    default:
-      // Reset tracking on any other key
-      lastInsertKey = null;
-      break;
-  }
-  return;
-};
-
-const linkHintReducer = (e: KeyboardEvent): boolean => {
-  const { vim_info } = window;
-
-  switch (e.key) {
-    case "Escape":
-      // Exit link-hint mode and return to normal mode
-      removeAllHintOverlays();
-      vim_info.mode = "normal";
-      updateInfoContainer();
-      return true;
-
-    default:
-      // Handle character input for filtering hints
-      const key = e.key.toLowerCase();
-      if (key.length === 1 && /[a-z]/.test(key)) {
-        vim_info.link_hint_input += key;
-        filterHintsByInput(vim_info.link_hint_input, e.shiftKey);
-        return true;
-      }
-      return false;
-  }
-};
-
-const startVisualMode = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-
-  vim_info.mode = "visual";
-  vim_info.visual_start_line = vim_info.active_line;
-  vim_info.visual_start_pos = currentCursorPosition;
-
-  updateInfoContainer();
-};
-
-const clearAllBackgroundColors = () => {
-  // Clear background colors from ALL contenteditable elements in the document
-  const allEditableElements = document.querySelectorAll(
-    "[contenteditable=true]",
-  );
-  allEditableElements.forEach((elem) => {
-    (elem as HTMLElement).style.backgroundColor = "";
-  });
-};
+// clearAllBackgroundColors now imported from core module
 
 const startVisualLineMode = () => {
   const { vim_info } = window;
@@ -1930,334 +545,9 @@ const startVisualLineMode = () => {
   updateInfoContainer();
 };
 
-// Flag to suppress beforeunload warning
-let suppressBeforeUnloadWarning = false;
-
-const disableNotionUnsavedWarning = () => {
-  suppressBeforeUnloadWarning = true;
-};
-
-const restoreNotionUnsavedWarning = () => {
-  suppressBeforeUnloadWarning = false;
-};
-
-// Intercept beforeunload events to prevent Notion's warning during Vimtion operations
-window.addEventListener(
-  "beforeunload",
-  (e) => {
-    if (suppressBeforeUnloadWarning) {
-      // Prevent the warning dialog
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      delete e.returnValue;
-
-      // Immediately reset flag to allow warnings for actual reloads
-      suppressBeforeUnloadWarning = false;
-
-      return undefined;
-    }
-  },
-  true,
-); // Use capture phase to intercept before Notion's handler
-
-const enterLinkHintMode = () => {
-  // Check if link hints feature is enabled
-  if (!currentSettings.linkHintsEnabled) {
-    return;
-  }
-
-  const { vim_info } = window;
-
-  // Switch to link-hint mode
-  vim_info.mode = "link-hint";
-  vim_info.link_hint_input = "";
-
-  // Detect all links in the document
-  const links = detectAllLinks();
-
-  if (links.length === 0) {
-    // No links found, exit immediately
-    vim_info.mode = "normal";
-    updateInfoContainer();
-    return;
-  }
-
-  // Generate hints for each link
-  const hints = generateHints(links.length);
-
-  // Create and display hint overlays
-  vim_info.link_hints = [];
-  links.forEach((link, index) => {
-    const hint = hints[index];
-    const overlay = createHintOverlay(link, hint);
-    vim_info.link_hints.push({ link, hint, overlay });
-  });
-
-  updateInfoContainer();
-};
-
-const createHintOverlay = (
-  link: HTMLAnchorElement,
-  hint: string,
-): HTMLElement => {
-  const overlay = document.createElement("div");
-  overlay.className = "vim-link-hint";
-  overlay.textContent = hint;
-  overlay.style.cssText = `
-    position: fixed;
-    background: ${currentSettings.hintBackgroundColor};
-    color: ${currentSettings.hintTextColor};
-    font-family: inherit;
-    font-size: ${currentSettings.hintFontSize}px;
-    font-weight: bold;
-    padding: 2px 5px;
-    border-radius: 2px;
-    z-index: 99999;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    text-transform: lowercase;
-    pointer-events: none;
-  `;
-
-  // Position overlay at top-left of link
-  const rect = link.getBoundingClientRect();
-  overlay.style.top = `${rect.top}px`;
-  overlay.style.left = `${rect.left}px`;
-
-  document.body.appendChild(overlay);
-  return overlay;
-};
-
-const removeAllHintOverlays = () => {
-  const { vim_info } = window;
-  vim_info.link_hints.forEach(({ overlay }) => {
-    overlay.remove();
-  });
-  vim_info.link_hints = [];
-};
-
-const filterHintsByInput = (input: string, shiftKey: boolean) => {
-  const { vim_info } = window;
-  let matchedHint: LinkHint | null = null;
-
-  vim_info.link_hints.forEach(({ hint, overlay }) => {
-    if (hint.startsWith(input)) {
-      // Show this hint
-      overlay.style.display = "block";
-
-      // Highlight only the matched portion
-      if (input.length > 0) {
-        const matched = hint.substring(0, input.length);
-        const remaining = hint.substring(input.length);
-        overlay.innerHTML = `<span style="color: ${currentSettings.hintMatchedColor}">${matched}</span><span style="color: ${currentSettings.hintTextColor}">${remaining}</span>`;
-      } else {
-        overlay.textContent = hint;
-        overlay.style.color = currentSettings.hintTextColor;
-      }
-
-      // Check for exact match
-      if (hint === input) {
-        matchedHint = vim_info.link_hints.find((h) => h.hint === hint)!;
-      }
-    } else {
-      // Hide non-matching hints
-      overlay.style.display = "none";
-    }
-  });
-
-  // If we have an exact match, navigate to it
-  if (matchedHint) {
-    navigateToLink(matchedHint.link, shiftKey);
-  }
-};
-
-const navigateToLink = (
-  link: HTMLAnchorElement,
-  openInNewTab: boolean = false,
-) => {
-  const { vim_info } = window;
-
-  // Exit link-hint mode first
-  removeAllHintOverlays();
-  vim_info.mode = "normal";
-  updateInfoContainer();
-
-  // Check if this is a block link (same page anchor)
-  const extractPageId = (url: string) => {
-    const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
-    return match ? match[1] : null;
-  };
-
-  const linkPageId = extractPageId(link.href);
-  const currentPageId = extractPageId(window.location.href);
-  const isBlockLink = link.href.includes("#") && linkPageId === currentPageId;
-
-  // Note: cursor position is saved when entering link hint mode (gl command)
-  // or when pressing Shift+H/L, not here
-
-  // Disable unsaved changes warning before any navigation
-  disableNotionUnsavedWarning();
-
-  if (openInNewTab) {
-    // Open link in new tab
-    window.open(link.href, "_blank");
-    // Restore immediately for new tab
-    restoreNotionUnsavedWarning();
-  } else {
-    // Use click() for all navigation to let Notion handle it naturally
-    // Remove target attribute to force same-tab navigation
-    const originalTarget = link.target;
-    link.target = "";
-
-    // Delay click slightly to ensure suppression flag is set
-    setTimeout(() => {
-      link.click();
-      link.target = originalTarget;
-    }, 10);
-
-    // Reset flag after navigation
-    setTimeout(() => {
-      restoreNotionUnsavedWarning();
-    }, 100);
-
-    // For block links, update cursor position after navigation
-    if (isBlockLink) {
-      const blockId = link.href.split("#")[1].split("?")[0];
-
-      setTimeout(() => {
-        // Try to find the actual block element by its ID
-        let blockElement = document.querySelector(
-          `[data-block-id="${blockId}"]`,
-        );
-
-        // If not found, try with hyphens (UUID format)
-        if (!blockElement) {
-          const blockIdWithHyphens = blockId.replace(
-            /(.{8})(.{4})(.{4})(.{4})(.{12})/,
-            "$1-$2-$3-$4-$5",
-          );
-          blockElement = document.querySelector(
-            `[data-block-id="${blockIdWithHyphens}"]`,
-          );
-        }
-
-        if (blockElement) {
-          // Find the leaf element within this block
-          const leafElement = blockElement.querySelector(
-            '[data-content-editable-leaf="true"]',
-          );
-
-          if (leafElement && document.contains(leafElement)) {
-            // Find this leaf in vim_info.lines
-            const actualIndex = vim_info.lines.findIndex(
-              (line) => line.element === leafElement,
-            );
-
-            if (actualIndex !== -1) {
-              vim_info.active_line = actualIndex;
-              vim_info.cursor_position = 0;
-
-              // Ensure the element is still in the document before updating cursor
-              if (document.contains(vim_info.lines[actualIndex].element)) {
-                updateBlockCursor();
-              }
-            }
-          }
-        }
-      }, 300);
-    }
-  }
-};
-
-const detectAllLinks = (): HTMLAnchorElement[] => {
-  const links: HTMLAnchorElement[] = [];
-
-  // Strategy 1: Find all <a> tags with href in the main content area
-  const contentEditableLinks = document.querySelectorAll<HTMLAnchorElement>(
-    "[data-content-editable-root] a[href]",
-  );
-  contentEditableLinks.forEach((link) => links.push(link));
-
-  // Strategy 2: Find sidebar links using multiple selectors for robustness
-  const sidebarSelectors = [
-    ".notion-sidebar a[href]",
-    "[data-sidebar] a[href]",
-    ".notion-frame-sidebar a[href]",
-    "aside a[href]",
-    '[role="navigation"] a[href]',
-  ];
-
-  let sidebarLinkCount = 0;
-  sidebarSelectors.forEach((selector) => {
-    const sidebarLinks = document.querySelectorAll<HTMLAnchorElement>(selector);
-    sidebarLinks.forEach((link) => {
-      // Only add if not already in the list (avoid duplicates)
-      if (!links.includes(link)) {
-        links.push(link);
-        sidebarLinkCount++;
-      }
-    });
-  });
-
-  // Strategy 3: Find all other links in the document
-  const allLinks = document.querySelectorAll<HTMLAnchorElement>("a[href]");
-  let otherLinkCount = 0;
-  allLinks.forEach((link) => {
-    // Only add if not already in the list
-    if (!links.includes(link)) {
-      links.push(link);
-      otherLinkCount++;
-    }
-  });
-
-  // Filter out invisible links (zero dimensions or off-screen)
-  const visibleLinks = links.filter((link) => {
-    const rect = link.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  });
-
-  // Sort links by position: top to bottom, left to right
-  visibleLinks.sort((a, b) => {
-    const rectA = a.getBoundingClientRect();
-    const rectB = b.getBoundingClientRect();
-
-    // First compare top position
-    if (Math.abs(rectA.top - rectB.top) > 5) {
-      // 5px tolerance for same line
-      return rectA.top - rectB.top;
-    }
-
-    // If on same line, compare left position
-    return rectA.left - rectB.left;
-  });
-
-  return visibleLinks;
-};
-
-const generateHints = (count: number): string[] => {
-  const chars = currentSettings.hintCharacters; // Use custom hint characters from settings
-  const hints: string[] = [];
-
-  if (count === 0 || chars.length === 0) return hints;
-
-  // Calculate required hint length to avoid prefix conflicts
-  // All hints must have the same length to be prefix-free
-  const hintLength = Math.ceil(Math.log(count) / Math.log(chars.length));
-
-  for (let i = 0; i < count; i++) {
-    let hint = "";
-    let num = i;
-
-    // Generate hint with fixed length
-    for (let j = 0; j < hintLength; j++) {
-      hint = chars[num % chars.length] + hint;
-      num = Math.floor(num / chars.length);
-    }
-
-    hints.push(hint);
-  }
-
-  return hints;
-};
+// Notion warning functions and beforeunload handler now imported from notion module
+// Setup beforeunload handler
+setupBeforeUnloadHandler();
 
 const updateVisualLineSelection = () => {
   const { vim_info } = window;
@@ -2385,182 +675,11 @@ const updateVisualLineSelection = () => {
   }
 
   selection?.removeAllRanges();
-  selection?.addRange(range);
+  safeAddRange(selection, range);
 };
 
 // Helper function to set range in an element
-const setRangeInElement = (
-  range: Range,
-  element: Node,
-  start: number,
-  end: number,
-) => {
-  let textOffset = 0;
-  let startSet = false;
-  let endSet = false;
-
-  for (const node of Array.from(element.childNodes)) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const nodeLength = node.textContent?.length || 0;
-      const nodeEnd = textOffset + nodeLength;
-
-      if (!startSet && start >= textOffset && start <= nodeEnd) {
-        range.setStart(node, Math.min(start - textOffset, nodeLength));
-        startSet = true;
-      }
-      if (!endSet && end >= textOffset && end <= nodeEnd) {
-        range.setEnd(node, Math.min(end - textOffset, nodeLength));
-        endSet = true;
-      }
-
-      textOffset += nodeLength;
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const childLength = node.textContent?.length || 0;
-
-      if (!startSet && start < textOffset + childLength) {
-        setRangeInElement(range, node, start - textOffset, end - textOffset);
-        return;
-      }
-
-      textOffset += childLength;
-    }
-  }
-};
-
-const updateVisualSelection = () => {
-  const { vim_info } = window;
-
-  if (vim_info.mode !== "visual") return;
-
-  // Only support single-line selection for now
-  if (vim_info.active_line !== vim_info.visual_start_line) {
-    // For now, don't support multi-line
-    return;
-  }
-
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentPos = vim_info.desired_column;
-  const startPos = vim_info.visual_start_pos;
-
-  // Create selection using browser's Selection API
-  const selection = window.getSelection();
-  const range = document.createRange();
-
-  const lineLength = currentElement.textContent?.length || 0;
-
-  const [selStart, selEnd] =
-    startPos <= currentPos
-      ? [startPos, Math.min(currentPos + 1, lineLength)] // Include character under cursor, but don't exceed line length
-      : [currentPos, Math.min(startPos + 1, lineLength)];
-
-  setRangeInElement(range, currentElement, selStart, selEnd);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-};
-
-const visualSelectInnerWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getInnerWordBounds(text, currentCursorPosition);
-
-  // Update visual selection to cover the word
-  vim_info.visual_start_pos = start;
-  vim_info.desired_column = end - 1; // Position cursor at end of word (inclusive)
-
-  // Update the visual selection
-  const range = document.createRange();
-  const selection = window.getSelection();
-
-  setRangeInElement(range, currentElement, start, end);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-};
-
-const visualSelectAroundWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getAroundWordBounds(text, currentCursorPosition);
-
-  // Update visual selection to cover the word and surrounding whitespace
-  vim_info.visual_start_pos = start;
-  vim_info.desired_column = end - 1; // Position cursor at end of selection (inclusive)
-
-  // Update the visual selection
-  const range = document.createRange();
-  const selection = window.getSelection();
-
-  setRangeInElement(range, currentElement, start, end);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-};
-
-const visualSelectInnerBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-
-  // Select inner content (excluding brackets)
-  vim_info.visual_start_pos = openIndex + 1;
-  vim_info.desired_column = closeIndex - 1;
-
-  // Update the visual selection
-  const range = document.createRange();
-  const selection = window.getSelection();
-
-  setRangeInElement(range, currentElement, openIndex + 1, closeIndex);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-};
-
-const visualSelectAroundBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-
-  // Select including brackets
-  vim_info.visual_start_pos = openIndex;
-  vim_info.desired_column = closeIndex;
-
-  // Update the visual selection
-  const range = document.createRange();
-  const selection = window.getSelection();
-
-  setRangeInElement(range, currentElement, openIndex, closeIndex + 1);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-};
+// setRangeInElement, updateVisualSelection, and visualSelect* functions now imported from visual/helpers
 
 const visualReducer = (e: KeyboardEvent): boolean => {
   const { vim_info } = window;
@@ -3016,10 +1135,7 @@ const visualLineJumpToNextParagraph = (): void => {
   }
 
   // Now skip forward through the next paragraph content
-  while (
-    targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1)
-  ) {
+  while (targetLine < maxLine && !isParagraphBoundary(targetLine + 1)) {
     targetLine++;
   }
 
@@ -3038,101 +1154,9 @@ const visualLineJumpToNextParagraph = (): void => {
   updateInfoContainer();
 };
 
-// Helper function to dispatch Delete and Backspace events to delete a code block
-const deleteCodeBlockWithKeyboardEvents = (
-  element: HTMLElement,
-  delay: number = 0,
-) => {
-  setTimeout(() => {
-    // Check if element is still in the document
-    if (!document.contains(element)) {
-      return;
-    }
+// deleteCodeBlockWithKeyboardEvents now imported from core module
 
-    // Select entire content
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-
-    // Focus and delete with Delete key
-    element.focus();
-
-    // Dispatch Delete key event immediately (no delay for code blocks)
-    const deleteEvent = new KeyboardEvent("keydown", {
-      key: "Delete",
-      code: "Delete",
-      keyCode: 46,
-      which: 46,
-      bubbles: true,
-      cancelable: true,
-    });
-    element.dispatchEvent(deleteEvent);
-
-    // After deleting content, dispatch Backspace to delete the empty block
-    setTimeout(() => {
-      const backspaceEvent = new KeyboardEvent("keydown", {
-        key: "Backspace",
-        code: "Backspace",
-        keyCode: 8,
-        which: 8,
-        bubbles: true,
-        cancelable: true,
-      });
-      element.dispatchEvent(backspaceEvent);
-    }, 20);
-  }, delay);
-};
-
-// Helper function to dispatch Delete and Backspace events to delete a normal block
-const deleteNormalBlockWithKeyboardEvents = (
-  element: HTMLElement,
-  delay: number = 0,
-) => {
-  setTimeout(() => {
-    // Check if element is still in the document
-    if (!document.contains(element)) {
-      return;
-    }
-
-    // Select entire content
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-
-    // Focus the element
-    element.focus();
-
-    // Dispatch Delete key event after a small delay to ensure focus is set
-    setTimeout(() => {
-      const deleteEvent = new KeyboardEvent("keydown", {
-        key: "Delete",
-        code: "Delete",
-        keyCode: 46,
-        which: 46,
-        bubbles: true,
-        cancelable: true,
-      });
-      element.dispatchEvent(deleteEvent);
-
-      // After deleting content, dispatch Backspace to delete the empty block
-      setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent("keydown", {
-          key: "Backspace",
-          code: "Backspace",
-          keyCode: 8,
-          which: 8,
-          bubbles: true,
-          cancelable: true,
-        });
-        element.dispatchEvent(backspaceEvent);
-      }, 20);
-    }, 10);
-  }, delay);
-};
+// deleteNormalBlockWithKeyboardEvents now imported from core module
 
 // Helper function to delete lines within a code block (Visual-line mode)
 // Returns the cursor position where deletion started
@@ -3208,7 +1232,7 @@ const deleteCodeBlockLines = (firstLine: number, lastLine: number): number => {
 
     const selection = window.getSelection();
     selection?.removeAllRanges();
-    selection?.addRange(range);
+    safeAddRange(selection, range);
 
     // Delete the content
     document.execCommand("delete");
@@ -3235,7 +1259,7 @@ const changeCodeBlockLines = (firstLine: number, lastLine: number) => {
 
     const selection = window.getSelection();
     selection?.removeAllRanges();
-    selection?.addRange(range);
+    safeAddRange(selection, range);
 
     // Delete the content
     document.execCommand("delete");
@@ -3410,15 +1434,19 @@ const changeVisualLineSelection = () => {
     console.error("[Vim-Notion] Failed to copy to clipboard:", err);
   });
 
-  // Clear background highlights from all elements IMMEDIATELY
+  // Clear background colors from the selected lines IMMEDIATELY
+  for (let i = firstLine; i <= lastLine; i++) {
+    if (vim_info.lines[i]) {
+      vim_info.lines[i].element.style.backgroundColor = "";
+    }
+  }
+
+  // Clear background highlights from all other elements
   clearAllBackgroundColors();
   // Clear selection to remove any browser highlighting
   window.getSelection()?.removeAllRanges();
-
-  // Force another clear on next frame
-  requestAnimationFrame(() => {
-    clearAllBackgroundColors();
-  });
+  // Update UI immediately to reflect mode change
+  updateInfoContainer();
 
   // Group consecutive lines by their element (code blocks share the same element)
   const lineGroups: {
@@ -3456,248 +1484,202 @@ const changeVisualLineSelection = () => {
     element: currentGroupElement,
   });
 
-  // If selection is entirely within a single code block, use changeCodeBlockLines
-  if (lineGroups.length === 1 && lineGroups[0].isCodeBlock) {
-    changeCodeBlockLines(firstLine, lastLine);
-    return;
-  }
+  // Start undo group for multi-line change operation
+  vim_info.in_undo_group = true;
+  vim_info.undo_count = lastLine - firstLine + 1;
 
-  // If selection is a single normal line, just clear and enter insert mode
-  if (
-    lineGroups.length === 1 &&
-    !lineGroups[0].isCodeBlock &&
-    firstLine === lastLine
-  ) {
-    const element = vim_info.lines[firstLine].element as HTMLElement;
+  // For change operation, we need to:
+  // 1. Keep the first line but clear its content
+  // 2. Delete all other lines (firstLine + 1 to lastLine)
 
-    // Select all content
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
+  // First, clear the content of the first line
+  const firstElement = vim_info.lines[firstLine].element;
+  const range = document.createRange();
+  range.selectNodeContents(firstElement);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  safeAddRange(selection, range);
+  document.execCommand("delete");
+  selection?.removeAllRanges();
 
-    // Delete content
-    document.execCommand("delete");
+  // Now delete the remaining lines (firstLine + 1 to lastLine) if there are any
+  let currentDelay = 10;
 
-    // Clear selection to remove any remaining highlights
-    selection?.removeAllRanges();
+  if (lastLine > firstLine) {
+    // Re-group lines from firstLine + 1 to lastLine
+    const deleteLineGroups: {
+      start: number;
+      end: number;
+      isCodeBlock: boolean;
+      element: HTMLElement;
+    }[] = [];
+    let currentGroupStart = firstLine + 1;
+    let currentGroupElement = vim_info.lines[firstLine + 1].element;
+    let currentGroupIsCodeBlock = isInsideCodeBlock(currentGroupElement);
 
-    // Focus to stay in insert mode (already set above)
-    element.focus();
+    for (let i = firstLine + 2; i <= lastLine; i++) {
+      const currentElement = vim_info.lines[i].element;
 
-    // Clear again after focus
-    requestAnimationFrame(() => {
-      clearAllBackgroundColors();
+      // Group boundary: different element
+      if (currentElement !== currentGroupElement) {
+        deleteLineGroups.push({
+          start: currentGroupStart,
+          end: i - 1,
+          isCodeBlock: currentGroupIsCodeBlock,
+          element: currentGroupElement,
+        });
+        currentGroupStart = i;
+        currentGroupElement = currentElement;
+        currentGroupIsCodeBlock = isInsideCodeBlock(currentElement);
+      }
+    }
+
+    // Add the last group
+    deleteLineGroups.push({
+      start: currentGroupStart,
+      end: lastLine,
+      isCodeBlock: currentGroupIsCodeBlock,
+      element: currentGroupElement,
     });
 
-    updateInfoContainer();
-    return;
-  }
+    // Delete content for each group (in reverse order to maintain indices)
+    for (let groupIdx = deleteLineGroups.length - 1; groupIdx >= 0; groupIdx--) {
+      const group = deleteLineGroups[groupIdx];
 
-  // For multiple lines or mixed selections: handle each group
-  // (mode is already set to "insert" above)
-  vim_info.in_undo_group = true;
-  vim_info.undo_count = lastLine - firstLine;
+      if (group.isCodeBlock) {
+        // Check if the first line is also in this code block
+        const firstLineInSameCodeBlock =
+          vim_info.lines[firstLine].element === group.element;
 
-  // Change content for each group, then delete all lines except the first
-  for (const group of lineGroups) {
-    if (group.isCodeBlock) {
-      // Code block lines - use changeCodeBlockLines but don't let it change mode
-      const savedMode: string = vim_info.mode;
-      changeCodeBlockLines(group.start, group.end);
-      vim_info.mode = savedMode as any;
-    } else {
-      // Normal lines - delete content from each line
-      for (let i = group.start; i <= group.end; i++) {
-        const element = vim_info.lines[i].element;
-
-        // Select all content in the line
-        const range = document.createRange();
-        range.selectNodeContents(element);
-
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-
-        // Delete the content
-        document.execCommand("delete");
+        if (firstLineInSameCodeBlock) {
+          // First line is in the same code block - just delete the lines in the code block
+          // (excluding the first line which we already cleared)
+          deleteCodeBlockLines(group.start, group.end);
+        } else {
+          // First line is not in this code block - delete the whole block
+          deleteCodeBlockWithKeyboardEvents(group.element, 0);
+        }
+      } else {
+        // Normal lines - delete content AND the blocks themselves
+        // Delete from last to first to maintain indices
+        for (let i = group.end; i >= group.start; i--) {
+          const element = vim_info.lines[i].element;
+          deleteNormalBlockWithKeyboardEvents(element, currentDelay);
+          currentDelay += 50; // Add delay for next block
+        }
       }
     }
   }
 
-  // Now delete all lines except the first
-  const linesToDelete: number[] = [];
-  for (let i = lastLine; i > firstLine; i--) {
-    linesToDelete.push(i);
-  }
-
-  deleteExtraLinesSequentially(linesToDelete, firstLine);
-
-  function deleteExtraLinesSequentially(
-    lineIndices: number[],
-    targetLine: number,
-  ) {
-    if (lineIndices.length === 0) {
-      // All extra lines deleted, now clear the first line and enter insert mode
-      vim_info.in_undo_group = false;
-
-      setTimeout(() => {
-        refreshLines();
-        // Clear background colors again after refresh
-        clearAllBackgroundColors();
-
-        if (vim_info.lines.length > targetLine) {
-          const element = vim_info.lines[targetLine].element as HTMLElement;
-
-          // Select all content
-          const range = document.createRange();
-          range.selectNodeContents(element);
-          const selection = window.getSelection();
-          selection?.removeAllRanges();
-          selection?.addRange(range);
-
-          // Delete content
-          document.execCommand("delete");
-
-          // Clear selection to remove any remaining highlights
-          selection?.removeAllRanges();
-
-          // Focus to stay in insert mode
-          element.focus();
-          setActiveLine(targetLine);
-
-          // Clear again after all operations
-          requestAnimationFrame(() => {
-            clearAllBackgroundColors();
-          });
-        }
-        updateInfoContainer();
-      }, 100);
-      return;
-    }
-
-    const lineIndex = lineIndices[0];
-    if (lineIndex >= vim_info.lines.length) {
-      deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
-      return;
-    }
-
-    const element = vim_info.lines[lineIndex].element;
-    const block =
-      element.closest("[data-block-id]") ||
-      element.parentElement?.parentElement;
-
-    if (!block) {
-      deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
-      return;
-    }
-
-    const editableElement = block.querySelector(
-      '[contenteditable="true"]',
-    ) as HTMLElement;
-    if (!editableElement) {
-      deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
-      return;
-    }
-
-    // Select the content
-    const range = document.createRange();
-    range.selectNodeContents(editableElement);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-
-    // Focus and delete
-    editableElement.focus();
-
-    setTimeout(() => {
-      // Delete content
-      const deleteEvent = new KeyboardEvent("keydown", {
-        key: "Delete",
-        code: "Delete",
-        keyCode: 46,
-        which: 46,
-        bubbles: true,
-        cancelable: true,
-      });
-      editableElement.dispatchEvent(deleteEvent);
-
-      // Delete empty block
-      setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent("keydown", {
-          key: "Backspace",
-          code: "Backspace",
-          keyCode: 8,
-          which: 8,
-          bubbles: true,
-          cancelable: true,
-        });
-        editableElement.dispatchEvent(backspaceEvent);
-
-        // Continue with next line
-        setTimeout(() => {
-          deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
-        }, 10);
-      }, 10);
-    }, 10);
-  }
-};
-
-const yankVisualSelection = () => {
-  const { vim_info } = window;
-
-  // Use execCommand('copy') to copy to clipboard without deleting
-  document.execCommand("copy");
-
-  vim_info.mode = "normal";
+  // Clear selection
   window.getSelection()?.removeAllRanges();
-  updateInfoContainer();
+
+  // Return to insert mode after all deletions complete, and enter insert mode on the first line
+  setTimeout(() => {
+    vim_info.mode = "insert";
+    vim_info.in_undo_group = false;
+
+    refreshLines();
+    clearAllBackgroundColors();
+
+    // Always return to the first line (which we kept and cleared)
+    const newActiveLine = Math.max(
+      0,
+      Math.min(firstLine, vim_info.lines.length - 1),
+    );
+
+    if (vim_info.lines.length > 0) {
+      setActiveLine(newActiveLine);
+      const element = vim_info.lines[newActiveLine].element;
+
+      // Always position cursor at the beginning for change operation
+      setCursorPosition(element, 0);
+
+      // Focus the element to stay in insert mode
+      element.focus({ preventScroll: true });
+    }
+    updateInfoContainer();
+  }, currentDelay + 100);
 };
 
-const yankVisualLineSelection = () => {
-  const { vim_info } = window;
-
-  // Use execCommand('copy') to copy to clipboard without deleting
-  document.execCommand("copy");
-
-  // Clear background highlights from all elements
-  clearAllBackgroundColors();
-
-  vim_info.mode = "normal";
-  window.getSelection()?.removeAllRanges();
-  updateInfoContainer();
-};
+// yankVisualSelection and yankVisualLineSelection now created via factory below (after updateInfoContainer is defined)
 
 const pasteAfterCursor = async () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const lineLength = currentElement.textContent?.length || 0;
 
-  // Move cursor one position forward (unless at end of line)
-  let pastePosition = currentCursorPosition;
-  if (currentCursorPosition < lineLength) {
-    pastePosition = currentCursorPosition + 1;
-  }
-
-  // Set cursor to paste position
-  setCursorPosition(currentElement, pastePosition);
-
-  // Try to read from clipboard and insert
   try {
     const clipboardText = await navigator.clipboard.readText();
 
-    // Insert text at cursor position
-    const text = currentElement.textContent || "";
-    const newText =
-      text.slice(0, pastePosition) + clipboardText + text.slice(pastePosition);
-    currentElement.textContent = newText;
+    // Check if clipboard contains a line (ends with newline)
+    const isLinePaste = clipboardText.endsWith("\n");
 
-    // Move cursor to end of pasted text
-    const newCursorPosition = pastePosition + clipboardText.length - 1;
-    setCursorPosition(currentElement, newCursorPosition);
-    vim_info.desired_column = newCursorPosition;
+    if (isLinePaste) {
+      // Line paste: create new line below current line
+      // Remove the trailing newline from clipboard text
+      const textWithoutNewline = clipboardText.slice(0, -1);
+
+      // Move to end of current line
+      const lineLength = currentElement.textContent?.length || 0;
+      setCursorPosition(currentElement, lineLength);
+
+      // Switch to insert mode temporarily
+      vim_info.mode = "insert";
+
+      // Simulate Enter to create new line
+      setTimeout(() => {
+        const enterEvent = new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true,
+        });
+        currentElement.dispatchEvent(enterEvent);
+
+        // Wait for new line to be created
+        setTimeout(() => {
+          refreshLines();
+
+          // Insert the text into the new line
+          const newLineIndex = vim_info.active_line + 1;
+          if (newLineIndex < vim_info.lines.length) {
+            const newLineElement = vim_info.lines[newLineIndex].element;
+            newLineElement.textContent = textWithoutNewline;
+            setCursorPosition(newLineElement, 0);
+            vim_info.active_line = newLineIndex;
+            vim_info.desired_column = 0;
+          }
+
+          // Return to normal mode
+          vim_info.mode = "normal";
+          updateInfoContainer();
+        }, 100);
+      }, 0);
+    } else {
+      // Character paste: insert at cursor position
+      const lineLength = currentElement.textContent?.length || 0;
+      let pastePosition = currentCursorPosition;
+      if (currentCursorPosition < lineLength) {
+        pastePosition = currentCursorPosition + 1;
+      }
+
+      setCursorPosition(currentElement, pastePosition);
+
+      const text = currentElement.textContent || "";
+      const newText =
+        text.slice(0, pastePosition) +
+        clipboardText +
+        text.slice(pastePosition);
+      currentElement.textContent = newText;
+
+      // Move cursor to end of pasted text
+      const newCursorPosition = pastePosition + clipboardText.length - 1;
+      setCursorPosition(currentElement, newCursorPosition);
+      vim_info.desired_column = newCursorPosition;
+    }
   } catch (err) {
     console.error("[Vim-Notion] Failed to paste:", err);
   }
@@ -3708,1260 +1690,103 @@ const pasteBeforeCursor = async () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
 
-  // Paste at current cursor position (before cursor)
-  setCursorPosition(currentElement, currentCursorPosition);
-
   try {
     const clipboardText = await navigator.clipboard.readText();
 
-    // Insert text at cursor position
-    const text = currentElement.textContent || "";
-    const newText =
-      text.slice(0, currentCursorPosition) +
-      clipboardText +
-      text.slice(currentCursorPosition);
-    currentElement.textContent = newText;
+    // Check if clipboard contains a line (ends with newline)
+    const isLinePaste = clipboardText.endsWith("\n");
 
-    // Move cursor to end of pasted text
-    const newCursorPosition = currentCursorPosition + clipboardText.length - 1;
-    setCursorPosition(currentElement, newCursorPosition);
-    vim_info.desired_column = newCursorPosition;
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to paste:", err);
-  }
-};
+    if (isLinePaste) {
+      // Line paste: create new line above current line
+      // Remove the trailing newline from clipboard text
+      const textWithoutNewline = clipboardText.slice(0, -1);
 
-const yankCurrentLine = async () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-};
-
-const yankToNextWord = async () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  let pos = currentCursorPosition;
-
-  // Skip current word (alphanumeric characters)
-  while (pos < text.length && /\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip non-word characters (spaces, punctuation)
-  while (pos < text.length && !/\w/.test(text[pos])) {
-    pos++;
-  }
-
-  const yankedText = text.slice(currentCursorPosition, pos);
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-};
-
-const yankToEndOfLine = async () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const yankedText = text.slice(currentCursorPosition);
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-};
-
-const yankToBeginningOfLine = async () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const yankedText = text.slice(0, currentCursorPosition);
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-};
-
-// Yank from cursor to previous paragraph boundary
-const yankToPreviousParagraph = async () => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const currentElement = vim_info.lines[currentLine].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-
-  // Find the target paragraph boundary
-  let targetLine = currentLine;
-
-  // If we're on a blank line, skip backward through all consecutive blank lines
-  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
-    targetLine--;
-  }
-
-  // Now skip backward through the previous paragraph content
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-
-  // Now targetLine is at the first line of the previous paragraph
-  // Move up one more to land on the blank line above it (Vim behavior)
-  // But only if there is a blank line above
-  if (targetLine > 0 && isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-
-  // Collect text from all lines between current and target
-  const lines: string[] = [];
-
-  // Add partial text from current line (from start to cursor)
-  const currentText = currentElement.textContent || "";
-  lines.push(currentText.slice(0, currentCursorPosition));
-
-  // Add all lines in between (in reverse order since we're going backward)
-  for (let i = currentLine - 1; i >= targetLine; i--) {
-    const lineText = vim_info.lines[i].element.textContent || "";
-    lines.unshift(lineText);
-  }
-
-  const yankedText = lines.join("\n");
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-};
-
-// Yank from cursor to next paragraph boundary
-const yankToNextParagraph = async () => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const maxLine = vim_info.lines.length - 1;
-  const currentElement = vim_info.lines[currentLine].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-
-  // Find the target paragraph boundary
-  let targetLine = currentLine;
-
-  // If we're on a blank line, skip forward through all consecutive blank lines
-  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
-    targetLine++;
-  }
-
-  // Now skip forward through the next paragraph content
-  while (
-    targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1)
-  ) {
-    targetLine++;
-  }
-
-  // Now targetLine is at the last line of the next paragraph
-  // Move down one more to land on the blank line below it (Vim behavior)
-  // But only if there is a blank line below
-  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1)) {
-    targetLine++;
-  }
-
-  // Collect text from all lines between current and target
-  const lines: string[] = [];
-
-  // Add partial text from current line (from cursor to end)
-  const currentText = currentElement.textContent || "";
-  lines.push(currentText.slice(currentCursorPosition));
-
-  // Add all lines in between
-  for (let i = currentLine + 1; i <= targetLine; i++) {
-    const lineText = vim_info.lines[i].element.textContent || "";
-    lines.push(lineText);
-  }
-
-  const yankedText = lines.join("\n");
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-};
-
-// Delete from cursor to previous paragraph boundary
-const deleteToPreviousParagraph = () => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const currentElement = vim_info.lines[currentLine].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-
-  // Find the target paragraph boundary
-  let targetLine = currentLine;
-
-  // If we're on a blank line, skip backward through all consecutive blank lines
-  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
-    targetLine--;
-  }
-
-  // Now skip backward through the previous paragraph content
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-
-  // Now targetLine is at the first line of the previous paragraph
-  // Move up one more to land on the blank line above it (Vim behavior)
-  if (targetLine > 0) {
-    targetLine--;
-  }
-
-  // Collect text from all lines between current and target for clipboard
-  const lines: string[] = [];
-
-  // Add partial text from current line (from start to cursor)
-  const currentText = currentElement.textContent || "";
-  lines.push(currentText.slice(0, currentCursorPosition));
-
-  // Add all lines in between (in reverse order since we're going backward)
-  for (let i = currentLine - 1; i >= targetLine; i--) {
-    const lineText = vim_info.lines[i].element.textContent || "";
-    lines.unshift(lineText);
-  }
-
-  const clipboardText = lines.join("\n");
-
-  // Copy to clipboard
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // If we're deleting across multiple lines
-  if (currentLine !== targetLine) {
-    // Switch to insert mode temporarily
-    vim_info.mode = "insert";
-
-    // Delete all blocks from targetLine to currentLine - 1
-    let currentDelay = 10;
-    for (let i = currentLine - 1; i >= targetLine; i--) {
-      const element = vim_info.lines[i].element;
-      deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-      currentDelay += 50;
-    }
-
-    // Delete partial content from current line (from start to cursor)
-    setTimeout(() => {
-      const text = currentElement.textContent || "";
-      const newText = text.slice(currentCursorPosition);
-      currentElement.textContent = newText;
+      // Move to beginning of current line
       setCursorPosition(currentElement, 0);
-      vim_info.desired_column = 0;
 
-      // Return to normal mode
+      // Switch to insert mode temporarily
+      vim_info.mode = "insert";
+
+      // Simulate Enter to create new line
       setTimeout(() => {
-        vim_info.mode = "normal";
-        refreshLines();
-        updateInfoContainer();
-      }, 50);
-    }, currentDelay + 50);
-  } else {
-    // Same line - just delete text from start to cursor
-    const text = currentElement.textContent || "";
-    const newText = text.slice(currentCursorPosition);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, 0);
-    vim_info.desired_column = 0;
-  }
-};
-
-// Delete from cursor to next paragraph boundary
-const deleteToNextParagraph = () => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const maxLine = vim_info.lines.length - 1;
-  const currentElement = vim_info.lines[currentLine].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-
-  // Find the target paragraph boundary
-  let targetLine = currentLine;
-
-  // If we're on a blank line, skip forward through all consecutive blank lines
-  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
-    targetLine++;
-  }
-
-  // Now skip forward through the next paragraph content
-  while (
-    targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1)
-  ) {
-    targetLine++;
-  }
-
-  // Now targetLine is at the last line of the next paragraph
-  // Move down one more to land on the blank line below it (Vim behavior)
-  // But only if there is a blank line below
-  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1)) {
-    targetLine++;
-  }
-
-  // Collect text from all lines between current and target for clipboard
-  const lines: string[] = [];
-
-  // Add partial text from current line (from cursor to end)
-  const currentText = currentElement.textContent || "";
-  lines.push(currentText.slice(currentCursorPosition));
-
-  // Add all lines in between
-  for (let i = currentLine + 1; i <= targetLine; i++) {
-    const lineText = vim_info.lines[i].element.textContent || "";
-    lines.push(lineText);
-  }
-
-  const clipboardText = lines.join("\n");
-
-  // Copy to clipboard
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // If we're deleting across multiple lines
-  if (currentLine !== targetLine) {
-    // Switch to insert mode temporarily
-    vim_info.mode = "insert";
-
-    // Delete all blocks from currentLine + 1 to targetLine
-    let currentDelay = 10;
-    for (let i = targetLine; i > currentLine; i--) {
-      const element = vim_info.lines[i].element;
-      deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-      currentDelay += 50;
-    }
-
-    // Delete partial content from current line (from cursor to end)
-    setTimeout(() => {
-      const text = currentElement.textContent || "";
-      const newText = text.slice(0, currentCursorPosition);
-      currentElement.textContent = newText;
-      setCursorPosition(currentElement, currentCursorPosition);
-      vim_info.desired_column = currentCursorPosition;
-
-      // Return to normal mode
-      setTimeout(() => {
-        vim_info.mode = "normal";
-        refreshLines();
-        updateInfoContainer();
-      }, 50);
-    }, currentDelay + 50);
-  } else {
-    // Same line - just delete text from cursor to end
-    const text = currentElement.textContent || "";
-    const newText = text.slice(0, currentCursorPosition);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, currentCursorPosition);
-    vim_info.desired_column = currentCursorPosition;
-  }
-};
-
-// Change from cursor to previous paragraph boundary
-const changeToPreviousParagraph = () => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const currentElement = vim_info.lines[currentLine].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-
-  // Find the target paragraph boundary
-  let targetLine = currentLine;
-  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
-    targetLine--;
-  }
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-  // Now targetLine is at the first line of the previous paragraph
-  // Move up one more to land on the blank line above it (Vim behavior)
-  // But only if there is a blank line above
-  if (targetLine > 0 && isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  const currentText = currentElement.textContent || "";
-  lines.push(currentText.slice(0, currentCursorPosition));
-  for (let i = currentLine - 1; i >= targetLine; i--) {
-    const lineText = vim_info.lines[i].element.textContent || "";
-    lines.unshift(lineText);
-  }
-  const clipboardText = lines.join("\n");
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // If changing across multiple lines
-  if (currentLine !== targetLine) {
-    vim_info.mode = "insert";
-    let currentDelay = 10;
-    // Delete all lines between current and target
-    for (let i = currentLine - 1; i >= targetLine; i--) {
-      const element = vim_info.lines[i].element;
-      deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-      currentDelay += 50;
-    }
-    // After deleting, clear current line from cursor backward and enter insert mode
-    setTimeout(() => {
-      const text = currentElement.textContent || "";
-      const newText = text.slice(currentCursorPosition);
-      currentElement.textContent = newText;
-      setCursorPosition(currentElement, 0);
-      vim_info.desired_column = 0;
-      setTimeout(() => {
-        refreshLines();
-        updateInfoContainer();
-      }, 50);
-    }, currentDelay + 50);
-  } else {
-    // Same line - delete text and enter insert mode
-    const text = currentElement.textContent || "";
-    const newText = text.slice(currentCursorPosition);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, 0);
-    vim_info.desired_column = 0;
-    vim_info.mode = "insert";
-    updateInfoContainer();
-  }
-};
-
-// Change from cursor to next paragraph boundary
-const changeToNextParagraph = () => {
-  const { vim_info } = window;
-  const currentLine = vim_info.active_line;
-  const maxLine = vim_info.lines.length - 1;
-  const currentElement = vim_info.lines[currentLine].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-
-  // Find the target paragraph boundary
-  let targetLine = currentLine;
-  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
-    targetLine++;
-  }
-  while (
-    targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1)
-  ) {
-    targetLine++;
-  }
-  if (targetLine < maxLine) {
-    targetLine++;
-  }
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  const currentText = currentElement.textContent || "";
-  lines.push(currentText.slice(currentCursorPosition));
-  for (let i = currentLine + 1; i <= targetLine; i++) {
-    const lineText = vim_info.lines[i].element.textContent || "";
-    lines.push(lineText);
-  }
-  const clipboardText = lines.join("\n");
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // If changing across multiple lines
-  if (currentLine !== targetLine) {
-    vim_info.mode = "insert";
-    let currentDelay = 10;
-    // Delete all lines between current and target
-    for (let i = currentLine + 1; i <= targetLine; i++) {
-      const element = vim_info.lines[i].element;
-      deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-      currentDelay += 50;
-    }
-    // After deleting, clear current line from cursor forward and enter insert mode
-    setTimeout(() => {
-      const text = currentElement.textContent || "";
-      const newText = text.slice(0, currentCursorPosition);
-      currentElement.textContent = newText;
-      setCursorPosition(currentElement, currentCursorPosition);
-      vim_info.desired_column = currentCursorPosition;
-      setTimeout(() => {
-        refreshLines();
-        updateInfoContainer();
-      }, 50);
-    }, currentDelay + 50);
-  } else {
-    // Same line - delete text from cursor to end and enter insert mode
-    const text = currentElement.textContent || "";
-    const newText = text.slice(0, currentCursorPosition);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, currentCursorPosition);
-    vim_info.desired_column = currentCursorPosition;
-    vim_info.mode = "insert";
-    updateInfoContainer();
-  }
-};
-
-const getInnerWordBounds = (text: string, pos: number): [number, number] => {
-  let start = pos;
-  let end = pos;
-
-  // If not on a word character, return empty range
-  if (!/\w/.test(text[pos])) {
-    return [pos, pos];
-  }
-
-  // Find start of word
-  while (start > 0 && /\w/.test(text[start - 1])) {
-    start--;
-  }
-
-  // Find end of word
-  while (end < text.length && /\w/.test(text[end])) {
-    end++;
-  }
-
-  return [start, end];
-};
-
-const getAroundWordBounds = (text: string, pos: number): [number, number] => {
-  let start = pos;
-  let end = pos;
-
-  // If not on a word character, return empty range
-  if (!/\w/.test(text[pos])) {
-    return [pos, pos];
-  }
-
-  // Find start of word
-  while (start > 0 && /\w/.test(text[start - 1])) {
-    start--;
-  }
-
-  // Find end of word
-  while (end < text.length && /\w/.test(text[end])) {
-    end++;
-  }
-
-  // Include trailing whitespace if present
-  while (end < text.length && /\s/.test(text[end])) {
-    end++;
-  }
-
-  // If no trailing whitespace, include leading whitespace instead
-  if (
-    end ===
-    start + (pos - start) + (text.slice(pos).match(/^\w+/)?.[0].length || 0)
-  ) {
-    while (start > 0 && /\s/.test(text[start - 1])) {
-      start--;
-    }
-  }
-
-  return [start, end];
-};
-
-const yankInnerWord = async () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getInnerWordBounds(text, currentCursorPosition);
-  const yankedText = text.slice(start, end);
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const deleteCurrentLine = async () => {
-  const { vim_info } = window;
-  const currentLineIndex = vim_info.active_line;
-  const currentElement = vim_info.lines[currentLineIndex].element;
-
-  // Check if we're inside a code block
-  const inCodeBlock = isInsideCodeBlock(currentElement);
-
-  if (inCodeBlock) {
-    // For code blocks, delete only the line content, not the block itself
-    const text = currentElement.textContent || "";
-    const cursorPos = getCursorIndexInElement(currentElement);
-
-    // Find the start and end of the current line
-    let lineStart = text.lastIndexOf("\n", cursorPos - 1);
-    lineStart = lineStart === -1 ? 0 : lineStart + 1;
-
-    let lineEnd = text.indexOf("\n", cursorPos);
-    // Include the newline character in deletion (if it exists)
-    if (lineEnd !== -1) {
-      lineEnd = lineEnd + 1; // Include the \n
-    } else {
-      // Last line - check if there's a newline before this line
-      if (lineStart > 0) {
-        // Delete the newline before this line instead
-        lineStart = lineStart - 1;
-      }
-      lineEnd = text.length;
-    }
-
-    // Extract the line text for clipboard (without newlines for clipboard)
-    const originalLineStart = text.lastIndexOf("\n", cursorPos - 1);
-    const actualLineStart =
-      originalLineStart === -1 ? 0 : originalLineStart + 1;
-    const originalLineEnd = text.indexOf("\n", cursorPos);
-    const actualLineEnd =
-      originalLineEnd === -1 ? text.length : originalLineEnd;
-    const lineText = text.substring(actualLineStart, actualLineEnd);
-    navigator.clipboard.writeText(lineText).catch((err) => {
-      console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-    });
-
-    // Temporarily switch to insert mode
-    vim_info.mode = "insert";
-
-    // Select the line content using TreeWalker
-    const walker = document.createTreeWalker(
-      currentElement,
-      NodeFilter.SHOW_TEXT,
-      null,
-    );
-
-    let currentNode: Text | null = null;
-    let currentOffset = 0;
-    let startNode: Text | null = null;
-    let startOffset = 0;
-    let endNode: Text | null = null;
-    let endOffset = 0;
-
-    while ((currentNode = walker.nextNode() as Text | null)) {
-      const nodeLength = currentNode.length;
-      const nodeEnd = currentOffset + nodeLength;
-
-      if (!startNode && lineStart >= currentOffset && lineStart <= nodeEnd) {
-        startNode = currentNode;
-        startOffset = lineStart - currentOffset;
-      }
-
-      if (!endNode && lineEnd >= currentOffset && lineEnd <= nodeEnd) {
-        endNode = currentNode;
-        endOffset = lineEnd - currentOffset;
-      }
-
-      currentOffset = nodeEnd;
-      if (startNode && endNode) break;
-    }
-
-    if (startNode && endNode) {
-      const range = document.createRange();
-      range.setStart(startNode, startOffset);
-      range.setEnd(endNode, endOffset);
-
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-
-      // Delete the selected content
-      setTimeout(() => {
-        document.execCommand("delete");
-
-        setTimeout(() => {
-          vim_info.mode = "normal";
-          // Position cursor at the start of the line (or end of previous line if we deleted content)
-          const newCursorPos = lineStart;
-          setCursorPosition(currentElement, newCursorPos);
-          updateInfoContainer();
-        }, 10);
-      }, 10);
-    }
-  } else {
-    // For normal blocks, delete the entire block as before
-    // Copy line content to clipboard
-    const lineText = currentElement.textContent || "";
-    navigator.clipboard.writeText(lineText).catch((err) => {
-      console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-    });
-
-    // Temporarily switch to insert mode to allow deletion
-    const previousMode = vim_info.mode;
-    vim_info.mode = "insert";
-
-    // Select entire line content
-    const range = document.createRange();
-    range.selectNodeContents(currentElement);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-
-    // Focus and delete with Delete key
-    (currentElement as HTMLElement).focus();
-
-    setTimeout(() => {
-      const deleteEvent = new KeyboardEvent("keydown", {
-        key: "Delete",
-        code: "Delete",
-        keyCode: 46,
-        which: 46,
-        bubbles: true,
-        cancelable: true,
-      });
-
-      currentElement.dispatchEvent(deleteEvent);
-
-      // After deleting content, press Backspace to delete the empty block
-      setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent("keydown", {
-          key: "Backspace",
-          code: "Backspace",
-          keyCode: 8,
-          which: 8,
+        const enterEvent = new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          keyCode: 13,
+          which: 13,
           bubbles: true,
           cancelable: true,
         });
+        currentElement.dispatchEvent(enterEvent);
 
-        currentElement.dispatchEvent(backspaceEvent);
-
-        // Return to normal mode and update cursor
+        // Wait for new line to be created
         setTimeout(() => {
-          vim_info.mode = "normal";
           refreshLines();
 
-          const newActiveLine = Math.max(
-            0,
-            Math.min(currentLineIndex - 1, vim_info.lines.length - 1),
-          );
-          if (vim_info.lines.length > 0) {
-            setActiveLine(newActiveLine);
+          // The new line is created below, but we need to move content up
+          // After Enter at position 0, cursor is on the new line below
+          // So we need to move up and insert into the line above
+          const newLineIndex = vim_info.active_line;
+          if (newLineIndex > 0) {
+            // Move cursor up to the empty line we just created
+            const arrowUpEvent = new KeyboardEvent("keydown", {
+              key: "ArrowUp",
+              code: "ArrowUp",
+              keyCode: 38,
+              which: 38,
+              bubbles: true,
+              cancelable: true,
+            });
+            document.activeElement?.dispatchEvent(arrowUpEvent);
+
+            setTimeout(() => {
+              refreshLines();
+
+              // Insert text into the line above
+              const targetLineIndex = vim_info.active_line;
+              if (targetLineIndex < vim_info.lines.length) {
+                const targetLineElement =
+                  vim_info.lines[targetLineIndex].element;
+                targetLineElement.textContent = textWithoutNewline;
+                setCursorPosition(targetLineElement, 0);
+                vim_info.desired_column = 0;
+              }
+
+              // Return to normal mode
+              vim_info.mode = "normal";
+              updateInfoContainer();
+            }, 50);
+          } else {
+            // Couldn't move up, just insert at current position
+            const targetLineElement = vim_info.lines[newLineIndex].element;
+            targetLineElement.textContent = textWithoutNewline;
+            setCursorPosition(targetLineElement, 0);
+            vim_info.desired_column = 0;
+            vim_info.mode = "normal";
+            updateInfoContainer();
           }
-        }, 50);
-      }, 20);
-    }, 10);
-  }
-};
+        }, 100);
+      }, 0);
+    } else {
+      // Character paste: insert at cursor position (before cursor)
+      setCursorPosition(currentElement, currentCursorPosition);
 
-const deleteToNextWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
+      const text = currentElement.textContent || "";
+      const newText =
+        text.slice(0, currentCursorPosition) +
+        clipboardText +
+        text.slice(currentCursorPosition);
+      currentElement.textContent = newText;
 
-  let pos = currentCursorPosition;
-
-  // Skip current word
-  while (pos < text.length && /\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip non-word characters
-  while (pos < text.length && !/\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // Select from cursor to pos
-  setCursorPosition(currentElement, currentCursorPosition);
-  const sel = window.getSelection();
-  if (sel && sel.rangeCount > 0) {
-    const r = sel.getRangeAt(0);
-    r.setStart(r.startContainer, r.startOffset);
-    r.setEnd(r.startContainer, r.startOffset + (pos - currentCursorPosition));
-    sel.removeAllRanges();
-    sel.addRange(r);
-
-    document.execCommand("cut");
-  }
-
-  vim_info.desired_column = currentCursorPosition;
-};
-
-const deleteToEndOfLine = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const newText = text.slice(0, currentCursorPosition);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, currentCursorPosition);
-  vim_info.desired_column = currentCursorPosition;
-};
-
-const deleteToBeginningOfLine = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const newText = text.slice(currentCursorPosition);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, 0);
-  vim_info.desired_column = 0;
-};
-
-const deleteInnerWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getInnerWordBounds(text, currentCursorPosition);
-  const deletedText = text.slice(start, end);
-
-  // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  const newText = text.slice(0, start) + text.slice(end);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, start);
-  vim_info.desired_column = start;
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-// Helper function to find matching quotes (where open and close are the same)
-const findMatchingQuotes = (
-  text: string,
-  cursorPos: number,
-  quoteChar: string,
-): [number, number] | null => {
-  // Support both regular quotes and smart quotes (typographic quotes)
-  // Notion uses various quote characters inconsistently
-  let allQuoteChars: string[];
-
-  if (quoteChar === '"') {
-    // All possible double quote characters
-    allQuoteChars = ['"', "\u201C", "\u201D"]; // " " "
-  } else if (quoteChar === "'") {
-    // All possible single quote characters
-    allQuoteChars = ["'", "\u2018", "\u2019"]; // ' ' '
-  } else {
-    allQuoteChars = [quoteChar];
-  }
-
-  // Find all quote positions in the text
-  const quotePositions: number[] = [];
-  for (let i = 0; i < text.length; i++) {
-    if (allQuoteChars.includes(text[i])) {
-      quotePositions.push(i);
+      // Move cursor to end of pasted text
+      const newCursorPosition =
+        currentCursorPosition + clipboardText.length - 1;
+      setCursorPosition(currentElement, newCursorPosition);
+      vim_info.desired_column = newCursorPosition;
     }
-  }
-
-  if (quotePositions.length < 2) {
-    return null;
-  }
-
-  // Pair quotes sequentially: positions 0-1, 2-3, 4-5, etc.
-  // This mimics Vim's behavior where quotes toggle between open/close
-  const pairs: Array<[number, number]> = [];
-  for (let i = 0; i < quotePositions.length - 1; i += 2) {
-    pairs.push([quotePositions[i], quotePositions[i + 1]]);
-  }
-
-  if (pairs.length === 0) {
-    return null;
-  }
-
-  // Try to find an enclosing pair (cursor is inside quotes)
-  for (const [openIndex, closeIndex] of pairs) {
-    if (cursorPos > openIndex && cursorPos <= closeIndex) {
-      return [openIndex, closeIndex];
-    }
-  }
-
-  // If not inside a pair, find the next pair after cursor
-  for (const [openIndex, closeIndex] of pairs) {
-    if (openIndex >= cursorPos) {
-      return [openIndex, closeIndex];
-    }
-  }
-
-  return null;
-};
-
-// Helper function to find matching brackets/quotes
-const findMatchingBrackets = (
-  text: string,
-  cursorPos: number,
-  openChar: string,
-  closeChar: string,
-): [number, number] | null => {
-  // Find the opening bracket before cursor
-  let openIndex = -1;
-  let closeIndex = -1;
-  let depth = 0;
-
-  // Search backward for opening bracket
-  for (let i = cursorPos; i >= 0; i--) {
-    if (text[i] === closeChar) {
-      depth++;
-    } else if (text[i] === openChar) {
-      if (depth === 0) {
-        openIndex = i;
-        break;
-      }
-      depth--;
-    }
-  }
-
-  // If not found backward, search forward
-  if (openIndex === -1) {
-    depth = 0;
-    for (let i = cursorPos; i < text.length; i++) {
-      if (text[i] === closeChar) {
-        depth++;
-      } else if (text[i] === openChar) {
-        if (depth === 0) {
-          openIndex = i;
-          break;
-        }
-        depth--;
-      }
-    }
-  }
-
-  if (openIndex === -1) return null;
-
-  // Search forward for matching closing bracket
-  depth = 0;
-  for (let i = openIndex + 1; i < text.length; i++) {
-    if (text[i] === openChar) {
-      depth++;
-    } else if (text[i] === closeChar) {
-      if (depth === 0) {
-        closeIndex = i;
-        break;
-      }
-      depth--;
-    }
-  }
-
-  if (closeIndex === -1) return null;
-
-  return [openIndex, closeIndex];
-};
-
-const deleteInnerBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-  const deletedText = text.slice(openIndex + 1, closeIndex);
-
-  // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  const newText = text.slice(0, openIndex + 1) + text.slice(closeIndex);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, openIndex + 1);
-  vim_info.desired_column = openIndex + 1;
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const deleteAroundBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-  const deletedText = text.slice(openIndex, closeIndex + 1);
-
-  // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  const newText = text.slice(0, openIndex) + text.slice(closeIndex + 1);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, openIndex);
-  vim_info.desired_column = openIndex;
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const deleteFindCharForward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  const foundIndex = text.indexOf(char, currentPos + 1);
-  if (foundIndex !== -1) {
-    // Delete from current position to and including the found character
-    const newText = text.slice(0, currentPos) + text.slice(foundIndex + 1);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, currentPos);
-    vim_info.desired_column = currentPos;
-  } else {
-  }
-};
-
-const deleteFindCharBackward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  const foundIndex = text.lastIndexOf(char, currentPos - 1);
-  if (foundIndex !== -1) {
-    // Delete from and including the found character to current position
-    const newText = text.slice(0, foundIndex) + text.slice(currentPos);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, foundIndex);
-    vim_info.desired_column = foundIndex;
-  } else {
-  }
-};
-
-const deleteTillCharForward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  const foundIndex = text.indexOf(char, currentPos + 1);
-  if (foundIndex !== -1) {
-    // Delete from current position to before the found character
-    const newText = text.slice(0, currentPos) + text.slice(foundIndex);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, currentPos);
-    vim_info.desired_column = currentPos;
-  }
-};
-
-const deleteTillCharBackward = (char: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  const foundIndex = text.lastIndexOf(char, currentPos - 1);
-  if (foundIndex !== -1) {
-    // Delete from after the found character to current position
-    const newText = text.slice(0, foundIndex + 1) + text.slice(currentPos);
-    currentElement.textContent = newText;
-    setCursorPosition(currentElement, foundIndex + 1);
-    vim_info.desired_column = foundIndex + 1;
-  }
-};
-
-const changeFindCharForward = (char: string) => {
-  deleteFindCharForward(char);
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeFindCharBackward = (char: string) => {
-  deleteFindCharBackward(char);
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeTillCharForward = (char: string) => {
-  deleteTillCharForward(char);
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeTillCharBackward = (char: string) => {
-  deleteTillCharBackward(char);
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeCurrentLine = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-
-  currentElement.textContent = "";
-  setCursorPosition(currentElement, 0);
-  vim_info.desired_column = 0;
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeToNextWord = () => {
-  deleteToNextWord();
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeToEndOfLine = () => {
-  deleteToEndOfLine();
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeToBeginningOfLine = () => {
-  deleteToBeginningOfLine();
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeInnerWord = () => {
-  deleteInnerWord();
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const yankAroundWord = async () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getAroundWordBounds(text, currentCursorPosition);
-  const yankedText = text.slice(start, end);
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
   } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
+    console.error("[Vim-Notion] Failed to paste:", err);
   }
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const deleteAroundWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getAroundWordBounds(text, currentCursorPosition);
-  const deletedText = text.slice(start, end);
-
-  // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  const newText = text.slice(0, start) + text.slice(end);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, start);
-  vim_info.desired_column = start;
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const changeAroundWord = () => {
-  deleteAroundWord();
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeInnerBracket = (openChar: string, closeChar: string) => {
-  deleteInnerBracket(openChar, closeChar);
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeAroundBracket = (openChar: string, closeChar: string) => {
-  deleteAroundBracket(openChar, closeChar);
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const yankInnerBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-  const textToYank = text.slice(openIndex + 1, closeIndex);
-  navigator.clipboard.writeText(textToYank);
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const yankAroundBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-  const textToYank = text.slice(openIndex, closeIndex + 1);
-  navigator.clipboard.writeText(textToYank);
-  vim_info.pending_operator = null;
-  updateInfoContainer();
 };
 
 const undo = () => {
@@ -5059,294 +1884,9 @@ const redo = () => {
   }
 };
 
-const visualMoveCursorBackwards = () => {
-  const { vim_info } = window;
+// Visual mode cursor movement and operator functions now imported from visual/helpers
 
-  if (vim_info.desired_column === 0) return;
-
-  vim_info.desired_column--;
-  updateVisualSelection();
-};
-
-const visualMoveCursorForwards = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const lineLength = currentElement.textContent?.length || 0;
-
-  if (vim_info.desired_column >= lineLength) return;
-
-  vim_info.desired_column++;
-  updateVisualSelection();
-};
-
-const visualJumpToNextWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  let pos = vim_info.desired_column;
-
-  // Skip current word (alphanumeric characters)
-  while (pos < text.length && /\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip non-word characters (spaces, punctuation)
-  while (pos < text.length && !/\w/.test(text[pos])) {
-    pos++;
-  }
-
-  vim_info.desired_column = pos;
-  updateVisualSelection();
-};
-
-const visualJumpToPreviousWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-
-  if (vim_info.desired_column === 0) return;
-
-  let pos = vim_info.desired_column - 1;
-
-  // Skip non-word characters (spaces, punctuation) backwards
-  while (pos > 0 && !/\w/.test(text[pos])) {
-    pos--;
-  }
-
-  // Skip current word backwards
-  while (pos > 0 && /\w/.test(text[pos - 1])) {
-    pos--;
-  }
-
-  vim_info.desired_column = pos;
-  updateVisualSelection();
-};
-
-const visualJumpToEndOfWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  let pos = vim_info.desired_column;
-
-  // Always move at least one character forward
-  pos++;
-
-  // Skip non-word characters
-  while (pos < text.length && !/\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip to end of next word
-  while (pos < text.length && /\w/.test(text[pos])) {
-    pos++;
-  }
-
-  pos--; // Move back to last character of the word
-
-  if (pos >= text.length) pos = text.length - 1;
-  if (pos < vim_info.desired_column) pos = vim_info.desired_column; // Don't move backward
-
-  vim_info.desired_column = pos;
-  updateVisualSelection();
-};
-
-const visualJumpToNextWORD = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  let pos = vim_info.desired_column;
-
-  // Skip current WORD (non-whitespace characters)
-  while (pos < text.length && !/\s/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip whitespace
-  while (pos < text.length && /\s/.test(text[pos])) {
-    pos++;
-  }
-
-  vim_info.desired_column = pos;
-  updateVisualSelection();
-};
-
-const visualJumpToPreviousWORD = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-
-  if (vim_info.desired_column === 0) return;
-
-  let pos = vim_info.desired_column - 1;
-
-  // Skip whitespace backwards
-  while (pos > 0 && /\s/.test(text[pos])) {
-    pos--;
-  }
-
-  // Skip current WORD backwards
-  while (pos > 0 && !/\s/.test(text[pos - 1])) {
-    pos--;
-  }
-
-  vim_info.desired_column = pos;
-  updateVisualSelection();
-};
-
-const visualJumpToEndOfWORD = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  let pos = vim_info.desired_column;
-
-  // Always move at least one character forward
-  pos++;
-
-  // Skip whitespace
-  while (pos < text.length && /\s/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip to end of next WORD
-  while (pos < text.length && !/\s/.test(text[pos])) {
-    pos++;
-  }
-
-  pos--; // Move back to last character of the WORD
-
-  if (pos >= text.length) pos = text.length - 1;
-  if (pos < vim_info.desired_column) pos = vim_info.desired_column; // Don't move backward
-
-  vim_info.desired_column = pos;
-  updateVisualSelection();
-};
-
-const visualJumpToBeginningOfLine = () => {
-  const { vim_info } = window;
-  vim_info.desired_column = 0;
-  updateVisualSelection();
-};
-
-const visualJumpToEndOfLine = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const lineLength = currentElement.textContent?.length || 0;
-  vim_info.desired_column = lineLength;
-  updateVisualSelection();
-};
-
-const deleteVisualSelection = () => {
-  const { vim_info } = window;
-
-  if (vim_info.active_line !== vim_info.visual_start_line) {
-    // Don't support multi-line delete yet
-    return;
-  }
-
-  // The selection is already set by updateVisualSelection
-  // Use 'cut' to copy to clipboard like vim's 'd' command
-  document.execCommand("cut");
-
-  vim_info.mode = "normal";
-  window.getSelection()?.removeAllRanges();
-  updateInfoContainer();
-};
-
-// Helper function to check if an element is inside a code block
-const isInsideCodeBlock = (element: Element): boolean => {
-  // Notion code blocks typically have a specific structure
-  // Check if the element or its parents have code-related selectors
-  const codeContainer =
-    element.closest('[class*="code"]') ||
-    element.closest("code") ||
-    element.closest("pre");
-  const isCodeBlock = !!codeContainer;
-
-  return isCodeBlock;
-};
-
-// Helper function to get all contenteditable lines within the same code block
-const getCodeBlockLines = (element: Element): Element[] => {
-  const codeContainer =
-    element.closest('[class*="code"]') || element.closest("[data-block-id]");
-  if (!codeContainer) return [];
-
-  return Array.from(codeContainer.querySelectorAll('[contenteditable="true"]'));
-};
-
-const getCursorIndexInElement = (element: Element): number => {
-  const selection = document.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return 0;
-  }
-
-  const range = selection.getRangeAt(0);
-  let i = 0;
-
-  const checkElementNode = (el: Element): boolean => {
-    for (const node of Array.from(el.childNodes)) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        if (checkElementNode(node as Element)) {
-          return true;
-        }
-        continue;
-      }
-      if (node.isSameNode(range.startContainer)) {
-        i += range.startOffset;
-        return true;
-      }
-      i += node.textContent?.length || 0;
-    }
-    return false;
-  };
-
-  checkElementNode(element);
-  return i;
-};
-
-const moveCursorBackwards = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-
-  // If at beginning of line, move to end of previous line
-  if (currentCursorPosition === 0) {
-    if (vim_info.active_line > 0) {
-      setActiveLine(vim_info.active_line - 1);
-      const prevElement = vim_info.lines[vim_info.active_line].element;
-      const prevLineLength = prevElement.textContent?.length || 0;
-      setCursorPosition(prevElement, prevLineLength);
-      vim_info.desired_column = prevLineLength;
-    }
-    return;
-  }
-
-  const newPosition = currentCursorPosition - 1;
-  setCursorPosition(currentElement, newPosition);
-  vim_info.desired_column = newPosition; // Remember this column
-};
-
-const moveCursorForwards = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const lineLength = currentElement.textContent?.length || 0;
-
-  // If at end of line, move to next line
-  if (currentCursorPosition >= lineLength) {
-    if (vim_info.active_line < vim_info.lines.length - 1) {
-      setActiveLine(vim_info.active_line + 1);
-      const nextElement = vim_info.lines[vim_info.active_line].element;
-      setCursorPosition(nextElement, 0);
-      vim_info.desired_column = 0;
-    }
-    return;
-  }
-
-  const newPosition = currentCursorPosition + 1;
-  setCursorPosition(currentElement, newPosition);
-  vim_info.desired_column = newPosition; // Remember this column
-};
+// Notion DOM helper functions now imported from notion module
 
 const handlePendingOperator = (key: string): boolean => {
   const { vim_info } = window;
@@ -5386,7 +1926,7 @@ const handlePendingOperator = (key: string): boolean => {
         // Save cursor position before entering link hint mode
         // (so we can restore it when navigating back)
         saveCursorPosition();
-        enterLinkHintMode();
+        enterLinkHintMode(updateInfoContainer);
         return true;
       default:
         return true;
@@ -5826,7 +2366,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         e.preventDefault();
         e.stopPropagation();
         clearAllLinkHighlights();
-        selectedLinkIndex = (selectedLinkIndex + 1) % availableLinks.length;
+        setSelectedLinkIndex((selectedLinkIndex + 1) % availableLinks.length);
         highlightSelectedLink();
         return true;
 
@@ -5834,9 +2374,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         e.preventDefault();
         e.stopPropagation();
         clearAllLinkHighlights();
-        selectedLinkIndex =
+        setSelectedLinkIndex(
           (selectedLinkIndex - 1 + availableLinks.length) %
-          availableLinks.length;
+            availableLinks.length,
+        );
         highlightSelectedLink();
         return true;
 
@@ -5950,7 +2491,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
             range.selectNodeContents(editableElement);
             const sel = window.getSelection();
             sel?.removeAllRanges();
-            sel?.addRange(range);
+            safeAddRange(sel, range);
 
             editableElement.focus();
 
@@ -6096,7 +2637,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         vim_info.lines[active_line] &&
         isInsideCodeBlock(vim_info.lines[active_line].element)
       ) {
-        openLineBelowInCodeBlock();
+        openLineBelowInCodeBlockWrapped();
         return true;
       }
       openLineBelow();
@@ -6107,7 +2648,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         vim_info.lines[active_line] &&
         isInsideCodeBlock(vim_info.lines[active_line].element)
       ) {
-        openLineAboveInCodeBlock();
+        openLineAboveInCodeBlockWrapped();
         return true;
       }
       openLineAbove();
@@ -6238,7 +2779,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
             // Use navigateToLink to handle all link types consistently
             // Shift+Enter opens in new tab
-            navigateToLink(closestLink, e.shiftKey);
+            navigateToLink(closestLink, e.shiftKey, updateInfoContainer);
 
             // For block links, update cursor position after navigation
             const linkPageId = extractPageId(closestLink.href);
@@ -6355,9 +2896,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
           }
 
           // Enter selection mode
-          linkSelectionMode = true;
-          availableLinks = allNotionLinks.map((item) => item.link);
-          selectedLinkIndex = closestIndex;
+          setLinkSelectionMode(true);
+          setAvailableLinks(allNotionLinks.map((item) => item.link));
+          setSelectedLinkIndex(closestIndex);
           highlightSelectedLink();
           return true;
         }
@@ -6562,292 +3103,163 @@ const getFirstVisibleLine = (): number => {
   return vim_info.active_line; // Fallback to current line if none found
 };
 
-// Find the actual scrollable element in Notion's DOM
-const findScrollableContainer = (): HTMLElement => {
-  // The main content scroller is inside .notion-frame
-  // We need to find the scroller that contains our editable elements
-  const { vim_info } = window;
+// setActiveLine now imported from core module
 
-  // Get the current active element to find its scroll container
-  const activeElement = vim_info.lines[vim_info.active_line]?.element;
+// refreshLines created via factory below after handleKeydown and handleClick are defined
 
-  if (activeElement) {
-    // Walk up the DOM tree to find the scrollable container
-    let parent = activeElement.parentElement;
-    while (parent) {
-      if (
-        parent.classList.contains("notion-scroller") &&
-        parent.scrollHeight > parent.clientHeight
-      ) {
-        return parent;
-      }
-      parent = parent.parentElement;
-    }
-  }
+// Create refreshLines and setLines using factories (must be after handleKeydown and handleClick are defined)
+const refreshLines = createRefreshLines({ handleKeydown, handleClick });
+const setLines = createSetLines({ handleKeydown, handleClick }, refreshLines);
 
-  // Fallback: find .notion-scroller within .notion-frame (not in sidebar)
-  const frame = document.querySelector(".notion-frame");
-  if (frame) {
-    const scroller = frame.querySelector(".notion-scroller") as HTMLElement;
-    if (scroller && scroller.scrollHeight > scroller.clientHeight) {
-      return scroller;
-    }
-  }
+// Create paragraph operators using factory
+const {
+  yankInnerParagraph,
+  yankAroundParagraph,
+  deleteInnerParagraph,
+  deleteAroundParagraph,
+  changeInnerParagraph,
+  changeAroundParagraph,
+} = createParagraphOperators({
+  updateInfoContainer,
+  refreshLines,
+  setActiveLine,
+});
 
-  return document.documentElement;
+// Create word operators using factory
+const {
+  yankInnerWord,
+  yankAroundWord,
+  deleteInnerWord,
+  deleteAroundWord,
+  changeInnerWord,
+  changeAroundWord,
+} = createWordOperators({ updateInfoContainer });
+
+// Create bracket operators using factory
+const {
+  yankInnerBracket,
+  yankAroundBracket,
+  deleteInnerBracket,
+  deleteAroundBracket,
+  changeInnerBracket,
+  changeAroundBracket,
+} = createBracketOperators({ updateInfoContainer });
+
+// Create motion yank operators using factory
+const yankCurrentLine = createYankCurrentLine();
+const yankToNextWord = createYankToNextWord();
+const yankToEndOfLine = createYankToEndOfLine();
+const yankToBeginningOfLine = createYankToBeginningOfLine();
+const yankToPreviousParagraph = createYankToPreviousParagraph();
+const yankToNextParagraph = createYankToNextParagraph();
+
+// Create motion delete operators using factory
+const deleteCurrentLine = createDeleteCurrentLine({
+  refreshLines,
+  updateInfoContainer,
+});
+const deleteToNextWord = createDeleteToNextWord();
+const deleteToEndOfLine = createDeleteToEndOfLine();
+const deleteToBeginningOfLine = createDeleteToBeginningOfLine();
+const deleteToPreviousParagraph = createDeleteToPreviousParagraph({
+  refreshLines,
+  updateInfoContainer,
+});
+const deleteToNextParagraph = createDeleteToNextParagraph({
+  refreshLines,
+  updateInfoContainer,
+});
+const deleteFindCharForward = createDeleteFindCharForward({
+  updateInfoContainer,
+});
+const deleteFindCharBackward = createDeleteFindCharBackward({
+  updateInfoContainer,
+});
+const deleteTillCharForward = createDeleteTillCharForward({
+  updateInfoContainer,
+});
+const deleteTillCharBackward = createDeleteTillCharBackward({
+  updateInfoContainer,
+});
+
+// Create motion change operators using factory (these depend on delete operators)
+const changeCurrentLine = createChangeCurrentLine({ updateInfoContainer });
+const changeToNextWord = createChangeToNextWord({
+  deleteToNextWord,
+  updateInfoContainer,
+});
+const changeToEndOfLine = createChangeToEndOfLine({
+  deleteToEndOfLine,
+  updateInfoContainer,
+});
+const changeToBeginningOfLine = createChangeToBeginningOfLine({
+  deleteToBeginningOfLine,
+  updateInfoContainer,
+});
+const changeToPreviousParagraph = createChangeToPreviousParagraph({
+  refreshLines,
+  updateInfoContainer,
+});
+const changeToNextParagraph = createChangeToNextParagraph({
+  refreshLines,
+  updateInfoContainer,
+});
+const changeFindCharForward = createChangeFindCharForward({
+  deleteFindCharForward,
+  updateInfoContainer,
+});
+const changeFindCharBackward = createChangeFindCharBackward({
+  deleteFindCharBackward,
+  updateInfoContainer,
+});
+const changeTillCharForward = createChangeTillCharForward({
+  deleteTillCharForward,
+  updateInfoContainer,
+});
+const changeTillCharBackward = createChangeTillCharBackward({
+  deleteTillCharBackward,
+  updateInfoContainer,
+});
+
+// Create navigation wrappers that need access to updateInfoContainer and refreshLines
+const jumpToTop = createJumpToTop(updateInfoContainer);
+const jumpToBottom = createJumpToBottom(refreshLines, updateInfoContainer);
+
+// Create visual mode helpers using factories
+const startVisualMode = createStartVisualMode(updateInfoContainer);
+const visualSelectInnerParagraph = createVisualSelectInnerParagraph(
+  updateVisualLineSelection,
+  updateInfoContainer,
+);
+const visualSelectAroundParagraph = createVisualSelectAroundParagraph(
+  updateVisualLineSelection,
+  updateInfoContainer,
+);
+const deleteVisualSelection = createDeleteVisualSelection(updateInfoContainer);
+const yankVisualSelection = createYankVisualSelection(updateInfoContainer);
+const yankVisualLineSelection =
+  createYankVisualLineSelection(updateInfoContainer);
+
+// Create reducers using factories
+const insertReducer = createInsertReducer({
+  updateInfoContainer,
+  lastInsertKey,
+  lastInsertKeyTime,
+  JK_TIMEOUT_MS,
+  setLastInsertKey,
+  setLastInsertKeyTime,
+});
+const linkHintReducer = createLinkHintReducer({ updateInfoContainer });
+
+// Wrap code block functions to call updateInfoContainer
+const openLineBelowInCodeBlockWrapped = () => {
+  openLineBelowInCodeBlock();
+  updateInfoContainer();
 };
 
-// Scroll by a fraction of the viewport height
-// Cursor position will be automatically updated by scroll event listener
-const scrollAndMoveCursor = (pageAmount: number) => {
-  const scrollContainer = findScrollableContainer();
-  const scrollAmount = window.innerHeight * pageAmount;
-  const currentScroll =
-    scrollContainer === document.documentElement
-      ? window.scrollY
-      : scrollContainer.scrollTop;
-  const newScroll = Math.max(0, currentScroll + scrollAmount);
-
-  // Perform instant scroll on the correct container
-  if (scrollContainer === document.documentElement) {
-    window.scrollTo({
-      top: newScroll,
-      behavior: "auto",
-    });
-  } else {
-    scrollContainer.scrollTo({
-      top: newScroll,
-      behavior: "auto",
-    });
-  }
-  // Note: Cursor position update is handled by scroll event listener
-};
-
-// Jump to top of document (gg)
-const jumpToTop = () => {
-  const { vim_info } = window;
-  const scrollContainer = findScrollableContainer();
-
-  // Scroll to top
-  if (scrollContainer === document.documentElement) {
-    window.scrollTo({
-      top: 0,
-      behavior: "auto",
-    });
-  } else {
-    scrollContainer.scrollTo({
-      top: 0,
-      behavior: "auto",
-    });
-  }
-
-  // Explicitly set cursor to first line (don't rely on scroll event listener)
-  setTimeout(() => {
-    vim_info.active_line = 0;
-    vim_info.desired_column = 0;
-
-    const targetElement = vim_info.lines[0]?.element;
-    if (targetElement) {
-      setCursorPosition(targetElement, 0);
-      targetElement.focus({ preventScroll: true });
-      updateBlockCursor();
-      updateInfoContainer();
-    }
-  }, 10);
-};
-
-// Jump to bottom of document (G)
-const jumpToBottom = () => {
-  const { vim_info } = window;
-  const scrollContainer = findScrollableContainer();
-
-  // Scroll to bottom
-  const maxScroll =
-    scrollContainer === document.documentElement
-      ? document.documentElement.scrollHeight - window.innerHeight
-      : scrollContainer.scrollHeight - scrollContainer.clientHeight;
-
-  if (scrollContainer === document.documentElement) {
-    window.scrollTo({
-      top: maxScroll,
-      behavior: "auto",
-    });
-  } else {
-    scrollContainer.scrollTo({
-      top: maxScroll,
-      behavior: "auto",
-    });
-  }
-
-  // Explicitly set cursor to last line (don't rely on scroll event listener)
-  setTimeout(() => {
-    refreshLines();
-    const lastLine = vim_info.lines.length - 1;
-    vim_info.active_line = lastLine;
-    vim_info.desired_column = 0;
-
-    const targetElement = vim_info.lines[lastLine]?.element;
-    if (targetElement) {
-      setCursorPosition(targetElement, 0);
-      targetElement.focus({ preventScroll: true });
-      updateBlockCursor();
-      updateInfoContainer();
-    }
-  }, 10);
-};
-
-const setActiveLine = (idx: number) => {
-  const {
-    vim_info: { lines, desired_column },
-  } = window;
-  let i = idx;
-
-  if (idx >= lines.length) i = lines.length - 1;
-  if (i < 0) i = 0;
-
-  const previousActiveLine = window.vim_info.active_line;
-  window.vim_info.active_line = i;
-
-  const targetElement = lines[i].element;
-
-  // Check if we're inside a code block
-  const inCodeBlock = isInsideCodeBlock(targetElement);
-
-  // For code blocks, avoid .click() as it triggers Notion's internal logic
-  // that can cause cursor to jump outside the block
-  if (inCodeBlock) {
-    // Only use setCursorPosition() for code blocks - no click or focus
-    // Don't call focus() or click() - just set cursor position directly
-
-    // For code blocks, we need to position the cursor on the correct line
-    // If moving up (idx < previous active_line), go to the last line of the code block
-    // If moving down (idx > previous active_line), go to the first line
-    const text = targetElement.textContent || "";
-    const lines = text.split("\n");
-    const movingUp = i < previousActiveLine;
-
-    let cursorPosition = 0;
-    if (movingUp) {
-      // Moving up: go to the last line
-      for (let j = 0; j < lines.length - 1; j++) {
-        cursorPosition += lines[j].length + 1; // +1 for newline
-      }
-      // Add desired column on the last line
-      const lastLineLength = lines[lines.length - 1].length;
-      cursorPosition += Math.min(desired_column, lastLineLength);
-    } else {
-      // Moving down: go to the first line at desired column
-      const firstLineLength = lines[0].length;
-      cursorPosition = Math.min(desired_column, firstLineLength);
-    }
-
-    setCursorPosition(targetElement, cursorPosition);
-  } else {
-    // For normal blocks, use click() and focus() with preventScroll to avoid unwanted page jumps
-    targetElement.click();
-    targetElement.focus({ preventScroll: true });
-
-    // Set cursor to desired column, or end of line if line is shorter
-    const lineLength = targetElement.textContent?.length || 0;
-    const targetColumn = Math.min(desired_column, lineLength);
-    setCursorPosition(targetElement, targetColumn);
-  }
-};
-
-const refreshLines = () => {
-  const { vim_info } = window;
-  const allEditableElements = Array.from(
-    document.querySelectorAll("[contenteditable=true]"),
-  ) as HTMLDivElement[];
-
-  // Store the current active element to find its new index later
-  const currentActiveElement = vim_info.lines[vim_info.active_line]?.element;
-
-  // Find new elements that aren't in our lines array yet
-  const existingElements = new Set(vim_info.lines.map((line) => line.element));
-  const newElements = allEditableElements.filter(
-    (elem) => !existingElements.has(elem),
-  );
-
-  if (newElements.length > 0) {
-    // Add event listeners to new elements
-    newElements.forEach((elem) => {
-      elem.addEventListener("keydown", handleKeydown, true);
-      elem.addEventListener("click", handleClick, true);
-    });
-  }
-
-  // Rebuild lines array in DOM order
-  vim_info.lines = allEditableElements.map((elem) => ({
-    cursor_position: 0,
-    element: elem,
-  }));
-
-  // Update active line index to match the current active element
-  if (currentActiveElement) {
-    const newIndex = vim_info.lines.findIndex(
-      (line) => line.element === currentActiveElement,
-    );
-    if (newIndex !== -1) {
-      vim_info.active_line = newIndex;
-    }
-  }
-};
-
-const setLines = (f: HTMLDivElement[]) => {
-  const { vim_info } = window;
-
-  vim_info.lines = f.map((elem) => ({
-    cursor_position: 0,
-    element: elem as HTMLDivElement,
-  }));
-
-  // Set initial active line to 0 BEFORE adding event listeners
-  // (to prevent Notion's auto-focus from changing it)
-  setActiveLine(0);
-
-  // Add event listeners to ALL lines at once
-  vim_info.lines.forEach((line) => {
-    line.element.addEventListener("keydown", handleKeydown, true);
-    line.element.addEventListener("click", handleClick, true);
-  });
-
-  // Set up MutationObserver to detect new lines
-  const observer = new MutationObserver(() => {
-    refreshLines();
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
-};
-
-const updateInfoContainer = () => {
-  const mode = document.querySelector(".vim-mode") as HTMLDivElement;
-  const { vim_info } = window;
-  mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}`;
-
-  // Update body class for cursor styling
-  document.body.classList.remove(
-    "vim-normal-mode",
-    "vim-insert-mode",
-    "vim-visual-mode",
-    "vim-visual-line-mode",
-  );
-
-  if (vim_info.mode === "normal") {
-    document.body.classList.add("vim-normal-mode");
-  } else if (vim_info.mode === "visual") {
-    document.body.classList.add("vim-visual-mode");
-  } else if (vim_info.mode === "visual-line") {
-    document.body.classList.add("vim-visual-line-mode");
-  } else {
-    document.body.classList.add("vim-insert-mode");
-  }
-
-  // Update block cursor position
-  updateBlockCursor();
+const openLineAboveInCodeBlockWrapped = () => {
+  openLineAboveInCodeBlock();
+  updateInfoContainer();
 };
 
 (() => {

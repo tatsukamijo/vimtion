@@ -2,11 +2,11 @@
 // Shows a toast notification when the extension is updated
 
 const NOTIFICATION_DURATION = 10000; // 10 seconds
-const GITHUB_RELEASE_URL = 'https://github.com/tatsukamijo/vimtion/releases';
+const GITHUB_RELEASE_URL = "https://github.com/tatsukamijo/vimtion/releases";
 
 // Check if we should show the Vimium warning notification
 function checkAndShowVimiumWarning() {
-  chrome.storage.local.get(['vimtion_show_vimium_warning'], (result) => {
+  chrome.storage.local.get(["vimtion_show_vimium_warning"], (result) => {
     if (result.vimtion_show_vimium_warning) {
       showVimiumWarning();
       // Mark notification as shown
@@ -17,19 +17,22 @@ function checkAndShowVimiumWarning() {
 
 // Check if we should show the update notification
 function checkAndShowUpdateNotification() {
-  chrome.storage.local.get(['vimtion_show_update_notification', 'vimtion_version'], (result) => {
-    if (result.vimtion_show_update_notification) {
-      showUpdateNotification(result.vimtion_version);
-      // Mark notification as shown
-      chrome.storage.local.set({ vimtion_show_update_notification: false });
-    }
-  });
+  chrome.storage.local.get(
+    ["vimtion_show_update_notification", "vimtion_version"],
+    (result) => {
+      if (result.vimtion_show_update_notification) {
+        showUpdateNotification(result.vimtion_version);
+        // Mark notification as shown
+        chrome.storage.local.set({ vimtion_show_update_notification: false });
+      }
+    },
+  );
 }
 
 // Create and show the update notification
 function showUpdateNotification(version: string) {
   // Check if notification already exists
-  if (document.querySelector('.vimtion-update-notification')) {
+  if (document.querySelector(".vimtion-update-notification")) {
     return;
   }
 
@@ -38,7 +41,7 @@ function showUpdateNotification(version: string) {
 
   // Trigger animation
   setTimeout(() => {
-    notification.classList.add('vimtion-notification-visible');
+    notification.classList.add("vimtion-notification-visible");
   }, 10);
 
   // Auto-dismiss after duration
@@ -47,25 +50,29 @@ function showUpdateNotification(version: string) {
   }, NOTIFICATION_DURATION);
 
   // Setup event listeners
-  const dismissBtn = notification.querySelector('.vimtion-notification-dismiss');
-  const whatsNewBtn = notification.querySelector('.vimtion-notification-whats-new');
+  const dismissBtn = notification.querySelector(
+    ".vimtion-notification-dismiss",
+  );
+  const whatsNewBtn = notification.querySelector(
+    ".vimtion-notification-whats-new",
+  );
 
-  dismissBtn?.addEventListener('click', () => {
+  dismissBtn?.addEventListener("click", () => {
     clearTimeout(autoDismissTimeout);
     dismissNotification(notification);
   });
 
-  whatsNewBtn?.addEventListener('click', () => {
+  whatsNewBtn?.addEventListener("click", () => {
     clearTimeout(autoDismissTimeout);
-    window.open(GITHUB_RELEASE_URL, '_blank');
+    window.open(GITHUB_RELEASE_URL, "_blank");
     dismissNotification(notification);
   });
 }
 
 // Create the notification DOM element
 function createNotificationElement(version: string): HTMLElement {
-  const notification = document.createElement('div');
-  notification.className = 'vimtion-update-notification';
+  const notification = document.createElement("div");
+  notification.className = "vimtion-update-notification";
 
   notification.innerHTML = `
     <div class="vimtion-notification-header">
@@ -90,13 +97,13 @@ function createNotificationElement(version: string): HTMLElement {
 // Create and show the Vimium warning notification
 function showVimiumWarning() {
   // Check if notification already exists
-  if (document.querySelector('.vimtion-vimium-warning')) {
+  if (document.querySelector(".vimtion-vimium-warning")) {
     return;
   }
 
   // Create overlay
-  const overlay = document.createElement('div');
-  overlay.className = 'vimtion-notification-overlay';
+  const overlay = document.createElement("div");
+  overlay.className = "vimtion-notification-overlay";
   document.body.appendChild(overlay);
 
   const notification = createVimiumWarningElement();
@@ -104,19 +111,21 @@ function showVimiumWarning() {
 
   // Trigger animation
   setTimeout(() => {
-    overlay.classList.add('vimtion-notification-overlay-visible');
-    notification.classList.add('vimtion-notification-visible');
+    overlay.classList.add("vimtion-notification-overlay-visible");
+    notification.classList.add("vimtion-notification-visible");
   }, 10);
 
   // Setup event listeners (no auto-dismiss for important warning)
-  const dismissBtn = notification.querySelector('.vimtion-notification-dismiss');
-  const gotItBtn = notification.querySelector('.vimtion-notification-got-it');
-  const copyBtn = notification.querySelector('.vimtion-notification-copy');
+  const dismissBtn = notification.querySelector(
+    ".vimtion-notification-dismiss",
+  );
+  const gotItBtn = notification.querySelector(".vimtion-notification-got-it");
+  const copyBtn = notification.querySelector(".vimtion-notification-copy");
 
   const dismissWithOverlay = () => {
-    const overlay = document.querySelector('.vimtion-notification-overlay');
+    const overlay = document.querySelector(".vimtion-notification-overlay");
     if (overlay) {
-      overlay.classList.remove('vimtion-notification-overlay-visible');
+      overlay.classList.remove("vimtion-notification-overlay-visible");
       setTimeout(() => {
         overlay.remove();
       }, 300);
@@ -124,39 +133,39 @@ function showVimiumWarning() {
     dismissNotification(notification);
   };
 
-  dismissBtn?.addEventListener('click', dismissWithOverlay);
+  dismissBtn?.addEventListener("click", dismissWithOverlay);
 
-  gotItBtn?.addEventListener('click', dismissWithOverlay);
+  gotItBtn?.addEventListener("click", dismissWithOverlay);
 
   // Click overlay to dismiss (optional)
-  overlay?.addEventListener('click', dismissWithOverlay);
+  overlay?.addEventListener("click", dismissWithOverlay);
 
-  copyBtn?.addEventListener('click', async () => {
-    const url = 'https://www.notion.so/*';
+  copyBtn?.addEventListener("click", async () => {
+    const url = "https://www.notion.so/*";
     try {
       await navigator.clipboard.writeText(url);
       // Show visual feedback
-      const svg = copyBtn.querySelector('svg');
+      const svg = copyBtn.querySelector("svg");
       if (svg) {
         const originalHTML = svg.innerHTML;
         // Change to checkmark icon
         svg.innerHTML = '<path d="M20 6L9 17l-5-5"></path>';
-        svg.setAttribute('stroke-width', '3');
+        svg.setAttribute("stroke-width", "3");
         setTimeout(() => {
           svg.innerHTML = originalHTML;
-          svg.setAttribute('stroke-width', '2');
+          svg.setAttribute("stroke-width", "2");
         }, 1500);
       }
     } catch (err) {
-      console.error('Failed to copy URL:', err);
+      console.error("Failed to copy URL:", err);
     }
   });
 }
 
 // Create the Vimium warning DOM element
 function createVimiumWarningElement(): HTMLElement {
-  const notification = document.createElement('div');
-  notification.className = 'vimtion-update-notification vimtion-vimium-warning';
+  const notification = document.createElement("div");
+  notification.className = "vimtion-update-notification vimtion-vimium-warning";
 
   notification.innerHTML = `
     <div class="vimtion-notification-header">
@@ -189,8 +198,8 @@ function createVimiumWarningElement(): HTMLElement {
 
 // Dismiss the notification with animation
 function dismissNotification(notification: HTMLElement) {
-  notification.classList.remove('vimtion-notification-visible');
-  notification.classList.add('vimtion-notification-hidden');
+  notification.classList.remove("vimtion-notification-visible");
+  notification.classList.add("vimtion-notification-hidden");
 
   // Remove from DOM after animation completes
   setTimeout(() => {
@@ -199,10 +208,10 @@ function dismissNotification(notification: HTMLElement) {
 }
 
 // Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    checkAndShowVimiumWarning();  // Check Vimium warning first (first install)
-    checkAndShowUpdateNotification();  // Then check update notification
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => {
+    checkAndShowVimiumWarning(); // Check Vimium warning first (first install)
+    checkAndShowUpdateNotification(); // Then check update notification
   });
 } else {
   // DOM is already ready
