@@ -5,6 +5,7 @@
 
 import { getInnerParagraphBounds, getAroundParagraphBounds } from "./helpers";
 import { deleteNormalBlockWithKeyboardEvents } from "../core";
+import { setCursorPosition } from "../cursor";
 
 /**
  * Dependencies injected from vim.ts
@@ -232,11 +233,11 @@ export const createParagraphOperators = (deps: OperatorDeps) => {
       const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
       if (vim_info.lines.length > 0) {
         const element = vim_info.lines[newActiveLine].element;
+        element.textContent = "";
+        setCursorPosition(element, 0);
         element.focus();
-        element.click();
         vim_info.active_line = newActiveLine;
       }
-
       vim_info.pending_operator = null;
       updateInfoContainer();
     }, currentDelay + 100);
@@ -279,21 +280,51 @@ export const createParagraphOperators = (deps: OperatorDeps) => {
       currentDelay += 50;
     }
 
-    // After deletion, create a new empty line and enter insert mode
+    // After deletion, position cursor at the deleted paragraph location
     setTimeout(() => {
       refreshLines();
 
-      // Position cursor at the line where the paragraph was
+      // Insert a new empty line at the position where the paragraph was
       const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
       if (vim_info.lines.length > 0) {
         const element = vim_info.lines[newActiveLine].element;
-        element.focus();
-        element.click();
-        vim_info.active_line = newActiveLine;
-      }
 
-      vim_info.pending_operator = null;
-      updateInfoContainer();
+        // Create a new line before the current line by pressing Enter at the end of the previous line
+        if (newActiveLine > 0) {
+          const prevElement = vim_info.lines[newActiveLine - 1].element;
+          const textContent = prevElement.textContent || "";
+          setCursorPosition(prevElement, textContent.length);
+          prevElement.focus();
+
+          // Press Enter to create a new line
+          const enterEvent = new KeyboardEvent("keydown", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+          });
+          prevElement.dispatchEvent(enterEvent);
+
+          setTimeout(() => {
+            refreshLines();
+            vim_info.active_line = newActiveLine;
+            vim_info.pending_operator = null;
+            updateInfoContainer();
+          }, 100);
+        } else {
+          // If at the beginning, just focus the first line
+          setCursorPosition(element, 0);
+          element.focus();
+          vim_info.active_line = newActiveLine;
+          vim_info.pending_operator = null;
+          updateInfoContainer();
+        }
+      } else {
+        vim_info.pending_operator = null;
+        updateInfoContainer();
+      }
     }, currentDelay + 100);
   };
 

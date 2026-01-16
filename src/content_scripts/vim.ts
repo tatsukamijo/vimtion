@@ -88,7 +88,13 @@ import {
 } from "./navigation";
 
 // Import operator helpers and factories
-import { getInnerParagraphBounds, getAroundParagraphBounds, createParagraphOperators } from "./operators";
+import {
+  getInnerParagraphBounds,
+  getAroundParagraphBounds,
+  createParagraphOperators,
+  createWordOperators,
+  createBracketOperators,
+} from "./operators";
 import type { OperatorDeps } from "./operators";
 
 // Import UI functions
@@ -140,301 +146,8 @@ const getBlockType = (element: HTMLElement): string => {
   return "text"; // Default to text block
 };
 
-// Paragraph bounds functions now imported from operators/helpers module
-
-// Yank inner paragraph (excludes blank lines)
-const yankInnerParagraph = async (): Promise<void> => {
-  const bounds = getInnerParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-  const lines: string[] = [];
-
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-
-  const yankedText = lines.join("\n");
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-// Yank around paragraph (includes surrounding blank lines)
-const yankAroundParagraph = async (): Promise<void> => {
-  const bounds = getAroundParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-  const lines: string[] = [];
-
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-
-  const yankedText = lines.join("\n");
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-// Delete inner paragraph
-const deleteInnerParagraph = (): void => {
-  const bounds = getInnerParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-  const clipboardText = lines.join("\n");
-
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // Switch to insert mode temporarily
-  vim_info.mode = "insert";
-
-  // Delete all blocks
-  let currentDelay = 10;
-  for (let i = endLine; i >= startLine; i--) {
-    const element = vim_info.lines[i].element;
-    deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-    currentDelay += 50;
-  }
-
-  // Return to normal mode after deletion
-  setTimeout(() => {
-    vim_info.mode = "normal";
-    refreshLines();
-
-    const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
-    if (vim_info.lines.length > 0) {
-      setActiveLine(newActiveLine);
-    }
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-  }, currentDelay + 100);
-};
-
-// Delete around paragraph
-const deleteAroundParagraph = (): void => {
-  const bounds = getAroundParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-  const clipboardText = lines.join("\n");
-
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // Switch to insert mode temporarily
-  vim_info.mode = "insert";
-
-  // Delete all blocks
-  let currentDelay = 10;
-  for (let i = endLine; i >= startLine; i--) {
-    const element = vim_info.lines[i].element;
-    deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-    currentDelay += 50;
-  }
-
-  // Return to normal mode after deletion
-  setTimeout(() => {
-    vim_info.mode = "normal";
-    refreshLines();
-
-    const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
-    if (vim_info.lines.length > 0) {
-      setActiveLine(newActiveLine);
-    }
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-  }, currentDelay + 100);
-};
-
-// Change inner paragraph
-const changeInnerParagraph = (): void => {
-  const bounds = getInnerParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-  const clipboardText = lines.join("\n");
-
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // Switch to insert mode
-  vim_info.mode = "insert";
-
-  // Delete all blocks including the first one
-  let currentDelay = 10;
-  for (let i = endLine; i >= startLine; i--) {
-    const element = vim_info.lines[i].element;
-    deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-    currentDelay += 50;
-  }
-
-  // After deletion, create a new empty line and enter insert mode
-  setTimeout(() => {
-    refreshLines();
-
-    // Position cursor at the line where the paragraph was
-    const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
-    if (vim_info.lines.length > 0) {
-      const element = vim_info.lines[newActiveLine].element;
-      element.textContent = "";
-      setCursorPosition(element, 0);
-      element.focus();
-      vim_info.active_line = newActiveLine;
-    }
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-  }, currentDelay + 100);
-};
-
-// Change around paragraph
-const changeAroundParagraph = (): void => {
-  const bounds = getAroundParagraphBounds();
-  if (!bounds) {
-    const { vim_info } = window;
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const { vim_info } = window;
-  const { startLine, endLine } = bounds;
-
-  // Collect text for clipboard
-  const lines: string[] = [];
-  for (let i = startLine; i <= endLine; i++) {
-    lines.push(vim_info.lines[i].element.textContent || "");
-  }
-  const clipboardText = lines.join("\n");
-
-  navigator.clipboard.writeText(clipboardText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  // Switch to insert mode
-  vim_info.mode = "insert";
-
-  // Delete all blocks including the first one
-  let currentDelay = 10;
-  for (let i = endLine; i >= startLine; i--) {
-    const element = vim_info.lines[i].element;
-    deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-    currentDelay += 50;
-  }
-
-  // After deletion, position cursor at the deleted paragraph location
-  setTimeout(() => {
-    refreshLines();
-
-    // Insert a new empty line at the position where the paragraph was
-    const newActiveLine = Math.max(0, Math.min(startLine, vim_info.lines.length - 1));
-    if (vim_info.lines.length > 0) {
-      const element = vim_info.lines[newActiveLine].element;
-
-      // Create a new line before the current line by pressing Enter at the end of the previous line
-      if (newActiveLine > 0) {
-        const prevElement = vim_info.lines[newActiveLine - 1].element;
-        const textContent = prevElement.textContent || "";
-        setCursorPosition(prevElement, textContent.length);
-        prevElement.focus();
-
-        // Press Enter to create a new line
-        const enterEvent = new KeyboardEvent("keydown", {
-          key: "Enter",
-          code: "Enter",
-          keyCode: 13,
-          which: 13,
-          bubbles: true,
-          cancelable: true,
-        });
-        prevElement.dispatchEvent(enterEvent);
-
-        setTimeout(() => {
-          refreshLines();
-          vim_info.active_line = newActiveLine;
-          vim_info.pending_operator = null;
-          updateInfoContainer();
-        }, 100);
-      } else {
-        // If at the beginning, just focus the first line
-        setCursorPosition(element, 0);
-        element.focus();
-        vim_info.active_line = newActiveLine;
-        vim_info.pending_operator = null;
-        updateInfoContainer();
-      }
-    } else {
-      vim_info.pending_operator = null;
-      updateInfoContainer();
-    }
-  }, currentDelay + 100);
-};
+// Paragraph operators (yank/delete/change × inner/around paragraph) now created via factory below
+// This ensures they have access to updateInfoContainer, refreshLines, and setActiveLine
 
 // Visual select inner paragraph
 const visualSelectInnerParagraph = (): void => {
@@ -2767,24 +2480,7 @@ const changeToNextParagraph = () => {
 };
 
 // Text object bounds functions now imported from text-objects module
-
-const yankInnerWord = async () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getInnerWordBounds(text, currentCursorPosition);
-  const yankedText = text.slice(start, end);
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
+// Word and bracket operators now created via factories (see below)
 
 const deleteCurrentLine = async () => {
   const { vim_info } = window;
@@ -3010,101 +2706,8 @@ const deleteToBeginningOfLine = () => {
   vim_info.desired_column = 0;
 };
 
-const deleteInnerWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getInnerWordBounds(text, currentCursorPosition);
-  const deletedText = text.slice(start, end);
-
-  // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  const newText = text.slice(0, start) + text.slice(end);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, start);
-  vim_info.desired_column = start;
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
 // Helper function to find matching quotes (where open and close are the same)
 // Bracket matching functions now imported from text-objects module
-
-const deleteInnerBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-  const deletedText = text.slice(openIndex + 1, closeIndex);
-
-  // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  const newText = text.slice(0, openIndex + 1) + text.slice(closeIndex);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, openIndex + 1);
-  vim_info.desired_column = openIndex + 1;
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const deleteAroundBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-  const deletedText = text.slice(openIndex, closeIndex + 1);
-
-  // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  const newText = text.slice(0, openIndex) + text.slice(closeIndex + 1);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, openIndex);
-  vim_info.desired_column = openIndex;
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
 
 const deleteFindCharForward = (char: string) => {
   const { vim_info } = window;
@@ -3225,120 +2828,6 @@ const changeToBeginningOfLine = () => {
   updateInfoContainer();
 };
 
-const changeInnerWord = () => {
-  deleteInnerWord();
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const yankAroundWord = async () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getAroundWordBounds(text, currentCursorPosition);
-  const yankedText = text.slice(start, end);
-
-  try {
-    await navigator.clipboard.writeText(yankedText);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const deleteAroundWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  const [start, end] = getAroundWordBounds(text, currentCursorPosition);
-  const deletedText = text.slice(start, end);
-
-  // Copy to clipboard (Vim's delete yanks)
-  navigator.clipboard.writeText(deletedText).catch((err) => {
-    console.error("[Vim-Notion] Failed to copy to clipboard:", err);
-  });
-
-  const newText = text.slice(0, start) + text.slice(end);
-  currentElement.textContent = newText;
-
-  setCursorPosition(currentElement, start);
-  vim_info.desired_column = start;
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const changeAroundWord = () => {
-  deleteAroundWord();
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeInnerBracket = (openChar: string, closeChar: string) => {
-  deleteInnerBracket(openChar, closeChar);
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const changeAroundBracket = (openChar: string, closeChar: string) => {
-  deleteAroundBracket(openChar, closeChar);
-  window.vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const yankInnerBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-  const textToYank = text.slice(openIndex + 1, closeIndex);
-  navigator.clipboard.writeText(textToYank);
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
-
-const yankAroundBracket = (openChar: string, closeChar: string) => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // Use different function for quotes (where open === close)
-  const result =
-    openChar === closeChar
-      ? findMatchingQuotes(text, currentCursorPosition, openChar)
-      : findMatchingBrackets(text, currentCursorPosition, openChar, closeChar);
-
-  if (!result) {
-    vim_info.pending_operator = null;
-    updateInfoContainer();
-    return;
-  }
-
-  const [openIndex, closeIndex] = result;
-  const textToYank = text.slice(openIndex, closeIndex + 1);
-  navigator.clipboard.writeText(textToYank);
-  vim_info.pending_operator = null;
-  updateInfoContainer();
-};
 
 const undo = () => {
   const { vim_info } = window;
@@ -4852,6 +4341,36 @@ const getFirstVisibleLine = (): number => {
 // Create refreshLines and setLines using factories (must be after handleKeydown and handleClick are defined)
 const refreshLines = createRefreshLines({ handleKeydown, handleClick });
 const setLines = createSetLines({ handleKeydown, handleClick }, refreshLines);
+
+// Create paragraph operators using factory
+const {
+  yankInnerParagraph,
+  yankAroundParagraph,
+  deleteInnerParagraph,
+  deleteAroundParagraph,
+  changeInnerParagraph,
+  changeAroundParagraph,
+} = createParagraphOperators({ updateInfoContainer, refreshLines, setActiveLine });
+
+// Create word operators using factory
+const {
+  yankInnerWord,
+  yankAroundWord,
+  deleteInnerWord,
+  deleteAroundWord,
+  changeInnerWord,
+  changeAroundWord,
+} = createWordOperators({ updateInfoContainer });
+
+// Create bracket operators using factory
+const {
+  yankInnerBracket,
+  yankAroundBracket,
+  deleteInnerBracket,
+  deleteAroundBracket,
+  changeInnerBracket,
+  changeAroundBracket,
+} = createBracketOperators({ updateInfoContainer });
 
 // Create navigation wrappers that need access to updateInfoContainer and refreshLines
 const jumpToTop = createJumpToTop(updateInfoContainer);
