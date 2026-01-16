@@ -47,125 +47,43 @@ import {
   setupBeforeUnloadHandler,
 } from "./notion";
 
-// Cursor position storage helpers
-const saveCursorPosition = () => {
-  const { vim_info } = window;
-  // Remove hash from URL to normalize it (block links have hashes)
-  const currentUrl = window.location.href.split("#")[0];
+// Import cursor functions
+import {
+  getCursorIndex,
+  getCursorIndexInElement,
+  setCursorPosition,
+  createBlockCursor,
+  updateBlockCursor,
+  saveCursorPosition,
+  restoreCursorPosition,
+} from "./cursor";
 
-  const currentElement = vim_info.lines[vim_info.active_line]?.element;
+// Import navigation functions
+import {
+  moveCursorBackwards,
+  moveCursorForwards,
+  jumpToLineStart,
+  jumpToLineEnd,
+  jumpToNextWord,
+  jumpToPreviousWord,
+  jumpToEndOfWord,
+  jumpToEndOfWORD,
+  jumpToNextWORD,
+  jumpToPreviousWORD,
+  jumpToPreviousParagraph,
+  jumpToNextParagraph,
+  moveCursorDownInCodeBlock,
+  moveCursorUpInCodeBlock,
+  moveCursorBackwardsInCodeBlock,
+  moveCursorForwardsInCodeBlock,
+  openLineBelowInCodeBlock,
+  openLineAboveInCodeBlock,
+  findScrollableContainer,
+  scrollAndMoveCursor,
+  createJumpToTop,
+  createJumpToBottom,
+} from "./navigation";
 
-  // Try to find block ID from element or its ancestors
-  let blockId = "N/A";
-  let elem = currentElement;
-  while (elem) {
-    const foundId = elem.getAttribute("data-block-id");
-    if (foundId) {
-      blockId = foundId;
-      break;
-    }
-    elem = elem.parentElement;
-  }
-
-  try {
-    // Get existing positions map
-    const savedPositions = sessionStorage.getItem("vimtion_cursor_positions");
-    const positionsMap: Record<string, any> = savedPositions
-      ? JSON.parse(savedPositions)
-      : {};
-
-    // Save position for current URL with block ID
-    positionsMap[currentUrl] = {
-      active_line: vim_info.active_line,
-      cursor_position: vim_info.cursor_position,
-      block_id: blockId !== "N/A" ? blockId : null,
-    };
-
-    sessionStorage.setItem(
-      "vimtion_cursor_positions",
-      JSON.stringify(positionsMap),
-    );
-
-    // Set a flag to indicate this is an intentional navigation (not a reload)
-    // This flag will be checked in reinitializeAfterNavigation
-    sessionStorage.setItem("vimtion_intentional_navigation", "true");
-  } catch (e) {
-    // Ignore storage errors
-  }
-};
-
-const restoreCursorPosition = () => {
-  const currentUrl = window.location.href.split("#")[0];
-
-  try {
-    const savedPositions = sessionStorage.getItem("vimtion_cursor_positions");
-
-    if (savedPositions) {
-      const positionsMap: Record<string, any> = JSON.parse(savedPositions);
-      const data = positionsMap[currentUrl];
-
-      if (data) {
-        const { vim_info } = window;
-
-        // Try to find the element by block ID first (more reliable)
-        let targetLineIndex = data.active_line;
-        if (data.block_id) {
-          const foundIndex = vim_info.lines.findIndex((line) => {
-            let elem = line.element;
-            while (elem) {
-              const foundId = elem.getAttribute("data-block-id");
-              if (foundId === data.block_id) {
-                return true;
-              }
-              elem = elem.parentElement;
-            }
-            return false;
-          });
-
-          if (foundIndex !== -1) {
-            targetLineIndex = foundIndex;
-          }
-        }
-
-        if (targetLineIndex < vim_info.lines.length) {
-          vim_info.active_line = targetLineIndex;
-          vim_info.cursor_position = data.cursor_position;
-
-          const targetElement = vim_info.lines[targetLineIndex]?.element;
-          if (targetElement && document.contains(targetElement)) {
-            // Scroll to the target element first (before Notion does its own scrolling)
-            // Use 'nearest' to avoid creating white space at the bottom
-            targetElement.scrollIntoView({
-              behavior: "auto",
-              block: "nearest",
-            });
-
-            // Then restore cursor position with delay to allow DOM to settle
-            setTimeout(() => {
-              // Re-set cursor position in case Notion moved it during re-render
-              const currentElement =
-                vim_info.lines[vim_info.active_line]?.element;
-              if (currentElement && document.contains(currentElement)) {
-                setCursorPosition(currentElement, vim_info.cursor_position);
-              }
-
-              updateBlockCursor();
-            }, 100);
-          }
-        }
-
-        // Delete the restored position after use
-        delete positionsMap[currentUrl];
-        sessionStorage.setItem(
-          "vimtion_cursor_positions",
-          JSON.stringify(positionsMap),
-        );
-      }
-    }
-  } catch (e) {
-    // Ignore errors
-  }
-};
 // Helper functions for link selection mode
 function highlightSelectedLink() {
   if (
@@ -211,283 +129,6 @@ const createInfoContainer = () => {
   document.body.appendChild(infoContainer);
 };
 
-const createBlockCursor = () => {
-  const cursor = document.createElement("div");
-  cursor.classList.add("vim-block-cursor");
-  cursor.style.display = "none";
-  document.body.appendChild(cursor);
-  return cursor;
-};
-
-const updateBlockCursor = () => {
-  const { vim_info } = window;
-  let blockCursor = document.querySelector(
-    ".vim-block-cursor",
-  ) as HTMLDivElement;
-
-  if (!blockCursor) {
-    blockCursor = createBlockCursor();
-  }
-
-  if (vim_info.mode !== "normal") {
-    blockCursor.style.display = "none";
-    return;
-  }
-
-  // Get current cursor position
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    blockCursor.style.display = "none";
-    return;
-  }
-
-  const range = selection.getRangeAt(0);
-  let rect = range.getBoundingClientRect();
-
-  // For empty lines or lines with only newline, we need special handling
-  if (rect.width === 0 && rect.height === 0) {
-    const currentElement = vim_info.lines[vim_info.active_line]?.element;
-    if (!currentElement) {
-      blockCursor.style.display = "none";
-      return;
-    }
-
-    // Check if inside a code block
-    const inCodeBlock = isInsideCodeBlock(currentElement);
-
-    if (inCodeBlock) {
-      // For code blocks on empty lines, temporarily insert a zero-width space to get the cursor position
-      try {
-        if (
-          range.startContainer &&
-          range.startContainer.nodeType === Node.TEXT_NODE
-        ) {
-          const textNode = range.startContainer as Text;
-          const offset = range.startOffset;
-
-          // Insert a zero-width space temporarily
-          const zws = "\u200B";
-          const originalText = textNode.textContent || "";
-          textNode.textContent =
-            originalText.slice(0, offset) + zws + originalText.slice(offset);
-
-          // Create a range around the zero-width space
-          const tempRange = document.createRange();
-          tempRange.setStart(textNode, offset);
-          tempRange.setEnd(textNode, offset + 1);
-
-          const tempRect = tempRange.getBoundingClientRect();
-
-          // Remove the zero-width space
-          textNode.textContent = originalText;
-
-          // Restore the selection
-          range.setStart(textNode, offset);
-          range.setEnd(textNode, offset);
-
-          // If we got a valid rect, use it
-          if (tempRect.height > 0) {
-            blockCursor.style.display = "block";
-            blockCursor.style.left = `${tempRect.left + window.scrollX}px`;
-            blockCursor.style.top = `${tempRect.top + window.scrollY}px`;
-            blockCursor.style.height = `${tempRect.height}px`;
-            return;
-          }
-        }
-      } catch (e) {
-        // Fall through to default handling
-      }
-    }
-
-    // Default: use element rect (for normal blocks or if code block handling failed)
-    const elementRect = currentElement.getBoundingClientRect();
-    blockCursor.style.display = "block";
-    blockCursor.style.left = `${elementRect.left + window.scrollX}px`;
-    blockCursor.style.top = `${elementRect.top + window.scrollY}px`;
-    blockCursor.style.height = `${elementRect.height || 20}px`;
-    return;
-  }
-
-  // Position the block cursor
-  blockCursor.style.display = "block";
-  blockCursor.style.left = `${rect.left + window.scrollX}px`;
-  blockCursor.style.top = `${rect.top + window.scrollY}px`;
-  blockCursor.style.height = `${rect.height || 20}px`;
-};
-
-const jumpToNextWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  let pos = currentCursorPosition;
-
-  // Skip current word (alphanumeric characters)
-  while (pos < text.length && /\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip non-word characters (spaces, punctuation)
-  while (pos < text.length && !/\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // If we reached end of line, move to next line
-  if (pos >= text.length && vim_info.active_line < vim_info.lines.length - 1) {
-    setActiveLine(vim_info.active_line + 1);
-    const nextElement = vim_info.lines[vim_info.active_line].element;
-    setCursorPosition(nextElement, 0);
-    vim_info.desired_column = 0;
-    return;
-  }
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToPreviousWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  // If at beginning of line, move to end of previous line
-  if (currentCursorPosition === 0) {
-    if (vim_info.active_line > 0) {
-      setActiveLine(vim_info.active_line - 1);
-      const prevElement = vim_info.lines[vim_info.active_line].element;
-      const prevLineLength = prevElement.textContent?.length || 0;
-      setCursorPosition(prevElement, prevLineLength);
-      vim_info.desired_column = prevLineLength;
-    }
-    return;
-  }
-
-  let pos = currentCursorPosition - 1;
-
-  // Skip non-word characters (spaces, punctuation) backwards
-  while (pos > 0 && !/\w/.test(text[pos])) {
-    pos--;
-  }
-
-  // Skip current word backwards
-  while (pos > 0 && /\w/.test(text[pos - 1])) {
-    pos--;
-  }
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToEndOfWord = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  let pos = currentCursorPosition;
-
-  // Always move at least one character forward
-  pos++;
-
-  // Skip non-word characters
-  while (pos < text.length && !/\w/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip to end of next word
-  while (pos < text.length && /\w/.test(text[pos])) {
-    pos++;
-  }
-
-  pos--; // Move back to last character of the word
-
-  if (pos >= text.length) pos = text.length - 1;
-  if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToEndOfWORD = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  let pos = currentCursorPosition;
-
-  // Always move at least one character forward
-  pos++;
-
-  // Skip whitespace
-  while (pos < text.length && /\s/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip to end of next WORD
-  while (pos < text.length && !/\s/.test(text[pos])) {
-    pos++;
-  }
-
-  pos--; // Move back to last character of the WORD
-
-  if (pos >= text.length) pos = text.length - 1;
-  if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToNextWORD = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  let pos = currentCursorPosition;
-
-  // Skip non-whitespace characters
-  while (pos < text.length && !/\s/.test(text[pos])) {
-    pos++;
-  }
-
-  // Skip whitespace
-  while (pos < text.length && /\s/.test(text[pos])) {
-    pos++;
-  }
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-const jumpToPreviousWORD = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
-
-  if (currentCursorPosition === 0) return;
-
-  let pos = currentCursorPosition - 1;
-
-  // Skip whitespace backwards
-  while (pos > 0 && /\s/.test(text[pos])) {
-    pos--;
-  }
-
-  // Skip non-whitespace backwards to find WORD start
-  while (pos > 0 && !/\s/.test(text[pos - 1])) {
-    pos--;
-  }
-
-  setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
-};
-
-// Paragraph navigation helper functions
-
 // Get the block type of an element from its closest [data-block-id] ancestor
 const getBlockType = (element: HTMLElement): string => {
   const blockElement = element.closest("[data-block-id]");
@@ -509,84 +150,6 @@ const getBlockType = (element: HTMLElement): string => {
   if (className.includes("notion-page-block")) return "page";
 
   return "text"; // Default to text block
-};
-
-// Check if a line is a paragraph boundary (empty line)
-// isParagraphBoundary now imported from notion module
-
-// Jump to the beginning of the previous paragraph
-const jumpToPreviousParagraph = (): void => {
-  const { vim_info } = window;
-  let targetLine = vim_info.active_line;
-
-  // If we're on a blank line, skip backward through all consecutive blank lines
-  while (targetLine > 0 && isParagraphBoundary(targetLine)) {
-    targetLine--;
-  }
-
-  // Now skip backward through the previous paragraph content
-  while (targetLine > 0 && !isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-
-  // Now targetLine is at the first line of the previous paragraph
-  // Move up one more to land on the blank line above it (Vim behavior)
-  // But only if there is a blank line above
-  if (targetLine > 0 && isParagraphBoundary(targetLine - 1)) {
-    targetLine--;
-  }
-
-  // Move to target line
-  vim_info.active_line = targetLine;
-  vim_info.cursor_position = 0;
-  vim_info.desired_column = 0;
-
-  const targetElement = vim_info.lines[targetLine].element;
-  setCursorPosition(targetElement, 0);
-};
-
-// Jump to the beginning of the next paragraph
-const jumpToNextParagraph = (): void => {
-  const { vim_info } = window;
-  const maxLine = vim_info.lines.length - 1;
-  let targetLine = vim_info.active_line;
-
-  // If we're on a blank line, skip forward through all consecutive blank lines
-  while (targetLine < maxLine && isParagraphBoundary(targetLine)) {
-    targetLine++;
-  }
-
-  // Now skip forward through the next paragraph content
-  while (
-    targetLine < maxLine &&
-    !isParagraphBoundary(targetLine + 1)
-  ) {
-    targetLine++;
-  }
-
-  // Now targetLine is at the last line of the next paragraph
-  // Move down one more to land on the blank line below it (Vim behavior)
-  // But only if there is a blank line below
-  if (targetLine < maxLine && isParagraphBoundary(targetLine + 1)) {
-    targetLine++;
-  }
-
-  // Move to target line
-  vim_info.active_line = targetLine;
-
-  const targetElement = vim_info.lines[targetLine].element;
-
-  // If at the last line, move cursor to end of line (like Vim)
-  if (targetLine === maxLine) {
-    const lineLength = targetElement.textContent?.length || 0;
-    vim_info.cursor_position = lineLength;
-    vim_info.desired_column = lineLength;
-    setCursorPosition(targetElement, lineLength);
-  } else {
-    vim_info.cursor_position = 0;
-    vim_info.desired_column = 0;
-    setCursorPosition(targetElement, 0);
-  }
 };
 
 // Get bounds for inner paragraph text object (excludes blank lines)
@@ -1004,172 +567,6 @@ const visualSelectAroundParagraph = (): void => {
   updateInfoContainer();
 };
 
-const jumpToLineStart = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-
-  setCursorPosition(currentElement, 0);
-  vim_info.desired_column = 0;
-};
-
-// Move cursor down within a code block (handles multi-line code blocks)
-const moveCursorDownInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Find current line start
-  let lineStart = text.lastIndexOf("\n", currentPos - 1);
-  if (lineStart === -1) lineStart = -1; // Before first character
-
-  // Find current line end (next newline)
-  let lineEnd = text.indexOf("\n", currentPos);
-  if (lineEnd === -1) {
-    // Already on last line of code block, move to next block
-    setActiveLine(vim_info.active_line + 1);
-    return;
-  }
-
-  // Column position in current line
-  const columnInLine = currentPos - lineStart - 1;
-
-  // Next line starts after the newline
-  const nextLineStart = lineEnd + 1;
-
-  // Find next line end
-  let nextLineEnd = text.indexOf("\n", nextLineStart);
-  if (nextLineEnd === -1) nextLineEnd = text.length;
-
-  // Calculate target position in next line
-  const nextLineLength = nextLineEnd - nextLineStart;
-  const targetColumn = Math.min(vim_info.desired_column, nextLineLength);
-  const targetPos = nextLineStart + targetColumn;
-
-  setCursorPosition(currentElement, targetPos);
-};
-
-// Move cursor up within a code block
-const moveCursorUpInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Find current line start
-  let lineStart = text.lastIndexOf("\n", currentPos - 1);
-
-  if (lineStart === -1) {
-    // Already on first line of code block, move to previous block
-    setActiveLine(vim_info.active_line - 1);
-    return;
-  }
-
-  // Find previous line start
-  let prevLineStart = text.lastIndexOf("\n", lineStart - 1);
-  if (prevLineStart === -1) prevLineStart = -1; // Before first character
-
-  // Previous line is between prevLineStart and lineStart
-  const prevLineLength = lineStart - prevLineStart - 1;
-  const targetColumn = Math.min(vim_info.desired_column, prevLineLength);
-  const targetPos = prevLineStart + 1 + targetColumn;
-
-  setCursorPosition(currentElement, targetPos);
-};
-
-// Move cursor left within a code block, wrapping to previous line if at start
-const moveCursorBackwardsInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // If at very beginning of code block, can't go back
-  if (currentPos === 0) {
-    return;
-  }
-
-  // Just move back one character
-  const newPos = currentPos - 1;
-  setCursorPosition(currentElement, newPos);
-  vim_info.desired_column = newPos;
-};
-
-// Move cursor right within a code block, wrapping to next line if at end
-const moveCursorForwardsInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-  const textLength = text.length;
-
-  // If at very end of code block, can't go forward
-  if (currentPos >= textLength) {
-    return;
-  }
-
-  // Just move forward one character
-  const newPos = currentPos + 1;
-  setCursorPosition(currentElement, newPos);
-  vim_info.desired_column = newPos;
-};
-
-// Open line below in code block (o command)
-const openLineBelowInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Find the end of the current line (next \n or end of text)
-  let lineEnd = text.indexOf("\n", currentPos);
-  if (lineEnd === -1) lineEnd = text.length;
-
-  // Move cursor to end of current line
-  setCursorPosition(currentElement, lineEnd);
-
-  // Insert a newline character using execCommand (works better in contenteditable)
-  document.execCommand("insertText", false, "\n");
-
-  // Switch to insert mode
-  vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-// Open line above in code block (O command)
-const openLineAboveInCodeBlock = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const currentPos = getCursorIndexInElement(currentElement);
-
-  // Find the start of the current line (previous \n or start of text)
-  let lineStart = text.lastIndexOf("\n", currentPos - 1);
-  lineStart = lineStart === -1 ? 0 : lineStart + 1;
-
-  // Move cursor to start of current line
-  setCursorPosition(currentElement, lineStart);
-
-  // Insert a newline character
-  document.execCommand("insertText", false, "\n");
-
-  // Move cursor back to the newly created empty line
-  setCursorPosition(currentElement, lineStart);
-
-  // Switch to insert mode
-  vim_info.mode = "insert";
-  updateInfoContainer();
-};
-
-const jumpToLineEnd = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const lineLength = currentElement.textContent?.length || 0;
-
-  setCursorPosition(currentElement, lineLength);
-  vim_info.desired_column = lineLength;
-};
-
 const findCharForward = (char: string) => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -1425,83 +822,10 @@ const getLines = () => {
   return window.vim_info.lines;
 };
 
-const getCursorIndex = () => {
-  const selection = document.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return 0;
-  }
-
-  const range = selection.getRangeAt(0);
-  let i = 0;
-
-  const checkElementNode = (element: Element) => {
-    for (const node of Array.from(element.childNodes)) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        if (checkElementNode(node as Element)) {
-          break;
-        } else {
-          continue;
-        }
-      }
-      if (node.isSameNode(range.startContainer)) {
-        i += range.startOffset;
-        return true;
-      }
-      i += node.textContent.length;
-    }
-    return false;
-  };
-
-  checkElementNode(document.activeElement);
-  return i;
-};
-
 const getModeText = (
   mode: "insert" | "normal" | "visual" | "visual-line" | "link-hint",
 ) => {
   return `-- ${mode.toUpperCase()} --`;
-};
-
-const setCursorPosition = (element: Element, index: number) => {
-  const childNodes = Array.from(element.childNodes);
-
-  // Handle empty elements (no child nodes or only empty text)
-  if (childNodes.length === 0 || (element.textContent?.length || 0) === 0) {
-    const range = document.createRange();
-    const selection = window.getSelection();
-
-    // Select the element itself for empty lines
-    range.selectNodeContents(element);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    updateBlockCursor();
-    return;
-  }
-
-  let i = 0;
-  for (const node of childNodes) {
-    const nodeLength = node.textContent?.length || 0;
-    const isInRange = index >= i && index <= i + nodeLength;
-    if (isInRange && node.nodeType === Node.ELEMENT_NODE) {
-      setCursorPosition(node as Element, index - i);
-      break;
-    }
-    if (isInRange) {
-      const range = document.createRange();
-      const selection = window.getSelection();
-
-      // Clamp the offset to be within the node's length
-      const offset = Math.min(index - i, nodeLength);
-      range.setStart(node, offset);
-      range.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      updateBlockCursor();
-      break;
-    }
-    i += nodeLength;
-  }
 };
 
 const handleClick = (e: MouseEvent) => {
@@ -4866,80 +4190,6 @@ const deleteVisualSelection = () => {
 
 // Notion DOM helper functions now imported from notion module
 
-const getCursorIndexInElement = (element: Element): number => {
-  const selection = document.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return 0;
-  }
-
-  const range = selection.getRangeAt(0);
-  let i = 0;
-
-  const checkElementNode = (el: Element): boolean => {
-    for (const node of Array.from(el.childNodes)) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        if (checkElementNode(node as Element)) {
-          return true;
-        }
-        continue;
-      }
-      if (node.isSameNode(range.startContainer)) {
-        i += range.startOffset;
-        return true;
-      }
-      i += node.textContent?.length || 0;
-    }
-    return false;
-  };
-
-  checkElementNode(element);
-  return i;
-};
-
-const moveCursorBackwards = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-
-  // If at beginning of line, move to end of previous line
-  if (currentCursorPosition === 0) {
-    if (vim_info.active_line > 0) {
-      setActiveLine(vim_info.active_line - 1);
-      const prevElement = vim_info.lines[vim_info.active_line].element;
-      const prevLineLength = prevElement.textContent?.length || 0;
-      setCursorPosition(prevElement, prevLineLength);
-      vim_info.desired_column = prevLineLength;
-    }
-    return;
-  }
-
-  const newPosition = currentCursorPosition - 1;
-  setCursorPosition(currentElement, newPosition);
-  vim_info.desired_column = newPosition; // Remember this column
-};
-
-const moveCursorForwards = () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const lineLength = currentElement.textContent?.length || 0;
-
-  // If at end of line, move to next line
-  if (currentCursorPosition >= lineLength) {
-    if (vim_info.active_line < vim_info.lines.length - 1) {
-      setActiveLine(vim_info.active_line + 1);
-      const nextElement = vim_info.lines[vim_info.active_line].element;
-      setCursorPosition(nextElement, 0);
-      vim_info.desired_column = 0;
-    }
-    return;
-  }
-
-  const newPosition = currentCursorPosition + 1;
-  setCursorPosition(currentElement, newPosition);
-  vim_info.desired_column = newPosition; // Remember this column
-};
-
 const handlePendingOperator = (key: string): boolean => {
   const { vim_info } = window;
   const operator = vim_info.pending_operator;
@@ -5689,7 +4939,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         vim_info.lines[active_line] &&
         isInsideCodeBlock(vim_info.lines[active_line].element)
       ) {
-        openLineBelowInCodeBlock();
+        openLineBelowInCodeBlockWrapped();
         return true;
       }
       openLineBelow();
@@ -5700,7 +4950,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         vim_info.lines[active_line] &&
         isInsideCodeBlock(vim_info.lines[active_line].element)
       ) {
-        openLineAboveInCodeBlock();
+        openLineAboveInCodeBlockWrapped();
         return true;
       }
       openLineAbove();
@@ -6156,139 +5406,6 @@ const getFirstVisibleLine = (): number => {
 };
 
 // Find the actual scrollable element in Notion's DOM
-const findScrollableContainer = (): HTMLElement => {
-  // The main content scroller is inside .notion-frame
-  // We need to find the scroller that contains our editable elements
-  const { vim_info } = window;
-
-  // Get the current active element to find its scroll container
-  const activeElement = vim_info.lines[vim_info.active_line]?.element;
-
-  if (activeElement) {
-    // Walk up the DOM tree to find the scrollable container
-    let parent = activeElement.parentElement;
-    while (parent) {
-      if (
-        parent.classList.contains("notion-scroller") &&
-        parent.scrollHeight > parent.clientHeight
-      ) {
-        return parent;
-      }
-      parent = parent.parentElement;
-    }
-  }
-
-  // Fallback: find .notion-scroller within .notion-frame (not in sidebar)
-  const frame = document.querySelector(".notion-frame");
-  if (frame) {
-    const scroller = frame.querySelector(".notion-scroller") as HTMLElement;
-    if (scroller && scroller.scrollHeight > scroller.clientHeight) {
-      return scroller;
-    }
-  }
-
-  return document.documentElement;
-};
-
-// Scroll by a fraction of the viewport height
-// Cursor position will be automatically updated by scroll event listener
-const scrollAndMoveCursor = (pageAmount: number) => {
-  const scrollContainer = findScrollableContainer();
-  const scrollAmount = window.innerHeight * pageAmount;
-  const currentScroll =
-    scrollContainer === document.documentElement
-      ? window.scrollY
-      : scrollContainer.scrollTop;
-  const newScroll = Math.max(0, currentScroll + scrollAmount);
-
-  // Perform instant scroll on the correct container
-  if (scrollContainer === document.documentElement) {
-    window.scrollTo({
-      top: newScroll,
-      behavior: "auto",
-    });
-  } else {
-    scrollContainer.scrollTo({
-      top: newScroll,
-      behavior: "auto",
-    });
-  }
-  // Note: Cursor position update is handled by scroll event listener
-};
-
-// Jump to top of document (gg)
-const jumpToTop = () => {
-  const { vim_info } = window;
-  const scrollContainer = findScrollableContainer();
-
-  // Scroll to top
-  if (scrollContainer === document.documentElement) {
-    window.scrollTo({
-      top: 0,
-      behavior: "auto",
-    });
-  } else {
-    scrollContainer.scrollTo({
-      top: 0,
-      behavior: "auto",
-    });
-  }
-
-  // Explicitly set cursor to first line (don't rely on scroll event listener)
-  setTimeout(() => {
-    vim_info.active_line = 0;
-    vim_info.desired_column = 0;
-
-    const targetElement = vim_info.lines[0]?.element;
-    if (targetElement) {
-      setCursorPosition(targetElement, 0);
-      targetElement.focus({ preventScroll: true });
-      updateBlockCursor();
-      updateInfoContainer();
-    }
-  }, 10);
-};
-
-// Jump to bottom of document (G)
-const jumpToBottom = () => {
-  const { vim_info } = window;
-  const scrollContainer = findScrollableContainer();
-
-  // Scroll to bottom
-  const maxScroll =
-    scrollContainer === document.documentElement
-      ? document.documentElement.scrollHeight - window.innerHeight
-      : scrollContainer.scrollHeight - scrollContainer.clientHeight;
-
-  if (scrollContainer === document.documentElement) {
-    window.scrollTo({
-      top: maxScroll,
-      behavior: "auto",
-    });
-  } else {
-    scrollContainer.scrollTo({
-      top: maxScroll,
-      behavior: "auto",
-    });
-  }
-
-  // Explicitly set cursor to last line (don't rely on scroll event listener)
-  setTimeout(() => {
-    refreshLines();
-    const lastLine = vim_info.lines.length - 1;
-    vim_info.active_line = lastLine;
-    vim_info.desired_column = 0;
-
-    const targetElement = vim_info.lines[lastLine]?.element;
-    if (targetElement) {
-      setCursorPosition(targetElement, 0);
-      targetElement.focus({ preventScroll: true });
-      updateBlockCursor();
-      updateInfoContainer();
-    }
-  }, 10);
-};
-
 const setActiveLine = (idx: number) => {
   const {
     vim_info: { lines, desired_column },
@@ -6441,6 +5558,21 @@ const updateInfoContainer = () => {
 
   // Update block cursor position
   updateBlockCursor();
+};
+
+// Create navigation wrappers that need access to updateInfoContainer and refreshLines
+const jumpToTop = createJumpToTop(updateInfoContainer);
+const jumpToBottom = createJumpToBottom(refreshLines, updateInfoContainer);
+
+// Wrap code block functions to call updateInfoContainer
+const openLineBelowInCodeBlockWrapped = () => {
+  openLineBelowInCodeBlock();
+  updateInfoContainer();
+};
+
+const openLineAboveInCodeBlockWrapped = () => {
+  openLineAboveInCodeBlock();
+  updateInfoContainer();
 };
 
 (() => {
