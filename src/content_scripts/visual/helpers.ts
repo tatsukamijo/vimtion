@@ -568,11 +568,22 @@ export const createYankVisualSelection = (updateInfoContainer: () => void) => {
 export const createYankVisualLineSelection = (
   updateInfoContainer: () => void,
 ) => {
-  return () => {
+  return async () => {
     const { vim_info } = window;
 
-    // Use execCommand('copy') to copy to clipboard without deleting
-    document.execCommand("copy");
+    // Get the selected text from the browser selection
+    const selection = window.getSelection();
+    const selectedText = selection?.toString() || "";
+
+    // Add newline to indicate line-wise yank (Vim behavior)
+    // This ensures paste (p) creates new lines instead of pasting inline
+    try {
+      await navigator.clipboard.writeText(selectedText + "\n");
+    } catch (err) {
+      console.error("[Vim-Notion] Failed to yank visual line selection:", err);
+      // Fallback to execCommand if clipboard API fails
+      document.execCommand("copy");
+    }
 
     // Clear background highlights from all elements
     clearAllBackgroundColors();
