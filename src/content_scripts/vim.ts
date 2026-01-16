@@ -1740,11 +1740,6 @@ const changeVisualLineSelection = () => {
   // Clear selection to remove any browser highlighting
   window.getSelection()?.removeAllRanges();
 
-  // Force another clear on next frame
-  requestAnimationFrame(() => {
-    clearAllBackgroundColors();
-  });
-
   // Group consecutive lines by their element (code blocks share the same element)
   const lineGroups: {
     start: number;
@@ -1781,192 +1776,122 @@ const changeVisualLineSelection = () => {
     element: currentGroupElement,
   });
 
-  // If selection is entirely within a single code block, use changeCodeBlockLines
-  if (lineGroups.length === 1 && lineGroups[0].isCodeBlock) {
-    changeCodeBlockLines(firstLine, lastLine);
-    return;
-  }
+  // Start undo group for multi-line change operation
+  vim_info.in_undo_group = true;
+  vim_info.undo_count = lastLine - firstLine + 1;
 
-  // If selection is a single normal line, just clear and enter insert mode
-  if (
-    lineGroups.length === 1 &&
-    !lineGroups[0].isCodeBlock &&
-    firstLine === lastLine
-  ) {
-    const element = vim_info.lines[firstLine].element as HTMLElement;
+  // For change operation, we need to:
+  // 1. Keep the first line but clear its content
+  // 2. Delete all other lines (firstLine + 1 to lastLine)
 
-    // Select all content
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    safeAddRange(selection, range);
+  // First, clear the content of the first line
+  const firstElement = vim_info.lines[firstLine].element;
+  const range = document.createRange();
+  range.selectNodeContents(firstElement);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  safeAddRange(selection, range);
+  document.execCommand("delete");
+  selection?.removeAllRanges();
 
-    // Delete content
-    document.execCommand("delete");
+  // Now delete the remaining lines (firstLine + 1 to lastLine) if there are any
+  let currentDelay = 10;
 
-    // Clear selection to remove any remaining highlights
-    selection?.removeAllRanges();
+  if (lastLine > firstLine) {
+    // Re-group lines from firstLine + 1 to lastLine
+    const deleteLineGroups: {
+      start: number;
+      end: number;
+      isCodeBlock: boolean;
+      element: HTMLElement;
+    }[] = [];
+    let currentGroupStart = firstLine + 1;
+    let currentGroupElement = vim_info.lines[firstLine + 1].element;
+    let currentGroupIsCodeBlock = isInsideCodeBlock(currentGroupElement);
 
-    // Focus to stay in insert mode (already set above)
-    element.focus();
+    for (let i = firstLine + 2; i <= lastLine; i++) {
+      const currentElement = vim_info.lines[i].element;
 
-    // Clear again after focus
-    requestAnimationFrame(() => {
-      clearAllBackgroundColors();
+      // Group boundary: different element
+      if (currentElement !== currentGroupElement) {
+        deleteLineGroups.push({
+          start: currentGroupStart,
+          end: i - 1,
+          isCodeBlock: currentGroupIsCodeBlock,
+          element: currentGroupElement,
+        });
+        currentGroupStart = i;
+        currentGroupElement = currentElement;
+        currentGroupIsCodeBlock = isInsideCodeBlock(currentElement);
+      }
+    }
+
+    // Add the last group
+    deleteLineGroups.push({
+      start: currentGroupStart,
+      end: lastLine,
+      isCodeBlock: currentGroupIsCodeBlock,
+      element: currentGroupElement,
     });
 
-    updateInfoContainer();
-    return;
-  }
+    // Delete content for each group (in reverse order to maintain indices)
+    for (let groupIdx = deleteLineGroups.length - 1; groupIdx >= 0; groupIdx--) {
+      const group = deleteLineGroups[groupIdx];
 
-  // For multiple lines or mixed selections: handle each group
-  // (mode is already set to "insert" above)
-  vim_info.in_undo_group = true;
-  vim_info.undo_count = lastLine - firstLine;
+      if (group.isCodeBlock) {
+        // Check if the first line is also in this code block
+        const firstLineInSameCodeBlock =
+          vim_info.lines[firstLine].element === group.element;
 
-  // Change content for each group, then delete all lines except the first
-  for (const group of lineGroups) {
-    if (group.isCodeBlock) {
-      // Code block lines - use changeCodeBlockLines but don't let it change mode
-      const savedMode: string = vim_info.mode;
-      changeCodeBlockLines(group.start, group.end);
-      vim_info.mode = savedMode as any;
-    } else {
-      // Normal lines - delete content from each line
-      for (let i = group.start; i <= group.end; i++) {
-        const element = vim_info.lines[i].element;
-
-        // Select all content in the line
-        const range = document.createRange();
-        range.selectNodeContents(element);
-
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        safeAddRange(selection, range);
-
-        // Delete the content
-        document.execCommand("delete");
+        if (firstLineInSameCodeBlock) {
+          // First line is in the same code block - just delete the lines in the code block
+          // (excluding the first line which we already cleared)
+          deleteCodeBlockLines(group.start, group.end);
+        } else {
+          // First line is not in this code block - delete the whole block
+          deleteCodeBlockWithKeyboardEvents(group.element, 0);
+        }
+      } else {
+        // Normal lines - delete content AND the blocks themselves
+        // Delete from last to first to maintain indices
+        for (let i = group.end; i >= group.start; i--) {
+          const element = vim_info.lines[i].element;
+          deleteNormalBlockWithKeyboardEvents(element, currentDelay);
+          currentDelay += 50; // Add delay for next block
+        }
       }
     }
   }
 
-  // Now delete all lines except the first
-  const linesToDelete: number[] = [];
-  for (let i = lastLine; i > firstLine; i--) {
-    linesToDelete.push(i);
-  }
+  // Clear selection
+  window.getSelection()?.removeAllRanges();
 
-  deleteExtraLinesSequentially(linesToDelete, firstLine);
+  // Return to insert mode after all deletions complete, and enter insert mode on the first line
+  setTimeout(() => {
+    vim_info.mode = "insert";
+    vim_info.in_undo_group = false;
 
-  function deleteExtraLinesSequentially(
-    lineIndices: number[],
-    targetLine: number,
-  ) {
-    if (lineIndices.length === 0) {
-      // All extra lines deleted, now clear the first line and enter insert mode
-      vim_info.in_undo_group = false;
+    refreshLines();
+    clearAllBackgroundColors();
 
-      setTimeout(() => {
-        refreshLines();
-        // Clear background colors again after refresh
-        clearAllBackgroundColors();
+    // Always return to the first line (which we kept and cleared)
+    const newActiveLine = Math.max(
+      0,
+      Math.min(firstLine, vim_info.lines.length - 1),
+    );
 
-        if (vim_info.lines.length > targetLine) {
-          const element = vim_info.lines[targetLine].element as HTMLElement;
+    if (vim_info.lines.length > 0) {
+      setActiveLine(newActiveLine);
+      const element = vim_info.lines[newActiveLine].element;
 
-          // Select all content
-          const range = document.createRange();
-          range.selectNodeContents(element);
-          const selection = window.getSelection();
-          selection?.removeAllRanges();
-          safeAddRange(selection, range);
+      // Always position cursor at the beginning for change operation
+      setCursorPosition(element, 0);
 
-          // Delete content
-          document.execCommand("delete");
-
-          // Clear selection to remove any remaining highlights
-          selection?.removeAllRanges();
-
-          // Focus to stay in insert mode
-          element.focus();
-          setActiveLine(targetLine);
-
-          // Clear again after all operations
-          requestAnimationFrame(() => {
-            clearAllBackgroundColors();
-          });
-        }
-        updateInfoContainer();
-      }, 100);
-      return;
+      // Focus the element to stay in insert mode
+      element.focus({ preventScroll: true });
     }
-
-    const lineIndex = lineIndices[0];
-    if (lineIndex >= vim_info.lines.length) {
-      deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
-      return;
-    }
-
-    const element = vim_info.lines[lineIndex].element;
-    const block =
-      element.closest("[data-block-id]") ||
-      element.parentElement?.parentElement;
-
-    if (!block) {
-      deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
-      return;
-    }
-
-    const editableElement = block.querySelector(
-      '[contenteditable="true"]',
-    ) as HTMLElement;
-    if (!editableElement) {
-      deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
-      return;
-    }
-
-    // Select the content
-    const range = document.createRange();
-    range.selectNodeContents(editableElement);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    safeAddRange(selection, range);
-
-    // Focus and delete
-    editableElement.focus();
-
-    setTimeout(() => {
-      // Delete content
-      const deleteEvent = new KeyboardEvent("keydown", {
-        key: "Delete",
-        code: "Delete",
-        keyCode: 46,
-        which: 46,
-        bubbles: true,
-        cancelable: true,
-      });
-      editableElement.dispatchEvent(deleteEvent);
-
-      // Delete empty block
-      setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent("keydown", {
-          key: "Backspace",
-          code: "Backspace",
-          keyCode: 8,
-          which: 8,
-          bubbles: true,
-          cancelable: true,
-        });
-        editableElement.dispatchEvent(backspaceEvent);
-
-        // Continue with next line
-        setTimeout(() => {
-          deleteExtraLinesSequentially(lineIndices.slice(1), targetLine);
-        }, 10);
-      }, 10);
-    }, 10);
-  }
+    updateInfoContainer();
+  }, currentDelay + 100);
 };
 
 const yankVisualSelection = () => {
