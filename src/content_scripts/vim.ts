@@ -1434,10 +1434,19 @@ const changeVisualLineSelection = () => {
     console.error("[Vim-Notion] Failed to copy to clipboard:", err);
   });
 
-  // Clear background highlights from all elements IMMEDIATELY
+  // Clear background colors from the selected lines IMMEDIATELY
+  for (let i = firstLine; i <= lastLine; i++) {
+    if (vim_info.lines[i]) {
+      vim_info.lines[i].element.style.backgroundColor = "";
+    }
+  }
+
+  // Clear background highlights from all other elements
   clearAllBackgroundColors();
   // Clear selection to remove any browser highlighting
   window.getSelection()?.removeAllRanges();
+  // Update UI immediately to reflect mode change
+  updateInfoContainer();
 
   // Group consecutive lines by their element (code blocks share the same element)
   const lineGroups: {
