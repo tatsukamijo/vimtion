@@ -18,7 +18,7 @@ export const clearAllBackgroundColors = (): void => {
 
 /**
  * Delete a normal Notion block using keyboard events
- * Uses Delete+Backspace sequence to remove both content and empty block
+ * Uses Delete+Backspace sequence with empty block detection
  *
  * @param element - The contenteditable element to delete
  * @param delay - Delay in ms before starting deletion (for batched operations)
@@ -30,8 +30,28 @@ export const deleteNormalBlockWithKeyboardEvents = (
   setTimeout(() => {
     // Check if element is still in the document
     if (!document.contains(element)) {
+      console.log("[DEBUG deleteNormalBlock] Element not in document, skipping");
       return;
     }
+
+    // Debug: Log block info
+    const blockElement = element.closest("[data-block-id]");
+    const blockId = blockElement?.getAttribute("data-block-id");
+    const blockClassName = blockElement?.className || "";
+
+    // Check if this is a list block or quote block (blocks that need retry logic)
+    const isListBlock =
+      blockClassName.includes("bulleted_list") ||
+      blockClassName.includes("numbered_list") ||
+      blockClassName.includes("to_do") ||
+      blockClassName.includes("quote");
+
+    console.log("[DEBUG deleteNormalBlock] Starting deletion:", {
+      blockId,
+      blockClassName,
+      isListBlock,
+      textContent: element.textContent || "",
+    });
 
     // Select entire content
     const range = document.createRange();
@@ -43,8 +63,9 @@ export const deleteNormalBlockWithKeyboardEvents = (
     // Focus the element
     element.focus();
 
-    // Dispatch Delete key event after a small delay to ensure focus is set
+    // Dispatch Delete key event
     setTimeout(() => {
+      console.log("[DEBUG deleteNormalBlock] Dispatching Delete key");
       const deleteEvent = new KeyboardEvent("keydown", {
         key: "Delete",
         code: "Delete",
@@ -55,18 +76,63 @@ export const deleteNormalBlockWithKeyboardEvents = (
       });
       element.dispatchEvent(deleteEvent);
 
-      // After deleting content, dispatch Backspace to delete the empty block
+      // After deleting content, check if block is empty and delete it
       setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent("keydown", {
-          key: "Backspace",
-          code: "Backspace",
-          keyCode: 8,
-          which: 8,
-          bubbles: true,
-          cancelable: true,
+        const isEmpty = (element.textContent || "").trim().length === 0;
+        const blockStillExists = blockElement && document.contains(blockElement);
+
+        console.log("[DEBUG deleteNormalBlock] After Delete:", {
+          isEmpty,
+          blockStillExists,
         });
-        element.dispatchEvent(backspaceEvent);
-      }, 20);
+
+        if (isEmpty && blockStillExists) {
+          // For list blocks, use empty block detection with retry
+          if (isListBlock) {
+            console.log("[DEBUG deleteNormalBlock] List block is empty, sending Backspace");
+
+            const backspaceEvent = new KeyboardEvent("keydown", {
+              key: "Backspace",
+              code: "Backspace",
+              keyCode: 8,
+              which: 8,
+              bubbles: true,
+              cancelable: true,
+            });
+            element.dispatchEvent(backspaceEvent);
+
+            // Check if still exists and retry
+            setTimeout(() => {
+              const stillExists = document.contains(blockElement);
+              console.log("[DEBUG deleteNormalBlock] After first Backspace:", stillExists);
+
+              if (stillExists) {
+                console.log("[DEBUG deleteNormalBlock] Still exists, sending second Backspace");
+                const backspace2 = new KeyboardEvent("keydown", {
+                  key: "Backspace",
+                  code: "Backspace",
+                  keyCode: 8,
+                  which: 8,
+                  bubbles: true,
+                  cancelable: true,
+                });
+                document.dispatchEvent(backspace2);
+              }
+            }, 30);
+          } else {
+            // Regular block - single Backspace should work
+            const backspaceEvent = new KeyboardEvent("keydown", {
+              key: "Backspace",
+              code: "Backspace",
+              keyCode: 8,
+              which: 8,
+              bubbles: true,
+              cancelable: true,
+            });
+            element.dispatchEvent(backspaceEvent);
+          }
+        }
+      }, 30);
     }, 10);
   }, delay);
 };
