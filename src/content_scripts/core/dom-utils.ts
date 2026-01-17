@@ -17,6 +17,115 @@ export const clearAllBackgroundColors = (): void => {
 };
 
 /**
+ * Delete multiple lines atomically using Notion's block selection UI
+ * Simulates mouse drag selection to select multiple blocks, then Backspace
+ *
+ * @param firstElement - First contenteditable element to delete
+ * @param lineCount - Number of lines to delete
+ * @returns Promise that resolves when deletion completes
+ */
+export const deleteMultipleLinesAtomically = (
+  firstElement: HTMLElement,
+  lineCount: number,
+): Promise<void> => {
+  return new Promise((resolve) => {
+    const { vim_info } = window;
+    const firstLineIndex = vim_info.lines.findIndex(
+      (line) => line.element === firstElement,
+    );
+
+    if (firstLineIndex === -1) {
+      resolve();
+      return;
+    }
+
+    const lastLineIndex = firstLineIndex + lineCount - 1;
+    if (lastLineIndex >= vim_info.lines.length) {
+      resolve();
+      return;
+    }
+
+    const firstBlock = firstElement.closest("[data-block-id]") as HTMLElement;
+    const lastElement = vim_info.lines[lastLineIndex].element;
+    const lastBlock = lastElement.closest("[data-block-id]") as HTMLElement;
+
+    if (!firstBlock || !lastBlock) {
+      resolve();
+      return;
+    }
+
+    const firstRect = firstBlock.getBoundingClientRect();
+    const lastRect = lastBlock.getBoundingClientRect();
+
+    const startX = firstRect.left - 10;
+    const startY = firstRect.top + firstRect.height / 2;
+    const endX = firstRect.left + 200;
+    const endY = lastRect.top + lastRect.height / 2;
+
+    const startElement = document.elementFromPoint(startX, startY);
+
+    const mouseDownEvent = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: startX,
+      clientY: startY,
+      button: 0,
+    });
+    startElement?.dispatchEvent(mouseDownEvent);
+
+    setTimeout(() => {
+      const mouseMoveEvent = new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: endX,
+        clientY: endY,
+        button: 0,
+      });
+      document.dispatchEvent(mouseMoveEvent);
+
+      setTimeout(() => {
+        const mouseUpEvent = new MouseEvent("mouseup", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: endX,
+          clientY: endY,
+          button: 0,
+        });
+        document.dispatchEvent(mouseUpEvent);
+
+        setTimeout(() => {
+          const selectedBlocks = document.querySelectorAll("[data-block-id][data-block-selected]");
+
+          if (selectedBlocks.length === 0) {
+            for (let i = firstLineIndex + lineCount - 1; i >= firstLineIndex; i--) {
+              const element = vim_info.lines[i].element;
+              deleteNormalBlockWithKeyboardEvents(element, (firstLineIndex + lineCount - 1 - i) * 100);
+            }
+            setTimeout(() => resolve(), lineCount * 100 + 100);
+            return;
+          }
+
+          const backspaceEvent = new KeyboardEvent("keydown", {
+            key: "Backspace",
+            code: "Backspace",
+            keyCode: 8,
+            which: 8,
+            bubbles: true,
+            cancelable: true,
+          });
+          document.dispatchEvent(backspaceEvent);
+
+          setTimeout(() => resolve(), 50);
+        }, 100);
+      }, 50);
+    }, 50);
+  });
+};
+
+/**
  * Delete a normal Notion block using keyboard events
  * Uses Delete+Backspace sequence with empty block detection
  *
@@ -35,14 +144,12 @@ export const deleteNormalBlockWithKeyboardEvents = (
     const blockElement = element.closest("[data-block-id]");
     const blockClassName = blockElement?.className || "";
 
-    // Check if this is a list block or quote block (blocks that need retry logic)
     const isListBlock =
       blockClassName.includes("bulleted_list") ||
       blockClassName.includes("numbered_list") ||
       blockClassName.includes("to_do") ||
       blockClassName.includes("quote");
 
-    // Select entire content
     const range = document.createRange();
     range.selectNodeContents(element);
     const sel = window.getSelection();
@@ -51,7 +158,6 @@ export const deleteNormalBlockWithKeyboardEvents = (
 
     element.focus();
 
-    // Dispatch Delete key event
     setTimeout(() => {
       const deleteEvent = new KeyboardEvent("keydown", {
         key: "Delete",
@@ -63,14 +169,12 @@ export const deleteNormalBlockWithKeyboardEvents = (
       });
       element.dispatchEvent(deleteEvent);
 
-      // After deleting content, check if block is empty and delete it
       setTimeout(() => {
         const isEmpty = (element.textContent || "").trim().length === 0;
         const blockStillExists = blockElement && document.contains(blockElement);
 
         if (isEmpty && blockStillExists) {
           if (isListBlock) {
-            // For list/quote blocks, use empty block detection with retry
             const backspaceEvent = new KeyboardEvent("keydown", {
               key: "Backspace",
               code: "Backspace",
@@ -81,7 +185,6 @@ export const deleteNormalBlockWithKeyboardEvents = (
             });
             element.dispatchEvent(backspaceEvent);
 
-            // Check if still exists and retry
             setTimeout(() => {
               if (document.contains(blockElement)) {
                 const backspace2 = new KeyboardEvent("keydown", {
@@ -96,7 +199,6 @@ export const deleteNormalBlockWithKeyboardEvents = (
               }
             }, 30);
           } else {
-            // Regular block - single Backspace should work
             const backspaceEvent = new KeyboardEvent("keydown", {
               key: "Backspace",
               code: "Backspace",
@@ -129,14 +231,12 @@ export const deleteCodeBlockWithKeyboardEvents = (
       return;
     }
 
-    // Find the code block container
     const codeBlockContainer = element.closest(".notion-code-block");
     if (!codeBlockContainer) {
       console.error("[Vim-Notion] Code block container not found");
       return;
     }
 
-    // Find the drag handle button
     const dragHandle = codeBlockContainer.querySelector(
       '[role="button"][draggable="true"]',
     ) as HTMLElement;
@@ -145,12 +245,9 @@ export const deleteCodeBlockWithKeyboardEvents = (
       return;
     }
 
-    // Click the drag handle to activate block options
     dragHandle.click();
 
-    // Wait for Notion's UI to update (critical for code blocks)
     setTimeout(() => {
-      // Dispatch Backspace to delete the block
       const backspaceEvent = new KeyboardEvent("keydown", {
         key: "Backspace",
         code: "Backspace",

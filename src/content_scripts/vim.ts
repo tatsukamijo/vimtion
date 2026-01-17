@@ -161,6 +161,7 @@ import {
   clearAllBackgroundColors,
   deleteNormalBlockWithKeyboardEvents,
   deleteCodeBlockWithKeyboardEvents,
+  deleteMultipleLinesAtomically,
   setActiveLine,
   createRefreshLines,
   createSetLines,
@@ -1348,39 +1349,13 @@ const deleteVisualLineSelection = () => {
 
   // Start undo group for multi-line deletion
   vim_info.in_undo_group = true;
-  vim_info.undo_count = lastLine - firstLine + 1;
+  vim_info.undo_count = 1; // Atomic deletion creates single undo entry
 
-  // Delete content for each group (in reverse order to maintain indices)
-  let currentDelay = 10;
-  let codeBlockCursorPos: number | null = null;
+  const lineCount = lastLine - firstLine + 1;
 
-  for (let groupIdx = lineGroups.length - 1; groupIdx >= 0; groupIdx--) {
-    const group = lineGroups[groupIdx];
-
-    if (group.isCodeBlock) {
-      const selectionExtendsOutside =
-        firstLine < group.start || lastLine > group.end;
-
-      if (selectionExtendsOutside) {
-        deleteCodeBlockWithKeyboardEvents(group.element, 0);
-      } else {
-        codeBlockCursorPos = deleteCodeBlockLines(group.start, group.end);
-      }
-    } else {
-      // Normal lines - delete content AND the blocks themselves
-      for (let i = group.end; i >= group.start; i--) {
-        const element = vim_info.lines[i].element;
-        deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-        currentDelay += 100;
-      }
-    }
-  }
-
-  // Clear selection
-  window.getSelection()?.removeAllRanges();
-
-  // Return to normal mode after all deletions complete
-  setTimeout(() => {
+  // Always try atomic deletion first (works for all block types including code blocks)
+  const firstElement = vim_info.lines[firstLine].element;
+  deleteMultipleLinesAtomically(firstElement, lineCount).then(() => {
     vim_info.mode = "normal";
     vim_info.in_undo_group = false;
 
@@ -1395,13 +1370,10 @@ const deleteVisualLineSelection = () => {
     if (vim_info.lines.length > 0) {
       setActiveLine(newActiveLine);
       const element = vim_info.lines[newActiveLine].element;
-
-      // Use the stored cursor position for code block line deletion, otherwise use 0
-      const cursorPos = codeBlockCursorPos !== null ? codeBlockCursorPos : 0;
-      setCursorPosition(element, cursorPos);
+      setCursorPosition(element, 0);
     }
     updateInfoContainer();
-  }, currentDelay + 100);
+  });
 };
 
 const changeVisualLineSelection = () => {
