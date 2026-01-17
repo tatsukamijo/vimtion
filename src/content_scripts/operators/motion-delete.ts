@@ -128,273 +128,31 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
       }, 10);
     }
   } else {
-    // For normal blocks, delete the entire block as before
-    // Copy line content to clipboard
+    // For normal blocks, delete the entire block
     const lineText = currentElement.textContent || "";
     navigator.clipboard.writeText(lineText).catch((err) => {
       console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
-    // Debug: Log block info
-    const blockElement = currentElement.closest("[data-block-id]");
-    const blockId = blockElement?.getAttribute("data-block-id");
-    const blockClassName = blockElement?.className || "";
-
-    // Check if this is a list block or quote block (blocks that need retry logic)
-    const isListBlock =
-      blockClassName.includes("bulleted_list") ||
-      blockClassName.includes("numbered_list") ||
-      blockClassName.includes("to_do") ||
-      blockClassName.includes("quote");
-
-    console.log("[DEBUG deleteCurrentLine] Starting deletion:", {
-      blockId,
-      blockClassName,
-      isListBlock,
-      textContent: lineText,
-      currentLineIndex,
-    });
-
     // Temporarily switch to insert mode to allow deletion
-    const previousMode = vim_info.mode;
     vim_info.mode = "insert";
 
-    // For list blocks, use empty block detection method
-    if (isListBlock && blockElement) {
-      console.log(
-        "[DEBUG deleteCurrentLine] Using empty block detection for list block",
-      );
+    // Use the centralized deletion logic
+    deleteNormalBlockWithKeyboardEvents(currentElement, 0);
 
-      // Select entire line content
-      const range = document.createRange();
-      range.selectNodeContents(currentElement);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-
-      // Focus and delete with Delete key
-      currentElement.focus();
-
-      setTimeout(() => {
-        console.log("[DEBUG deleteCurrentLine] Dispatching Delete key for list");
-        const deleteEvent = new KeyboardEvent("keydown", {
-          key: "Delete",
-          code: "Delete",
-          keyCode: 46,
-          which: 46,
-          bubbles: true,
-          cancelable: true,
-        });
-        currentElement.dispatchEvent(deleteEvent);
-
-        // After deleting content, check if block is empty and delete it
-        setTimeout(() => {
-          const isEmpty = (currentElement.textContent || "").trim().length === 0;
-          const blockStillExists = document.contains(blockElement);
-
-          console.log("[DEBUG deleteCurrentLine] After Delete, checking block:", {
-            isEmpty,
-            blockStillExists,
-            textContent: currentElement.textContent || "",
-          });
-
-          if (isEmpty && blockStillExists) {
-            // Block is empty but still exists - send Backspace to delete it
-            console.log("[DEBUG deleteCurrentLine] Block is empty, sending Backspace");
-
-            // Position cursor at start of empty element
-            setCursorPosition(currentElement, 0);
-
-            const backspaceEvent = new KeyboardEvent("keydown", {
-              key: "Backspace",
-              code: "Backspace",
-              keyCode: 8,
-              which: 8,
-              bubbles: true,
-              cancelable: true,
-            });
-            currentElement.dispatchEvent(backspaceEvent);
-
-            // Check again after a delay - if still there, send another Backspace
-            setTimeout(() => {
-              const stillExists = document.contains(blockElement);
-              console.log("[DEBUG deleteCurrentLine] After first Backspace, blockStillExists:", stillExists);
-
-              if (stillExists) {
-                console.log("[DEBUG deleteCurrentLine] Still exists, sending second Backspace");
-                const backspace2 = new KeyboardEvent("keydown", {
-                  key: "Backspace",
-                  code: "Backspace",
-                  keyCode: 8,
-                  which: 8,
-                  bubbles: true,
-                  cancelable: true,
-                });
-                document.dispatchEvent(backspace2);
-              }
-
-              // Return to normal mode and update cursor
-              setTimeout(() => {
-                vim_info.mode = "normal";
-                refreshLines();
-
-                const newActiveLine = Math.max(
-                  0,
-                  Math.min(currentLineIndex - 1, vim_info.lines.length - 1),
-                );
-                if (vim_info.lines.length > 0) {
-                  setActiveLine(newActiveLine);
-                }
-
-                const finalExists = document.contains(blockElement);
-                console.log(
-                  "[DEBUG deleteCurrentLine] Completed, blockDeleted:",
-                  !finalExists,
-                );
-              }, 50);
-            }, 30);
-          } else {
-            // Block was already deleted or not empty
-            vim_info.mode = "normal";
-            refreshLines();
-
-            const newActiveLine = Math.max(
-              0,
-              Math.min(currentLineIndex - 1, vim_info.lines.length - 1),
-            );
-            if (vim_info.lines.length > 0) {
-              setActiveLine(newActiveLine);
-            }
-
-            console.log(
-              "[DEBUG deleteCurrentLine] Block already gone or not empty",
-            );
-          }
-        }, 30);
-      }, 10);
-      return;
-    }
-
-    // For regular blocks, use keyboard method
-    // Select entire line content
-    const range = document.createRange();
-    range.selectNodeContents(currentElement);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-
-    // Focus and delete with Delete key
-    (currentElement as HTMLElement).focus();
-
+    // Wait for deletion to complete, then update UI
     setTimeout(() => {
-      console.log("[DEBUG deleteCurrentLine] Dispatching Delete key");
-      const deleteEvent = new KeyboardEvent("keydown", {
-        key: "Delete",
-        code: "Delete",
-        keyCode: 46,
-        which: 46,
-        bubbles: true,
-        cancelable: true,
-      });
+      vim_info.mode = "normal";
+      refreshLines();
 
-      currentElement.dispatchEvent(deleteEvent);
-
-      // Check state after Delete
-      setTimeout(() => {
-        const stillInDocument = document.contains(currentElement);
-        const textAfterDelete = currentElement.textContent || "";
-        console.log("[DEBUG deleteCurrentLine] After Delete key:", {
-          stillInDocument,
-          textContent: textAfterDelete,
-          isEmpty: textAfterDelete.length === 0,
-        });
-      }, 5);
-
-      // After deleting content, press Backspace to delete the empty block
-      setTimeout(() => {
-        console.log("[DEBUG deleteCurrentLine] Dispatching Backspace key");
-        const backspaceEvent = new KeyboardEvent("keydown", {
-          key: "Backspace",
-          code: "Backspace",
-          keyCode: 8,
-          which: 8,
-          bubbles: true,
-          cancelable: true,
-        });
-
-        currentElement.dispatchEvent(backspaceEvent);
-
-        // Check final state
-        setTimeout(() => {
-          const finallyInDocument = document.contains(currentElement);
-          const finalText = finallyInDocument
-            ? currentElement.textContent || ""
-            : "N/A";
-          console.log("[DEBUG deleteCurrentLine] After Backspace key (15ms):", {
-            stillInDocument: finallyInDocument,
-            textContent: finalText,
-            blockDeleted: !finallyInDocument,
-          });
-
-          // Check if the original block still exists in DOM
-          if (blockElement) {
-            const blockStillExists = document.contains(blockElement);
-            console.log(
-              "[DEBUG deleteCurrentLine] Original block element status:",
-              {
-                blockStillExists,
-                blockId,
-              },
-            );
-          }
-        }, 15);
-
-        // Return to normal mode and update cursor
-        setTimeout(() => {
-          vim_info.mode = "normal";
-          refreshLines();
-
-          const newActiveLine = Math.max(
-            0,
-            Math.min(currentLineIndex - 1, vim_info.lines.length - 1),
-          );
-          if (vim_info.lines.length > 0) {
-            setActiveLine(newActiveLine);
-          }
-
-          console.log(
-            "[DEBUG deleteCurrentLine] Completed, newActiveLine:",
-            newActiveLine,
-          );
-          console.log(
-            "[DEBUG deleteCurrentLine] Lines count after refresh:",
-            vim_info.lines.length,
-          );
-
-          // Check if a new empty block was created at the deleted position
-          if (vim_info.lines.length > currentLineIndex) {
-            const replacementElement =
-              vim_info.lines[currentLineIndex]?.element;
-            if (replacementElement) {
-              const replacementBlock =
-                replacementElement.closest("[data-block-id]");
-              const replacementBlockId =
-                replacementBlock?.getAttribute("data-block-id");
-              const replacementText = replacementElement.textContent || "";
-              console.log(
-                "[DEBUG deleteCurrentLine] Block at deleted position:",
-                {
-                  replacementBlockId,
-                  isSameBlock: replacementBlockId === blockId,
-                  textContent: replacementText,
-                  isEmpty: replacementText.length === 0,
-                },
-              );
-            }
-          }
-        }, 50);
-      }, 20);
-    }, 10);
+      const newActiveLine = Math.max(
+        0,
+        Math.min(currentLineIndex - 1, vim_info.lines.length - 1),
+      );
+      if (vim_info.lines.length > 0) {
+        setActiveLine(newActiveLine);
+      }
+    }, 100);
   }
 };
 

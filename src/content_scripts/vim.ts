@@ -1293,15 +1293,6 @@ const deleteVisualLineSelection = () => {
   const [firstLine, lastLine] =
     startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
 
-  console.log(
-    "[DEBUG deleteVisualLineSelection] Starting visual line deletion:",
-    {
-      firstLine,
-      lastLine,
-      totalLines: lastLine - firstLine + 1,
-    },
-  );
-
   // Collect text from all lines for clipboard
   const textLines: string[] = [];
   for (let i = firstLine; i <= lastLine; i++) {
@@ -1359,67 +1350,28 @@ const deleteVisualLineSelection = () => {
   vim_info.in_undo_group = true;
   vim_info.undo_count = lastLine - firstLine + 1;
 
-  console.log(
-    "[DEBUG deleteVisualLineSelection] Line groups:",
-    lineGroups.map((g) => ({
-      start: g.start,
-      end: g.end,
-      isCodeBlock: g.isCodeBlock,
-      blockType: getBlockType(g.element),
-    })),
-  );
-
   // Delete content for each group (in reverse order to maintain indices)
-  // Use a sequential approach with delays for normal blocks to avoid DOM errors
   let currentDelay = 10;
-  let codeBlockCursorPos: number | null = null; // Store cursor position for code block line deletion
+  let codeBlockCursorPos: number | null = null;
 
   for (let groupIdx = lineGroups.length - 1; groupIdx >= 0; groupIdx--) {
     const group = lineGroups[groupIdx];
 
-    console.log("[DEBUG deleteVisualLineSelection] Processing group:", {
-      groupIdx,
-      start: group.start,
-      end: group.end,
-      isCodeBlock: group.isCodeBlock,
-      blockType: getBlockType(group.element),
-    });
-
     if (group.isCodeBlock) {
-      // Check if selection extends beyond this group (selected from outside)
       const selectionExtendsOutside =
         firstLine < group.start || lastLine > group.end;
 
       if (selectionExtendsOutside) {
-        // Selection includes lines outside this code block - delete the whole block
-        console.log(
-          "[DEBUG deleteVisualLineSelection] Deleting entire code block",
-        );
         deleteCodeBlockWithKeyboardEvents(group.element, 0);
       } else {
-        // Selection is entirely within this code block - delete only selected lines
-        console.log(
-          "[DEBUG deleteVisualLineSelection] Deleting lines within code block",
-        );
         codeBlockCursorPos = deleteCodeBlockLines(group.start, group.end);
       }
     } else {
       // Normal lines - delete content AND the blocks themselves
-      // Delete from last to first to maintain indices
-      console.log(
-        "[DEBUG deleteVisualLineSelection] Deleting normal blocks, count:",
-        group.end - group.start + 1,
-      );
       for (let i = group.end; i >= group.start; i--) {
         const element = vim_info.lines[i].element;
-        console.log(
-          "[DEBUG deleteVisualLineSelection] Calling deleteNormalBlockWithKeyboardEvents for line:",
-          i,
-          "delay:",
-          currentDelay,
-        );
         deleteNormalBlockWithKeyboardEvents(element, currentDelay);
-        currentDelay += 100; // Safe delay for reliable deletion
+        currentDelay += 100;
       }
     }
   }
