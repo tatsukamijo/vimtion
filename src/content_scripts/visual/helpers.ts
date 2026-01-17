@@ -9,10 +9,7 @@
  */
 
 import { getCursorIndexInElement, setCursorPosition } from "../cursor";
-import {
-  getInnerWordBounds,
-  getAroundWordBounds,
-} from "../text-objects/word";
+import { getInnerWordBounds, getAroundWordBounds } from "../text-objects/word";
 import {
   findMatchingQuotes,
   findMatchingBrackets,
