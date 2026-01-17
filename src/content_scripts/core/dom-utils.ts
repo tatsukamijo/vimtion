@@ -97,12 +97,21 @@ export const deleteMultipleLinesAtomically = (
         document.dispatchEvent(mouseUpEvent);
 
         setTimeout(() => {
-          const selectedBlocks = document.querySelectorAll("[data-block-id][data-block-selected]");
+          const selectedBlocks = document.querySelectorAll(
+            "[data-block-id][data-block-selected]",
+          );
 
           if (selectedBlocks.length === 0) {
-            for (let i = firstLineIndex + lineCount - 1; i >= firstLineIndex; i--) {
+            for (
+              let i = firstLineIndex + lineCount - 1;
+              i >= firstLineIndex;
+              i--
+            ) {
               const element = vim_info.lines[i].element;
-              deleteNormalBlockWithKeyboardEvents(element, (firstLineIndex + lineCount - 1 - i) * 100);
+              deleteNormalBlockWithKeyboardEvents(
+                element,
+                (firstLineIndex + lineCount - 1 - i) * 100,
+              );
             }
             setTimeout(() => resolve(), lineCount * 100 + 100);
             return;
@@ -118,7 +127,7 @@ export const deleteMultipleLinesAtomically = (
           });
           document.dispatchEvent(backspaceEvent);
 
-          setTimeout(() => resolve(), 50);
+          setTimeout(() => resolve(), 20);
         }, 100);
       }, 50);
     }, 50);
@@ -171,7 +180,8 @@ export const deleteNormalBlockWithKeyboardEvents = (
 
       setTimeout(() => {
         const isEmpty = (element.textContent || "").trim().length === 0;
-        const blockStillExists = blockElement && document.contains(blockElement);
+        const blockStillExists =
+          blockElement && document.contains(blockElement);
 
         if (isEmpty && blockStillExists) {
           if (isListBlock) {

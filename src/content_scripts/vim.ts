@@ -1356,23 +1356,25 @@ const deleteVisualLineSelection = () => {
   // Always try atomic deletion first (works for all block types including code blocks)
   const firstElement = vim_info.lines[firstLine].element;
   deleteMultipleLinesAtomically(firstElement, lineCount).then(() => {
-    vim_info.mode = "normal";
-    vim_info.in_undo_group = false;
+    setTimeout(() => {
+      vim_info.mode = "normal";
+      vim_info.in_undo_group = false;
 
-    refreshLines();
-    clearAllBackgroundColors();
+      refreshLines();
+      clearAllBackgroundColors();
 
-    const newActiveLine = Math.max(
-      0,
-      Math.min(firstLine, vim_info.lines.length - 1),
-    );
+      const newActiveLine = Math.max(
+        0,
+        Math.min(firstLine, vim_info.lines.length - 1),
+      );
 
-    if (vim_info.lines.length > 0) {
-      setActiveLine(newActiveLine);
-      const element = vim_info.lines[newActiveLine].element;
-      setCursorPosition(element, 0);
-    }
-    updateInfoContainer();
+      if (vim_info.lines.length > 0) {
+        setActiveLine(newActiveLine);
+        const element = vim_info.lines[newActiveLine].element;
+        setCursorPosition(element, 0);
+      }
+      updateInfoContainer();
+    }, 50);
   });
 };
 
