@@ -1,0 +1,139 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version-changed: ${{ steps.check.outputs.changed }}
+      new-version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: check
+        run: |
+          # Get current version from package.json
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT_VERSION"
+
+          # Get previous version from package.json in previous commit
+          git checkout HEAD~1 -- package.json 2>/dev/null || echo "First commit"
+          PREVIOUS_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
+          git checkout HEAD -- package.json
+          echo "Previous version: $PREVIOUS_VERSION"
+
+          # Check if version changed
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "Version changed: $PREVIOUS_VERSION -> $CURRENT_VERSION"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Version unchanged"
+          fi
+
+  release:
+    needs: check-version
+    if: needs.check-version.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Create ZIP file
+        run: |
+          cd dist
+          zip -r ../vimtion-v${{ needs.check-version.outputs.new-version }}.zip .
+          cd ..
+
+      - name: Extract changelog for version
+        id: changelog
+        run: |
+          VERSION="${{ needs.check-version.outputs.new-version }}"
+          echo "Extracting changelog for version $VERSION"
+
+          # Extract the section for this version from CHANGELOG.md
+          # Find lines between ## [$VERSION] and the next ## [
+          CHANGELOG=$(awk '/^## \['"$VERSION"'\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md)
+
+          if [ -z "$CHANGELOG" ]; then
+            echo "No changelog found for version $VERSION"
+            CHANGELOG="Release version $VERSION"
+          fi
+
+          # Format changelog with emojis and structure
+          cat > release-notes.txt << 'RELEASE_NOTES_EOF'
+          RELEASE_NOTES_EOF
+
+          # Process the changelog content and add emoji headers
+          echo "$CHANGELOG" | sed -E '
+            s/^### Changed$/## 🔄 Changes/
+            s/^### Added$/## ✨ New Features/
+            s/^### Fixed$/## 🐛 Bug Fixes/
+            s/^### Removed$/## 🗑️ Removed/
+            s/^### Deprecated$/## ⚠️ Deprecated/
+            s/^### Security$/## 🔒 Security/
+            s/^### Performance$/## ⚡ Performance/
+          ' >> release-notes.txt
+
+          # Add installation section
+          cat >> release-notes.txt << 'RELEASE_NOTES_EOF'
+
+          ## 📦 Installation
+
+          Download `vimtion-v${{ needs.check-version.outputs.new-version }}.zip` or install from [Chrome Web Store](https://chromewebstore.google.com/detail/vimtion/omcehhihhemhincacmandepjhhnjfeoo).
+          RELEASE_NOTES_EOF
+
+          cat release-notes.txt
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ needs.check-version.outputs.new-version }}" -m "Release v${{ needs.check-version.outputs.new-version }}"
+          git push origin "v${{ needs.check-version.outputs.new-version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.new-version }}
+          name: v${{ needs.check-version.outputs.new-version }}
+          body_path: release-notes.txt
+          files: |
+            vimtion-v${{ needs.check-version.outputs.new-version }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to Chrome Web Store
+        uses: mnao305/chrome-extension-upload@v4.0.1
+        with:
+          file-path: vimtion-v${{ needs.check-version.outputs.new-version }}.zip
+          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
