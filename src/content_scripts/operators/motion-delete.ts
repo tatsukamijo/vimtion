@@ -5,7 +5,10 @@
 
 import { getCursorIndexInElement, setCursorPosition } from "../cursor";
 import { isParagraphBoundary, isInsideCodeBlock } from "../notion";
-import { deleteNormalBlockWithKeyboardEvents } from "../core/dom-utils";
+import {
+  deleteNormalBlockWithKeyboardEvents,
+  deleteMultipleLinesAtomically,
+} from "../core/dom-utils";
 import { setActiveLine } from "../core/line-management";
 
 /**
@@ -128,31 +131,27 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
       }, 10);
     }
   } else {
-    // For normal blocks, delete the entire block
     const lineText = currentElement.textContent || "";
     navigator.clipboard.writeText(lineText).catch((err) => {
       console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
-    // Temporarily switch to insert mode to allow deletion
     vim_info.mode = "insert";
+    vim_info.undo_count = 1;
 
-    // Use the centralized deletion logic
-    deleteNormalBlockWithKeyboardEvents(currentElement, 0);
-
-    // Wait for deletion to complete, then update UI
-    setTimeout(() => {
+    deleteMultipleLinesAtomically(currentElement, 1).then(() => {
       vim_info.mode = "normal";
       refreshLines();
 
       const newActiveLine = Math.max(
         0,
-        Math.min(currentLineIndex - 1, vim_info.lines.length - 1),
+        Math.min(currentLineIndex, vim_info.lines.length - 1),
       );
       if (vim_info.lines.length > 0) {
         setActiveLine(newActiveLine);
       }
-    }, 100);
+      updateInfoContainer();
+    });
   }
 };
 
