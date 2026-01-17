@@ -5,7 +5,10 @@
 
 import { getCursorIndexInElement, setCursorPosition } from "../cursor";
 import { isParagraphBoundary, isInsideCodeBlock } from "../notion";
-import { deleteNormalBlockWithKeyboardEvents } from "../core/dom-utils";
+import {
+  deleteNormalBlockWithKeyboardEvents,
+  deleteMultipleLinesAtomically,
+} from "../core/dom-utils";
 import { setActiveLine } from "../core/line-management";
 
 /**
@@ -128,67 +131,27 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
       }, 10);
     }
   } else {
-    // For normal blocks, delete the entire block as before
-    // Copy line content to clipboard
     const lineText = currentElement.textContent || "";
     navigator.clipboard.writeText(lineText).catch((err) => {
       console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
-    // Temporarily switch to insert mode to allow deletion
-    const previousMode = vim_info.mode;
     vim_info.mode = "insert";
+    vim_info.undo_count = 1;
 
-    // Select entire line content
-    const range = document.createRange();
-    range.selectNodeContents(currentElement);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
+    deleteMultipleLinesAtomically(currentElement, 1).then(() => {
+      vim_info.mode = "normal";
+      refreshLines();
 
-    // Focus and delete with Delete key
-    (currentElement as HTMLElement).focus();
-
-    setTimeout(() => {
-      const deleteEvent = new KeyboardEvent("keydown", {
-        key: "Delete",
-        code: "Delete",
-        keyCode: 46,
-        which: 46,
-        bubbles: true,
-        cancelable: true,
-      });
-
-      currentElement.dispatchEvent(deleteEvent);
-
-      // After deleting content, press Backspace to delete the empty block
-      setTimeout(() => {
-        const backspaceEvent = new KeyboardEvent("keydown", {
-          key: "Backspace",
-          code: "Backspace",
-          keyCode: 8,
-          which: 8,
-          bubbles: true,
-          cancelable: true,
-        });
-
-        currentElement.dispatchEvent(backspaceEvent);
-
-        // Return to normal mode and update cursor
-        setTimeout(() => {
-          vim_info.mode = "normal";
-          refreshLines();
-
-          const newActiveLine = Math.max(
-            0,
-            Math.min(currentLineIndex - 1, vim_info.lines.length - 1),
-          );
-          if (vim_info.lines.length > 0) {
-            setActiveLine(newActiveLine);
-          }
-        }, 50);
-      }, 20);
-    }, 10);
+      const newActiveLine = Math.max(
+        0,
+        Math.min(currentLineIndex, vim_info.lines.length - 1),
+      );
+      if (vim_info.lines.length > 0) {
+        setActiveLine(newActiveLine);
+      }
+      updateInfoContainer();
+    });
   }
 };
 

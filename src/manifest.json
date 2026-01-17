@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vimtion: Vim for Notion",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "A Chrome extension that brings Vim keybindings to Notion",
   "author": "Tatsuya Kamijo",
   "icons": {

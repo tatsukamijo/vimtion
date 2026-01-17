@@ -5,6 +5,19 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-01-17
+
+### Fixed
+- **Critical undo/redo bug**: Multi-line deletion (`Vjjd`, `dd`) now creates a single undo entry, so one `u` press restores all deleted content at once
+  - Root cause: Sequential deletion with delays created multiple undo entries in Notion's undo stack
+  - Solution: Implemented atomic deletion via mouse drag simulation to trigger Notion's native block selection UI
+  - Single Backspace deletes all selected blocks as one atomic operation
+- **Empty list/quote block deletion**: Fixed bullet lists, numbered lists, to-do lists, and quote blocks not being fully deleted when empty
+  - Added retry logic with empty block detection for list/quote block types
+
+### Changed
+- **Unified deletion behavior**: All deletion commands (`dd`, `Vjjd`) now use atomic mouse drag deletion for consistency
+
 ## [1.5.1] - 2026-01-16
 
 ### Changed
