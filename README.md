@@ -11,16 +11,16 @@
 
 <p align="center">
   <a href="https://chromewebstore.google.com/detail/vimtion-vim-for-notion/omcehhihhemhincacmandepjhhnjfeoo">
-    <img src="https://img.shields.io/chrome-web-store/users/omcehhihhemhincacmandepjhhnjfeoo?style=flat-square&logo=googlechrome&logoColor=white">
+    <img src="https://img.shields.io/chrome-web-store/users/omcehhihhemhincacmandepjhhnjfeoo?style=flat-square&logo=googlechrome&logoColor=white&label=users&color=4285F4">
   </a>
   <a href="https://developer.chrome.com/docs/extensions/mv3/intro/">
-    <img src="https://img.shields.io/badge/manifest-v3-green?style=flat-square">
+    <img src="https://img.shields.io/badge/manifest-v3-4285F4?style=flat-square&logo=googlechrome&logoColor=white">
   </a>
   <a href="https://www.typescriptlang.org/">
-    <img src="https://img.shields.io/badge/typescript-5.3-blue?style=flat-square&logo=typescript">
+    <img src="https://img.shields.io/badge/typescript-5.3-3178c6?style=flat-square&logo=typescript&logoColor=white">
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/badge/license-ISC-blue?style=flat-square">
+    <img src="https://img.shields.io/badge/license-ISC-555?style=flat-square">
   </a>
 </p>
 
