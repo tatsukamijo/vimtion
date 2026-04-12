@@ -12,53 +12,51 @@ const userDataDir = path.resolve(__dirname, "auth", ".user-data");
 type ExtensionWorkerFixtures = {
   extensionContext: BrowserContext;
   extensionId: string;
+  extensionPage: Page;
 };
 
-type ExtensionTestFixtures = {
-  page: Page;
-};
+export const test = base.extend<{}, ExtensionWorkerFixtures>({
+  extensionContext: [
+    async ({}, use) => {
+      const context = await chromium.launchPersistentContext(userDataDir, {
+        channel: "chromium",
+        headless: false,
+        args: [
+          `--disable-extensions-except=${distPath}`,
+          `--load-extension=${distPath}`,
+          "--no-first-run",
+          "--disable-blink-features=AutomationControlled",
+        ],
+        ignoreDefaultArgs: [
+          "--disable-component-extensions-with-background-pages",
+        ],
+      });
+      await use(context);
+      await context.close();
+    },
+    { scope: "worker" },
+  ],
 
-export const test = base.extend<ExtensionTestFixtures, ExtensionWorkerFixtures>(
-  {
-    extensionContext: [
-      async ({}, use) => {
-        const context = await chromium.launchPersistentContext(userDataDir, {
-          channel: "chromium",
-          headless: false,
-          args: [
-            `--disable-extensions-except=${distPath}`,
-            `--load-extension=${distPath}`,
-            "--no-first-run",
-            "--disable-blink-features=AutomationControlled",
-          ],
-          ignoreDefaultArgs: [
-            "--disable-component-extensions-with-background-pages",
-          ],
-        });
-        await use(context);
-        await context.close();
-      },
-      { scope: "worker" },
-    ],
+  extensionId: [
+    async ({ extensionContext }, use) => {
+      let [background] = extensionContext.serviceWorkers();
+      if (!background) {
+        background = await extensionContext.waitForEvent("serviceworker");
+      }
+      const extensionId = background.url().split("/")[2];
+      await use(extensionId);
+    },
+    { scope: "worker" },
+  ],
 
-    extensionId: [
-      async ({ extensionContext }, use) => {
-        let [background] = extensionContext.serviceWorkers();
-        if (!background) {
-          background = await extensionContext.waitForEvent("serviceworker");
-        }
-        const extensionId = background.url().split("/")[2];
-        await use(extensionId);
-      },
-      { scope: "worker" },
-    ],
-
-    page: async ({ extensionContext }, use) => {
+  extensionPage: [
+    async ({ extensionContext }, use) => {
       const page = await extensionContext.newPage();
       await use(page);
       await page.close();
     },
-  }
-);
+    { scope: "worker" },
+  ],
+});
 
 export { expect } from "@playwright/test";
