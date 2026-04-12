@@ -478,6 +478,7 @@ const handleClick = (e: MouseEvent) => {
         vim_info.active_line = lineIndex;
         vim_info.desired_column = cursorPos;
         updateBlockCursor();
+        updateInfoContainer();
       }
     }
   }, 0);
@@ -2899,6 +2900,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         return true;
       }
       setActiveLine(active_line + 1);
+      updateInfoContainer();
       return true;
     case "k":
       // In code blocks, move cursor up within the block
@@ -2910,6 +2912,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         return true;
       }
       setActiveLine(active_line - 1);
+      updateInfoContainer();
       return true;
     case "l":
       // In code blocks, use custom navigation to stay within the block
