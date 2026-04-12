@@ -10,27 +10,12 @@ export interface VimState {
 }
 
 async function waitForVimtionReady(page: Page, timeout: number): Promise<void> {
-  const deadline = Date.now() + timeout;
+  // Wait for Vimtion's status bar to appear
+  await page.waitForSelector(".vim-mode", { timeout });
 
-  while (Date.now() < deadline) {
-    // Check if Line info is already in status bar
-    const text = await page.locator(".vim-mode").textContent().catch(() => "");
-    if (text && text.includes("Line")) {
-      return;
-    }
-
-    // Try clicking a contenteditable element to trigger line detection
-    const editable = page.locator('[contenteditable="true"]').first();
-    if (await editable.isVisible().catch(() => false)) {
-      await editable.click({ timeout: 2_000 }).catch(() => {});
-    }
-
-    await page.waitForTimeout(500);
-  }
-
-  throw new Error(
-    `Vimtion did not initialize within ${timeout}ms. Status bar: "${await page.locator(".vim-mode").textContent().catch(() => "not found")}"`
-  );
+  // Press Escape to trigger updateInfoContainer and ensure normal mode
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
 }
 
 export async function navigateToTestPage(
@@ -43,12 +28,23 @@ export async function navigateToTestPage(
     );
   }
 
+  // If already on the test page with Vimtion ready, skip navigation
+  const currentUrl = page.url();
+  if (currentUrl.includes("notion.so")) {
+    const text = await page.locator(".vim-mode").textContent().catch(() => "");
+    if (text && text.includes("Line")) {
+      return;
+    }
+  }
+
   await page.goto(TEST_PAGE_URL, { waitUntil: "load" });
 
   // Dismiss Notion's "using Vimium?" warning if it appears
   const gotItButton = page.getByRole("button", { name: "Got it" });
   if (await gotItButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await gotItButton.click();
+    // Reload to restart Vimtion's line detection polling
+    await page.reload({ waitUntil: "load" });
   }
 
   await waitForVimtionReady(page, timeout);
