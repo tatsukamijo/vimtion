@@ -138,7 +138,7 @@ export async function getModeText(page: Page): Promise<string> {
 }
 
 export async function getAllBlockTexts(page: Page): Promise<string[]> {
-  const blocks = page.locator('[contenteditable="true"]');
+  const blocks = page.locator('[data-content-editable-leaf="true"]');
   const count = await blocks.count();
   const texts: string[] = [];
   for (let i = 0; i < count; i++) {

@@ -54,6 +54,8 @@ export const deleteMultipleLinesAtomically = (
       return;
     }
 
+    firstBlock.scrollIntoView({ block: "center", behavior: "instant" });
+
     const firstRect = firstBlock.getBoundingClientRect();
     const lastRect = lastBlock.getBoundingClientRect();
 
