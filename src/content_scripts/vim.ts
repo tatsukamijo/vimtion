@@ -21,8 +21,8 @@ import {
   setAvailableLinks,
   setSelectedLinkIndex,
   resetLinkSelection,
-  lastInsertKey,
-  lastInsertKeyTime,
+  getLastInsertKey,
+  getLastInsertKeyTime,
   JK_TIMEOUT_MS,
   setLastInsertKey,
   setLastInsertKeyTime,
@@ -3216,8 +3216,8 @@ const yankVisualLineSelection =
 // Create reducers using factories
 const insertReducer = createInsertReducer({
   updateInfoContainer,
-  lastInsertKey,
-  lastInsertKeyTime,
+  getLastInsertKey,
+  getLastInsertKeyTime,
   JK_TIMEOUT_MS,
   setLastInsertKey,
   setLastInsertKeyTime,

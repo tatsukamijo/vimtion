@@ -9,6 +9,30 @@ export interface VimState {
   statusText: string;
 }
 
+async function waitForVimtionReady(page: Page, timeout: number): Promise<void> {
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    // Check if Line info is already in status bar
+    const text = await page.locator(".vim-mode").textContent().catch(() => "");
+    if (text && text.includes("Line")) {
+      return;
+    }
+
+    // Try clicking a contenteditable element to trigger line detection
+    const editable = page.locator('[contenteditable="true"]').first();
+    if (await editable.isVisible().catch(() => false)) {
+      await editable.click({ timeout: 2_000 }).catch(() => {});
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(
+    `Vimtion did not initialize within ${timeout}ms. Status bar: "${await page.locator(".vim-mode").textContent().catch(() => "not found")}"`
+  );
+}
+
 export async function navigateToTestPage(
   page: Page,
   timeout = 30_000
@@ -27,10 +51,7 @@ export async function navigateToTestPage(
     await gotItButton.click();
   }
 
-  // Click on the page content area to trigger Notion's contenteditable initialization
-  await page.locator('[data-content-editable-root="true"]').first().click({ timeout: 15_000 });
-
-  await page.locator(".vim-mode").filter({ hasText: "Line" }).waitFor({ timeout });
+  await waitForVimtionReady(page, timeout);
 }
 
 export async function reloadAndWait(
@@ -38,10 +59,7 @@ export async function reloadAndWait(
   timeout = 30_000
 ): Promise<void> {
   await page.reload({ waitUntil: "load" });
-
-  await page.locator('[data-content-editable-root="true"]').first().click({ timeout: 15_000 });
-
-  await page.locator(".vim-mode").filter({ hasText: "Line" }).waitFor({ timeout });
+  await waitForVimtionReady(page, timeout);
 }
 
 export function parseStatusText(text: string): VimState {

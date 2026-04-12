@@ -37,7 +37,7 @@ test.describe.serial("Mode transitions", () => {
     await waitForBodyClass(page, "vim-normal-mode");
   });
 
-  test.skip("Insert → Normal (jk escape sequence)", async ({ extensionPage: page }) => {
+  test("Insert → Normal (jk escape sequence)", async ({ extensionPage: page }) => {
     await pressKeys(page, "i");
     await waitForMode(page, "insert");
 

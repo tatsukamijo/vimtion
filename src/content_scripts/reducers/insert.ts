@@ -11,8 +11,8 @@ import { getCursorIndexInElement } from "../cursor";
 
 export interface InsertReducerDeps {
   updateInfoContainer: () => void;
-  lastInsertKey: string | null;
-  lastInsertKeyTime: number;
+  getLastInsertKey: () => string | null;
+  getLastInsertKeyTime: () => number;
   JK_TIMEOUT_MS: number;
   setLastInsertKey: (key: string | null) => void;
   setLastInsertKeyTime: (time: number) => void;
@@ -27,8 +27,8 @@ export interface InsertReducerDeps {
 export const createInsertReducer = (deps: InsertReducerDeps) => {
   const {
     updateInfoContainer,
-    lastInsertKey,
-    lastInsertKeyTime,
+    getLastInsertKey,
+    getLastInsertKeyTime,
     JK_TIMEOUT_MS,
     setLastInsertKey,
     setLastInsertKeyTime,
@@ -52,7 +52,7 @@ export const createInsertReducer = (deps: InsertReducerDeps) => {
         break;
       case "k":
         // Check if 'k' follows 'j' within timeout
-        if (lastInsertKey === "j" && now - lastInsertKeyTime < JK_TIMEOUT_MS) {
+        if (getLastInsertKey() === "j" && now - getLastInsertKeyTime() < JK_TIMEOUT_MS) {
           e.preventDefault();
           e.stopPropagation();
 

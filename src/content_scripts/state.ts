@@ -40,6 +40,14 @@ export let lastInsertKey: string | null = null;
 export let lastInsertKeyTime = 0;
 export const JK_TIMEOUT_MS = 200; // Time window for jk sequence
 
+export function getLastInsertKey(): string | null {
+  return lastInsertKey;
+}
+
+export function getLastInsertKeyTime(): number {
+  return lastInsertKeyTime;
+}
+
 export function setLastInsertKey(key: string | null) {
   lastInsertKey = key;
 }
