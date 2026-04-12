@@ -7,3 +7,4 @@ test/auth/.user-data/
 test/.env
 test-results/
 playwright-report/
+.claude/
