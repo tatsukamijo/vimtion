@@ -31,6 +31,7 @@ export const test = base.extend<{}, ExtensionWorkerFixtures>({
           "--disable-component-extensions-with-background-pages",
         ],
       });
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
       await use(context);
       await context.close();
     },

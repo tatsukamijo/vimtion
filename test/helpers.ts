@@ -74,6 +74,21 @@ export async function getVimState(page: Page): Promise<VimState> {
   return parseStatusText(text);
 }
 
+export async function waitForVimStateReady(
+  page: Page,
+  timeout = 5_000
+): Promise<VimState> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const state = await getVimState(page);
+    if (state.lineCount > 0 && state.activeLine > 0) return state;
+    // Press Escape to trigger updateInfoContainer and populate line info
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+  }
+  return getVimState(page);
+}
+
 export async function getMode(page: Page): Promise<string> {
   const state = await getVimState(page);
   return state.mode;
@@ -120,4 +135,14 @@ export async function getEditableBlockCount(page: Page): Promise<number> {
 
 export async function getModeText(page: Page): Promise<string> {
   return (await page.locator(".vim-mode").textContent()) ?? "";
+}
+
+export async function getAllBlockTexts(page: Page): Promise<string[]> {
+  const blocks = page.locator('[contenteditable="true"]');
+  const count = await blocks.count();
+  const texts: string[] = [];
+  for (let i = 0; i < count; i++) {
+    texts.push((await blocks.nth(i).textContent()) ?? "");
+  }
+  return texts;
 }

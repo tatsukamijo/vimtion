@@ -5,6 +5,7 @@ import {
   waitForMode,
   pressKeys,
   getVimState,
+  getAllBlockTexts,
 } from "../helpers";
 
 async function waitForLine(
@@ -33,6 +34,8 @@ test.describe.serial("Navigation", () => {
   });
 
   test("j moves cursor down", async ({ extensionPage: page }) => {
+    const blocksBefore = await getAllBlockTexts(page);
+
     await pressKeys(page, "g", "g");
     await page.waitForTimeout(200);
 
@@ -44,9 +47,15 @@ test.describe.serial("Navigation", () => {
 
     const after = await getVimState(page);
     expect(after.activeLine).toBeGreaterThan(before.activeLine);
+    expect(after.mode).toBe("normal");
+    expect(after.lineCount).toBe(before.lineCount);
+    const blocksAfter = await getAllBlockTexts(page);
+    expect(blocksAfter).toEqual(blocksBefore);
   });
 
   test("k moves cursor up", async ({ extensionPage: page }) => {
+    const blocksBefore = await getAllBlockTexts(page);
+
     await pressKeys(page, "g", "g");
     await pressKeys(page, "j", "j", "j");
     await page.waitForTimeout(200);
@@ -57,9 +66,15 @@ test.describe.serial("Navigation", () => {
     const after = await getVimState(page);
 
     expect(after.activeLine).toBeLessThan(before.activeLine);
+    expect(after.mode).toBe("normal");
+    expect(after.lineCount).toBe(before.lineCount);
+    const blocksAfter = await getAllBlockTexts(page);
+    expect(blocksAfter).toEqual(blocksBefore);
   });
 
   test("gg moves to first line", async ({ extensionPage: page }) => {
+    const blocksBefore = await getAllBlockTexts(page);
+
     await pressKeys(page, "j", "j", "j");
     await page.waitForTimeout(200);
 
@@ -68,30 +83,44 @@ test.describe.serial("Navigation", () => {
 
     const state = await getVimState(page);
     expect(state.activeLine).toBe(1);
+    expect(state.mode).toBe("normal");
+    const blocksAfter = await getAllBlockTexts(page);
+    expect(blocksAfter).toEqual(blocksBefore);
   });
 
   test("G moves to last line", async ({ extensionPage: page }) => {
+    const blocksBefore = await getAllBlockTexts(page);
+
     await pressKeys(page, "Shift+G");
     await page.waitForTimeout(200);
 
     const state = await getVimState(page);
     expect(state.activeLine).toBe(state.lineCount);
+    expect(state.mode).toBe("normal");
+    const blocksAfter = await getAllBlockTexts(page);
+    expect(blocksAfter).toEqual(blocksBefore);
   });
 
   test("k does not go above first line", async ({ extensionPage: page }) => {
+    const blocksBefore = await getAllBlockTexts(page);
+
     await pressKeys(page, "g", "g");
     await waitForLine(page, 1);
 
-    // Press k multiple times to ensure we can't go above line 1
     await pressKeys(page, "k", "k", "k");
     await page.waitForTimeout(200);
     const after = await getVimState(page);
 
     expect(after.activeLine).toBeGreaterThanOrEqual(1);
     expect(after.activeLine).toBeLessThanOrEqual(2);
+    expect(after.mode).toBe("normal");
+    const blocksAfter = await getAllBlockTexts(page);
+    expect(blocksAfter).toEqual(blocksBefore);
   });
 
   test("j at last line stays at last line", async ({ extensionPage: page }) => {
+    const blocksBefore = await getAllBlockTexts(page);
+
     await pressKeys(page, "Shift+G");
     await page.waitForTimeout(200);
     const before = await getVimState(page);
@@ -101,5 +130,9 @@ test.describe.serial("Navigation", () => {
     const after = await getVimState(page);
 
     expect(after.activeLine).toBe(before.activeLine);
+    expect(after.mode).toBe("normal");
+    expect(after.lineCount).toBe(before.lineCount);
+    const blocksAfter = await getAllBlockTexts(page);
+    expect(blocksAfter).toEqual(blocksBefore);
   });
 });
