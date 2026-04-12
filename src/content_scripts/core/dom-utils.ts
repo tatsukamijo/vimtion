@@ -57,10 +57,10 @@ export const deleteMultipleLinesAtomically = (
     const firstRect = firstBlock.getBoundingClientRect();
     const lastRect = lastBlock.getBoundingClientRect();
 
-    const startX = firstRect.left - 10;
-    const startY = firstRect.top + firstRect.height / 2;
+    const startX = firstRect.left - 30;
+    const startY = firstRect.top + 2;
     const endX = firstRect.left + 200;
-    const endY = lastRect.top + lastRect.height / 2;
+    const endY = lastRect.bottom - 2;
 
     const startElement = document.elementFromPoint(startX, startY);
 

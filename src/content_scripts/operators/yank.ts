@@ -86,16 +86,17 @@ export const yankAroundParagraph = async (
  * Yank current line
  * Used by: yy command
  */
-export const yankCurrentLine = async () => {
+export const yankCurrentLine = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
 
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
+  const range = document.createRange();
+  range.selectNodeContents(currentElement);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  document.execCommand("copy");
+  sel?.removeAllRanges();
 };
 
 /**

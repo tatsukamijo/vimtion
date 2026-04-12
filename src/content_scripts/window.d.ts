@@ -44,6 +44,7 @@ interface VimInfo {
     | "ct"
     | "cT"
     | null;
+  yank_type: "line" | "char" | null;
   undo_count: number;
   in_undo_group: boolean;
   link_hints: LinkHint[];

@@ -9,17 +9,18 @@ import { isParagraphBoundary } from "../notion";
 /**
  * Yank current line
  */
-export const createYankCurrentLine = () => async () => {
+export const createYankCurrentLine = () => () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
 
-  try {
-    // Add newline to indicate line-wise yank (Vim behavior)
-    await navigator.clipboard.writeText(text + "\n");
-  } catch (err) {
-    console.error("[Vim-Notion] Failed to yank:", err);
-  }
+  const range = document.createRange();
+  range.selectNodeContents(currentElement);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  document.execCommand("copy");
+  sel?.removeAllRanges();
+  vim_info.yank_type = "line";
 };
 
 /**
