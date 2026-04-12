@@ -5,6 +5,13 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] - 2026-04-13
+
+### Fixed
+- **Block deletion reliability**: Improved mouse drag coordinates for block selection, increasing horizontal offset and using block edges for vertical coordinates to more reliably hit Notion's gutter area
+- **Yank preserves rich text formatting** ([#7](https://github.com/tatsukamijo/vimtion/issues/7)): `yy` and visual-line yank now use `execCommand("copy")` with DOM selection instead of `navigator.clipboard.writeText()`, preserving headings, lists, links, and inline formatting when pasting with Cmd+V
+- **Paste preserves rich text**: `p` now dispatches `ClipboardEvent` with HTML clipboard data so Notion processes formatting correctly
+
 ## [1.5.2] - 2026-01-17
 
 ### Fixed

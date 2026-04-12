@@ -78,6 +78,7 @@ export function initVimInfo(): VimInfo {
     visual_start_line: 0,
     visual_start_pos: 0,
     pending_operator: null,
+    yank_type: null,
     undo_count: 0,
     in_undo_group: false,
     link_hints: [],
