@@ -3,3 +3,7 @@ dist/
 .cache/
 .parcel-cache/
 .DS_Store
+test/auth/.user-data/
+test/.env
+test-results/
+playwright-report/

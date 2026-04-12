@@ -4,7 +4,9 @@
   "description": "A Chrome extension that brings Vim keybindings to Notion, updated for modern Chrome compatibility.",
   "scripts": {
     "build": "rm -rf dist && parcel build src/background.ts --dist-dir dist && parcel build src/content_scripts/{vim.ts,vim.css,update-notification.ts,update-notification.css} --dist-dir dist/content_scripts && parcel build src/options/{options.html,options.ts,options.css} --dist-dir dist/options --public-url ./ && cp src/manifest.json dist/ && cp -r src/icons dist/",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "npx playwright test --config=test/playwright.config.ts",
+    "test:setup-auth": "npx playwright test --config=test/playwright.config.ts --project=setup"
   },
   "keywords": [
     "vim",
@@ -23,7 +25,9 @@
   "license": "ISC",
   "devDependencies": {
     "@parcel/transformer-typescript-tsc": "^2.12.0",
+    "@playwright/test": "^1.59.1",
     "@types/chrome": "^0.0.268",
+    "@types/node": "^25.6.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "eslint": "^8.57.0",
@@ -31,6 +35,5 @@
     "parcel": "^2.12.0",
     "prettier": "^3.2.5",
     "typescript": "^5.3.3"
-  },
-  "dependencies": {}
+  }
 }
