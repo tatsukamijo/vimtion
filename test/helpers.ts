@@ -137,6 +137,44 @@ export async function getModeText(page: Page): Promise<string> {
   return (await page.locator(".vim-mode").textContent()) ?? "";
 }
 
+/**
+ * Get the text of the block that actually has the DOM cursor/selection.
+ * This checks the real browser selection, independent of vim_info.active_line.
+ */
+export async function getActualCursorBlockText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return "";
+    const node = sel.anchorNode;
+    if (!node) return "";
+    const el = node.nodeType === Node.ELEMENT_NODE
+      ? node as Element
+      : node.parentElement;
+    const leaf = el?.closest('[data-content-editable-leaf="true"]');
+    return leaf?.textContent ?? "";
+  });
+}
+
+/**
+ * Get the index of the block that has the DOM cursor among all leaf blocks.
+ * Returns -1 if cursor is not in any leaf block.
+ */
+export async function getActualCursorBlockIndex(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return -1;
+    const node = sel.anchorNode;
+    if (!node) return -1;
+    const el = node.nodeType === Node.ELEMENT_NODE
+      ? node as Element
+      : node.parentElement;
+    const leaf = el?.closest('[data-content-editable-leaf="true"]');
+    if (!leaf) return -1;
+    const allLeaves = document.querySelectorAll('[data-content-editable-leaf="true"]');
+    return Array.from(allLeaves).indexOf(leaf);
+  });
+}
+
 export async function getAllBlockTexts(page: Page): Promise<string[]> {
   const blocks = page.locator('[data-content-editable-leaf="true"]');
   const count = await blocks.count();

@@ -1,9 +1,44 @@
 import { test as setup, chromium } from "@playwright/test";
 import * as path from "path";
 import * as fs from "fs";
+import { createTestPage, deleteTestPage } from "./setup-test-page";
 
 const distPath = path.resolve(__dirname, "..", "dist");
 const userDataDir = path.resolve(__dirname, "auth", ".user-data");
+const envPath = path.resolve(__dirname, ".env");
+
+function loadEnv() {
+  if (!fs.existsSync(envPath)) return;
+  const content = fs.readFileSync(envPath, "utf-8");
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      const eqIndex = trimmed.indexOf("=");
+      if (eqIndex > 0) {
+        const key = trimmed.slice(0, eqIndex);
+        const value = trimmed.slice(eqIndex + 1);
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+function saveEnvVar(key: string, value: string) {
+  let content = "";
+  if (fs.existsSync(envPath)) {
+    content = fs.readFileSync(envPath, "utf-8");
+    const regex = new RegExp(`^${key}=.*$`, "m");
+    if (regex.test(content)) {
+      content = content.replace(regex, `${key}=${value}`);
+    } else {
+      content = content.trimEnd() + `\n${key}=${value}\n`;
+    }
+  } else {
+    content = `${key}=${value}\n`;
+  }
+  fs.writeFileSync(envPath, content);
+  process.env[key] = value;
+}
 
 setup("authenticate with Notion", async () => {
   if (!fs.existsSync(userDataDir)) {
@@ -12,7 +47,7 @@ setup("authenticate with Notion", async () => {
 
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: "chromium",
-    headless: false,
+    headless: !process.env.HEADED,
     args: [
       `--disable-extensions-except=${distPath}`,
       `--load-extension=${distPath}`,
@@ -57,4 +92,39 @@ setup("authenticate with Notion", async () => {
 
   console.log("Notion authentication successful. Session saved.");
   await context.close();
+});
+
+setup("create test page via Notion API", async () => {
+  loadEnv();
+
+  const apiKey = process.env.NOTION_API_KEY;
+  const parentPageId = process.env.NOTION_PARENT_PAGE_ID;
+
+  if (!apiKey || !parentPageId) {
+    console.log("Skipping test page creation: NOTION_API_KEY or NOTION_PARENT_PAGE_ID not set in test/.env");
+    return;
+  }
+
+  // Delete previous test page if it exists
+  const prevPageId = process.env.NOTION_TEST_PAGE_ID;
+  if (prevPageId) {
+    try {
+      await deleteTestPage(apiKey, prevPageId);
+      console.log(`Deleted previous test page: ${prevPageId}`);
+    } catch (e) {
+      console.log(`Could not delete previous test page: ${e}`);
+    }
+  }
+
+  // Create fresh test page
+  const { pageId, url } = await createTestPage(apiKey, parentPageId);
+
+  // Convert app.notion.com URL to www.notion.so URL for browser access
+  const browserUrl = url.replace("https://app.notion.com/", "https://www.notion.so/");
+
+  saveEnvVar("NOTION_TEST_PAGE_ID", pageId);
+  saveEnvVar("NOTION_TEST_PAGE_URL", browserUrl);
+
+  console.log(`Created test page: ${browserUrl}`);
+  console.log(`Page ID: ${pageId}`);
 });

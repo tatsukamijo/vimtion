@@ -20,7 +20,7 @@ export const test = base.extend<{}, ExtensionWorkerFixtures>({
     async ({}, use) => {
       const context = await chromium.launchPersistentContext(userDataDir, {
         channel: "chromium",
-        headless: false,
+        headless: !process.env.HEADED,
         args: [
           `--disable-extensions-except=${distPath}`,
           `--load-extension=${distPath}`,

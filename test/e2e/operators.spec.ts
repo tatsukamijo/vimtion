@@ -1,5 +1,6 @@
 import { test, expect } from "../fixtures";
 import {
+  navigateToTestPage,
   reloadAndWait,
   waitForMode,
   pressKeys,
@@ -8,8 +9,15 @@ import {
 } from "../helpers";
 
 test.describe.serial("Operators", () => {
+  let initialized = false;
+
   test.beforeEach(async ({ extensionPage: page }) => {
-    await reloadAndWait(page);
+    if (!initialized) {
+      await navigateToTestPage(page);
+      initialized = true;
+    } else {
+      await reloadAndWait(page);
+    }
     await pressKeys(page, "Escape");
     await waitForMode(page, "normal");
   });
