@@ -4,6 +4,8 @@ export {
   pressKeys,
   assertCursorInvariant,
   useCursorInvariant,
+  assertUiInvariant,
+  useUiInvariant,
   type InvariantOptions,
 } from "./cursor-invariant";
 

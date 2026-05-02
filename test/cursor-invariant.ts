@@ -1,16 +1,21 @@
 /**
- * Continuous cursor-sync invariant.
+ * Continuous test-time invariants. Two siblings live here, sharing the
+ * `recentKeys` ring buffer so both can blame the same breaking key:
  *
- * Asserts after each keystroke that:
- *   window.vim_info.lines[active_line].element  ===  the leaf element
- *   that owns window.getSelection()'s anchor/focus node.
+ *   1. assertCursorInvariant / useCursorInvariant — element-identity check.
+ *      vim_info.lines[active_line].element === the leaf owning the DOM
+ *      selection's anchor/focus node. Catches stale-element / refresh-miss
+ *      bugs (BUG-012/013/002/003).
  *
- * Element-identity (not index-identity) is the rule, so it's robust to:
- *   - code blocks that hold many visual rows in one [contenteditable="true"]
- *   - selector mismatches between [contenteditable="true"] and
- *     [data-content-editable-leaf="true"]
+ *   2. assertUiInvariant / useUiInvariant — rendered-UI check.
+ *      Catches a different bug class than assertCursorInvariant: UI lag
+ *      where vim_info IS correct but the rendered status bar `.vim-mode`
+ *      and/or the absolutely-positioned `<div class="vim-block-cursor">`
+ *      overlay are stale (BUG-016 `w`/`b` cross-line, BUG-017 `{`/`}`).
  *
- * See docs/test-overhaul/invariant-design.md for the full rationale.
+ * The two invariants are independent; specs opt into either, both, or neither.
+ *
+ * See docs/test-overhaul/invariant-design.md for the cursor-invariant rationale.
  */
 import { expect, test as base, type Page } from "@playwright/test";
 
@@ -23,9 +28,11 @@ export interface InvariantOptions {
   label?: string;
 }
 
-// Module-level flags toggled by useCursorInvariant().
+// Module-level flags toggled by useCursorInvariant() / useUiInvariant().
 let specWideEnabled = false;
 let specWideStrict = false;
+let specWideUiEnabled = false;
+let specWideUiStrict = false;
 const recentKeys: string[] = [];
 
 interface InvariantSnapshot {
@@ -182,12 +189,14 @@ export async function pressKeys(
   }
   const keys = keysOrOpts as string[];
   const enabled = opts.assertInvariant ?? specWideEnabled;
+  const uiEnabled = specWideUiEnabled;
   for (const key of keys) {
     await page.keyboard.press(key);
     recentKeys.push(key);
     if (recentKeys.length > 16) recentKeys.shift();
     await page.waitForTimeout(50);
     if (enabled) await assertCursorInvariant(page, opts);
+    if (uiEnabled) await assertUiInvariant(page, { label: opts.label });
   }
 }
 
@@ -217,5 +226,201 @@ export function useCursorInvariant(
     specWideEnabled = false;
     specWideStrict = false;
     recentKeys.length = 0;
+  });
+}
+
+// ===========================================================================
+// UI-sync invariant (BUG-016 / BUG-017 family).
+//
+// vim_info.active_line and the DOM cursor can both be correct, yet the
+// rendered UI lags because a motion handler skipped updateInfoContainer() /
+// updateBlockCursor(). This invariant catches that mismatch.
+//
+// Two checks:
+//   (a) Status bar: ".vim-mode" text contains "Line N/M" (1-based);
+//       require N - 1 === vim_info.active_line.
+//   (b) Block-cursor overlay: ".vim-block-cursor" is a div absolutely
+//       positioned in document.body. Its rendered viewport rect must overlap
+//       vertically with vim_info.lines[active_line].element's bounding rect.
+//       Geometric, not DOM-containment, because the overlay is not nested
+//       inside the active block.
+// ===========================================================================
+
+interface UiSnapshot {
+  mode: string;
+  activeLine: number;
+  linesLength: number;
+  // Status bar
+  statusBarText: string;
+  statusBarLine: number; // 1-based; -1 if unparseable
+  statusBarMatch: boolean;
+  // Block cursor overlay
+  overlayPresent: boolean;
+  overlayDisplayed: boolean;
+  overlayTop: number; // viewport y; NaN if absent
+  overlayBottom: number;
+  activeBlockTop: number;
+  activeBlockBottom: number;
+  overlayMatch: boolean; // overlay vertical center inside active block range
+  // Diagnostic context
+  textWindow: Array<{ idx: number; text: string }>;
+}
+
+async function uiSnapshot(page: Page): Promise<UiSnapshot> {
+  return page.evaluate(() => {
+    interface VimLineLite {
+      element: HTMLElement;
+    }
+    interface VimInfoLite {
+      active_line: number;
+      lines: VimLineLite[];
+      mode: string;
+    }
+    const vi = (window as unknown as { vim_info?: VimInfoLite }).vim_info;
+    const activeLine = vi?.active_line ?? -1;
+    const linesLength = vi?.lines?.length ?? 0;
+    const mode = vi?.mode ?? "unknown";
+
+    // Status bar
+    const modeEl = document.querySelector(".vim-mode") as HTMLElement | null;
+    const statusBarText = modeEl?.textContent ?? "";
+    const lineMatch = statusBarText.match(/Line\s+(\d+)\/(\d+)/);
+    const statusBarLine = lineMatch ? parseInt(lineMatch[1], 10) : -1;
+    const statusBarMatch =
+      statusBarLine !== -1 && statusBarLine - 1 === activeLine;
+
+    // Block cursor overlay
+    const overlay = document.querySelector(
+      ".vim-block-cursor",
+    ) as HTMLElement | null;
+    const overlayPresent = !!overlay;
+    const overlayStyle = overlay ? window.getComputedStyle(overlay) : null;
+    const overlayDisplayed =
+      !!overlay && overlayStyle?.display !== "none" && overlay.offsetWidth > 0;
+    const overlayRect = overlay?.getBoundingClientRect();
+    const overlayTop = overlayRect?.top ?? Number.NaN;
+    const overlayBottom = overlayRect?.bottom ?? Number.NaN;
+
+    const activeEl = vi?.lines?.[activeLine]?.element;
+    const activeRect = activeEl?.getBoundingClientRect();
+    const activeBlockTop = activeRect?.top ?? Number.NaN;
+    const activeBlockBottom = activeRect?.bottom ?? Number.NaN;
+
+    let overlayMatch = true; // default true so we can short-circuit on skip
+    if (overlay && overlayDisplayed && activeRect) {
+      const overlayCenter = (overlayTop + overlayBottom) / 2;
+      // Allow 4px slack: overlay vertical center within active block ± 4px.
+      overlayMatch =
+        overlayCenter >= activeBlockTop - 4 &&
+        overlayCenter <= activeBlockBottom + 4;
+    }
+
+    const textWindow: Array<{ idx: number; text: string }> = [];
+    for (const d of [-2, -1, 0, 1, 2]) {
+      const j = activeLine + d;
+      if (j < 0 || j >= linesLength) continue;
+      const text = (vi!.lines[j].element.textContent ?? "").slice(0, 60);
+      textWindow.push({ idx: j, text });
+    }
+    return {
+      mode,
+      activeLine,
+      linesLength,
+      statusBarText: statusBarText.slice(0, 200),
+      statusBarLine,
+      statusBarMatch,
+      overlayPresent,
+      overlayDisplayed,
+      overlayTop,
+      overlayBottom,
+      activeBlockTop,
+      activeBlockBottom,
+      overlayMatch,
+      textWindow,
+    };
+  });
+}
+
+function shouldCheckUi(s: UiSnapshot, strict: boolean): boolean {
+  if (s.mode === "link-hint") return false;
+  if (s.linesLength === 0) return false;
+  // In insert/visual modes, the overlay is hidden and the status bar still
+  // updates. Honor the same conservative default as cursor-invariant: skip
+  // insert by default unless `strict` is on.
+  if (s.mode === "insert" && !strict) return false;
+  return true;
+}
+
+/** Manual one-shot UI-sync check. Safe to call any time. */
+export async function assertUiInvariant(
+  page: Page,
+  opts: InvariantOptions = {},
+): Promise<void> {
+  const strict = opts.strict ?? specWideUiStrict;
+  const s = await uiSnapshot(page);
+  if (!shouldCheckUi(s, strict)) return;
+
+  // Block cursor is hidden in non-normal modes; only check the overlay when
+  // the mode says it should be visible.
+  const overlayApplicable = s.mode === "normal";
+  const statusOk = s.statusBarMatch;
+  const overlayOk = !overlayApplicable || s.overlayMatch;
+  if (statusOk && overlayOk) return;
+
+  const failures: string[] = [];
+  if (!statusOk) failures.push("status-bar");
+  if (!overlayOk) failures.push("block-cursor-overlay");
+
+  const label = opts.label ? ` (label: "${opts.label}")` : "";
+  const lastKey = recentKeys[recentKeys.length - 1] ?? "<none>";
+  const lines = [
+    `[UiInvariant] Mismatch after key "${lastKey}" — ${failures.join(", ")}${label}`,
+    ``,
+    `  mode:                 ${s.mode}`,
+    `  vim_info.active_line: ${s.activeLine}  (expected status-bar Line ${s.activeLine + 1})`,
+    `  status-bar text:      ${JSON.stringify(s.statusBarText)}`,
+    `  status-bar Line N:    ${s.statusBarLine}  → ${s.statusBarMatch ? "MATCH" : "STALE"}`,
+    ``,
+    `  overlay present:      ${s.overlayPresent}`,
+    `  overlay displayed:    ${s.overlayDisplayed}`,
+    `  overlay viewport y:   ${s.overlayTop.toFixed(1)} … ${s.overlayBottom.toFixed(1)}`,
+    `  active block y:       ${s.activeBlockTop.toFixed(1)} … ${s.activeBlockBottom.toFixed(1)}`,
+    `  overlay vs active:    ${s.overlayMatch ? "OVERLAPS" : "STALE (frozen at previous block?)"}`,
+    ``,
+    `  Last keys: ${JSON.stringify(recentKeys.slice(-5))}`,
+    ``,
+    `  Block contents (active_line ± 2):`,
+    ...s.textWindow.map((w) => {
+      const marker = w.idx === s.activeLine ? "→ " : "  ";
+      return `${marker}${w.idx}: ${JSON.stringify(w.text)}`;
+    }),
+    ``,
+    `  Hint: a motion handler updated vim_info.active_line directly without `,
+    `        calling updateInfoContainer() / updateBlockCursor(). Look for `,
+    `        the keystroke's reducer in src/content_scripts/{navigation,visual,…}.`,
+  ];
+  expect(statusOk && overlayOk, lines.join("\n")).toBe(true);
+}
+
+/**
+ * Spec-level toggle for the UI-sync invariant. Mirrors useCursorInvariant.
+ *
+ * Pass the spec's fixture-extended `test` as the second argument when the
+ * spec uses one (see useCursorInvariant docstring for why).
+ */
+export function useUiInvariant(
+  opts: { strict?: boolean } = {},
+  testObj: HookHost = base as unknown as HookHost,
+): void {
+  testObj.beforeEach(() => {
+    specWideUiEnabled = true;
+    specWideUiStrict = opts.strict ?? false;
+  });
+  testObj.afterEach(() => {
+    specWideUiEnabled = false;
+    specWideUiStrict = false;
+    // recentKeys is shared with cursor-invariant; only clear if cursor-
+    // invariant isn't also active (its afterEach handles its own cleanup).
+    if (!specWideEnabled) recentKeys.length = 0;
   });
 }
