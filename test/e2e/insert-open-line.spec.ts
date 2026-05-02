@@ -9,6 +9,8 @@ import {
   getActualCursorBlockIndex,
   getAllBlockTexts,
   getCurrentBlockType,
+  useCursorInvariant,
+  useUiInvariant,
 } from "../helpers";
 
 async function goToBlock(
@@ -37,6 +39,9 @@ async function goToBlock(
 }
 
 test.describe.serial("Insert / Open Line — block types & edge cases", () => {
+  useCursorInvariant({ strict: false }, test);
+  useUiInvariant({ strict: false }, test);
+
   test.beforeAll(async ({ extensionPage: page }) => {
     await navigateToTestPage(page);
     await pressKeys(page, "Escape");
