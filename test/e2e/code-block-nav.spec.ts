@@ -8,6 +8,8 @@ import {
   getActualCursorBlockIndex,
   getCursorPosition,
   waitForBlockConversion,
+  useCursorInvariant,
+  useUiInvariant,
 } from "../helpers";
 
 async function goToBlock(
@@ -64,7 +66,13 @@ function getCodeLineFromOffset(fullText: string, offset: number): { lineIndex: n
   return { lineIndex: lines.length - 1, lineCount: lines.length };
 }
 
-test.describe.serial("Code block navigation", () => {
+// NOTE: dropped `describe.serial` so the invariants don't halt the full
+// diagnostic capture on the first violation. Each test does its own
+// `goToBlock(...)` reset, so they're already independent of each other.
+test.describe("Code block navigation", () => {
+  useCursorInvariant({ strict: false }, test);
+  useUiInvariant({ strict: false }, test);
+
   test.beforeAll(async ({ extensionPage: page }) => {
     await navigateToTestPage(page);
     await pressKeys(page, "Escape");
