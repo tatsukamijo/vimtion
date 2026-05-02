@@ -6,6 +6,27 @@
 import { updateBlockCursor } from "../cursor";
 
 /**
+ * Bridge: mirror a sanitized snapshot of vim_info to document.body.dataset
+ * so test harnesses running in the page's MAIN world (e.g., Playwright's
+ * page.evaluate) can read state. The content script's `window.vim_info`
+ * lives in Chrome's ISOLATED world and is otherwise unreachable from there.
+ *
+ * Side-effect-only: never read by extension code. Guaranteed to be a primitive
+ * JSON string — never includes element references or anything heavy.
+ */
+export const syncVimInfoToDOM = (): void => {
+  const { vim_info } = window;
+  if (!vim_info || !vim_info.lines) return;
+  document.body.dataset.vimtionState = JSON.stringify({
+    mode: vim_info.mode,
+    active_line: vim_info.active_line,
+    cursor_position: vim_info.cursor_position,
+    lines_length: vim_info.lines.length,
+    pending_operator: vim_info.pending_operator,
+  });
+};
+
+/**
  * Get formatted mode text for display
  */
 export const getModeText = (
@@ -57,4 +78,7 @@ export const updateInfoContainer = () => {
 
   // Update block cursor position
   updateBlockCursor();
+
+  // Mirror state to DOM dataset for test harness consumption.
+  syncVimInfoToDOM();
 };

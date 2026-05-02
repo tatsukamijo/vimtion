@@ -52,31 +52,50 @@ interface InvariantSnapshot {
 
 async function snapshot(page: Page): Promise<InvariantSnapshot> {
   return page.evaluate(() => {
-    interface VimLineLite {
-      element: HTMLElement;
-      cursor_position: number;
-    }
-    interface VimInfoLite {
+    // Read bridged state from document.body.dataset.vimtionState. The bridge
+    // is written by syncVimInfoToDOM() in src/content_scripts/ui/info-container.ts
+    // and from the keydown handler in vim.ts after every reducer pass. If the
+    // attribute is missing, the extension hasn't been rebuilt or hasn't loaded
+    // yet — return a "skip" snapshot.
+    interface BridgedState {
+      mode: string;
       active_line: number;
       cursor_position: number;
-      lines: VimLineLite[];
-      mode: string;
+      lines_length: number;
       pending_operator: string | null;
     }
-    const vi = (window as unknown as { vim_info?: VimInfoLite }).vim_info;
+    let bridged: BridgedState | null = null;
+    const raw = document.body?.dataset?.vimtionState;
+    if (raw) {
+      try {
+        bridged = JSON.parse(raw) as BridgedState;
+      } catch {
+        bridged = null;
+      }
+    }
+
     const sel = window.getSelection();
     const anchor = sel?.anchorNode ?? null;
     const focus = sel?.focusNode ?? null;
-    const cursorNode = vi?.mode?.startsWith("visual") ? focus : anchor;
+    const cursorNode = bridged?.mode?.startsWith("visual") ? focus : anchor;
     const el =
       cursorNode && cursorNode.nodeType === 1
         ? (cursorNode as Element)
         : cursorNode?.parentElement ?? null;
     const actualLeaf = el?.closest('[contenteditable="true"]') ?? null;
-    const expectedLeaf = vi?.lines?.[vi.active_line]?.element ?? null;
+
+    // The bridge can't ship element refs. Use the DOM-derived proxy: vim_info.lines
+    // is built from `document.querySelectorAll('[contenteditable="true"]')` in
+    // DOM order (see src/content_scripts/core/line-management.ts), so
+    // querySelectorAll(...)[active_line] === lines[active_line].element.
     const allEditable = Array.from(
       document.querySelectorAll('[contenteditable="true"]'),
     );
+    const expectedLeaf =
+      bridged && bridged.active_line >= 0 && bridged.active_line < allEditable.length
+        ? allEditable[bridged.active_line]
+        : null;
+
     const trim = (e: Element | null): string | null => {
       if (!e) return null;
       const html = e.outerHTML;
@@ -84,28 +103,36 @@ async function snapshot(page: Page): Promise<InvariantSnapshot> {
     };
     const buildWindow = (i: number): Array<{ idx: number; text: string }> => {
       const out: Array<{ idx: number; text: string }> = [];
-      const len = vi?.lines?.length ?? 0;
       for (const d of [-2, -1, 0, 1, 2]) {
         const j = i + d;
-        if (j < 0 || j >= len) continue;
-        const text = (vi!.lines[j].element.textContent ?? "").slice(0, 60);
+        if (j < 0 || j >= allEditable.length) continue;
+        const text = (allEditable[j].textContent ?? "").slice(0, 60);
         out.push({ idx: j, text });
       }
       return out;
     };
+
+    // expectedDetached cannot be checked from the bridge (the bridge doesn't
+    // ship the cached element reference, so we can't tell whether the
+    // PREVIOUS active element is still in the DOM). Approximate via the
+    // count-mismatch fingerprint: if lines_length !== querySelectorAll count,
+    // the cached array is stale (refreshLines missed a mutation).
+    const linesLength = bridged?.lines_length ?? 0;
+    const expectedDetached = false; // conservative — relies on count fingerprint instead
+
     return {
-      mode: vi?.mode ?? "unknown",
-      pendingOperator: (vi?.pending_operator as string | null) ?? null,
-      activeLine: vi?.active_line ?? -1,
-      cursorPosition: vi?.cursor_position ?? -1,
-      linesLength: vi?.lines?.length ?? 0,
+      mode: bridged?.mode ?? "unknown",
+      pendingOperator: bridged?.pending_operator ?? null,
+      activeLine: bridged?.active_line ?? -1,
+      cursorPosition: bridged?.cursor_position ?? -1,
+      linesLength,
       domEditableCount: allEditable.length,
       expectedElementHtml: trim(expectedLeaf),
       actualElementHtml: trim(actualLeaf),
       elementMatch: !!expectedLeaf && expectedLeaf === actualLeaf,
-      expectedDetached: !!expectedLeaf && !document.contains(expectedLeaf),
+      expectedDetached,
       actualIdx: actualLeaf ? allEditable.indexOf(actualLeaf) : -1,
-      textWindow: buildWindow(vi?.active_line ?? -1),
+      textWindow: buildWindow(bridged?.active_line ?? -1),
     };
   });
 }

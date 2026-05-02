@@ -140,6 +140,7 @@ import type {
 import {
   createInfoContainer,
   getModeText,
+  syncVimInfoToDOM,
   updateInfoContainer,
 } from "./ui/info-container";
 
@@ -519,6 +520,13 @@ const handleKeydown = (e: KeyboardEvent) => {
   } else {
     insertReducer(e);
   }
+
+  // Mirror vim_info → document.body.dataset.vimtionState for test harnesses
+  // running in the page's MAIN world. Catches all reducer paths, including
+  // motion handlers (BUG-016/017) that mutate active_line directly without
+  // calling updateInfoContainer(). Side-effect-only — pure DOM write, no
+  // change to extension behavior.
+  syncVimInfoToDOM();
 };
 
 // initVimInfo and jk escape tracking now imported from state module
