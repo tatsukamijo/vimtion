@@ -7,6 +7,8 @@ import {
   getActualCursorBlockIndex,
   getActualCursorBlockText,
   getAllBlockTexts,
+  useCursorInvariant,
+  useUiInvariant,
 } from "../helpers";
 
 /**
@@ -70,6 +72,14 @@ async function goToBlock(
 // =============================================================================
 
 test.describe.serial("Stress: fast user session (no reload)", () => {
+  // Spec-wide invariants. strict: false skips checks during insert mode where
+  // Notion may transiently own selection / lag the UI; checks run after every
+  // pressKeys(...) call in normal/visual modes. This is a stress / accumulated-
+  // state spec — a passing assertion at the end of a test is not enough; the
+  // continuous invariants surface drift the moment it appears.
+  useCursorInvariant({ strict: false }, test);
+  useUiInvariant({ strict: false }, test);
+
   test.beforeAll(async ({ extensionPage: page }) => {
     await navigateToTestPage(page);
     await pressKeys(page, "Escape");
