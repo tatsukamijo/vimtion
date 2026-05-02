@@ -589,21 +589,27 @@ test.describe.serial("Code block navigation", () => {
   // See docs/test-overhaul/bug-investigation.md, Part A, BUG-012 section 3.
   // =========================================================================
 
-  test("BUG-012: convert existing non-empty paragraph to code block via ``` keeps active_line in sync", async ({ extensionPage: page }) => {
+  test("BUG-012: convert existing paragraph to code block via ``` keeps active_line in sync", async ({ extensionPage: page }) => {
     // Reset to a known-good location first to avoid serial-test contamination
     await goToBlock(page, "Plain text line 1");
-    await goToBlock(page, "Plain text line 5");
-
-    // Append the markdown trigger to the END of the existing paragraph so the
-    // SAME contenteditable element is the one Notion destroys/replaces.
-    await pressKeys(page, "Shift+a");
+    // Navigate to "Before empty line" then j onto the EXISTING empty paragraph.
+    // The empty paragraph is a stable [contenteditable="true"] element that
+    // existed since page load (created by setup-test-page.ts:288 emptyParagraph()).
+    // When Notion converts it via ``` + Enter, this stable element is destroyed
+    // and replaced — the exact trigger refreshLines's findIndex stale-ref
+    // condition (core/line-management.ts:121-128).
+    await goToBlock(page, "Before empty line");
+    await pressKeys(page, "j"); // land on the existing empty paragraph
     await page.waitForTimeout(200);
 
-    // Type space + 3 backticks on the same line as the existing text
-    await page.keyboard.type(" ```");
+    await pressKeys(page, "i"); // insert mode at col 0 of existing empty paragraph
     await page.waitForTimeout(200);
 
-    // Enter triggers the conversion
+    // Type the markdown trigger directly on the existing-but-empty contenteditable
+    await page.keyboard.type("```");
+    await page.waitForTimeout(200);
+
+    // Enter triggers the conversion — Notion sees ``` at start of line.
     await page.keyboard.press("Enter");
 
     // Wait for Notion to actually convert the block — deterministic instead of
@@ -661,18 +667,28 @@ test.describe.serial("Code block navigation", () => {
     await goToBlock(page, "Plain text line 1"); // reset
     await goToBlock(page, "Section 8: Code block");
 
-    // Enter the code block and reach line 1 column 0.
-    // Code block is: "function hello() {\n  console.log('world');\n  return true;\n}"
+    // Enter the code block. Code block content:
+    //   "function hello() {\n  console.log('world');\n  return true;\n}"
     // Line 0: "function hello() {" (18)
     // Line 1: "  console.log('world');" (23)
     // Line 2: "  return true;" (14)
     // Line 3: "}" (1)
-    await pressKeys(page, "j"); // enter line 0 col 0
-    await page.waitForTimeout(150);
-    await pressKeys(page, "j"); // line 1 col 0
+    await pressKeys(page, "j"); // enter code block (cursor lands at desired_column on line 0)
     await page.waitForTimeout(150);
 
-    // Move to col 5 of line 1 by pressing l five times
+    // Normalize position: jumpToLineStart sets cursor to offset 0 (line 0 col 0)
+    // and resets desired_column to 0. Without this, desired_column carries the
+    // click position from goToBlock and `j` lands at unexpected lines.
+    await pressKeys(page, "0");
+    await page.waitForTimeout(80);
+
+    // Now move down to line 1 col 0
+    await pressKeys(page, "j");
+    await page.waitForTimeout(150);
+
+    // Move to col 5 of line 1 by pressing l five times.
+    // moveCursorForwardsInCodeBlock at code-block.ts:106 does
+    //   `vim_info.desired_column = newPos` (absolute offset, BUG-036)
     for (let i = 0; i < 5; i++) {
       await pressKeys(page, "l");
       await page.waitForTimeout(40);
@@ -685,13 +701,13 @@ test.describe.serial("Code block navigation", () => {
 
     const beforeJ = await getCodeBlockInfo(page);
     const beforeLine = getCodeLineFromOffset(beforeJ.text, beforeJ.offset);
-    // Compute visual column on line 1
+    // Compute visual column on the current line
     const beforeLineStart = beforeJ.text.split("\n").slice(0, beforeLine.lineIndex).reduce((s, l) => s + l.length + 1, 0);
     const beforeVisualCol = beforeJ.offset - beforeLineStart;
     console.log("BUG-036 pre-j: line =", beforeLine.lineIndex, "visual col =", beforeVisualCol);
 
     // Sanity: we're on line 1 col 4
-    expect(beforeLine.lineIndex, "should be on code line 1 after j j l*5 h").toBe(1);
+    expect(beforeLine.lineIndex, "should be on code line 1 after j 0 j l*5 h").toBe(1);
     expect(beforeVisualCol, "visual col on line 1 should be 4 after l*5 h").toBe(4);
 
     // Now press j → land on line 2. Line 2 is "  return true;" (14 chars).
@@ -728,9 +744,11 @@ test.describe.serial("Code block navigation", () => {
     await goToBlock(page, "Plain text line 1"); // reset
     await goToBlock(page, "Section 8: Code block");
 
-    // Reach line 1 col 0.
-    await pressKeys(page, "j"); // line 0 col 0
+    // Reach line 1 col 0. (See BUG-036 test for layout notes.)
+    await pressKeys(page, "j"); // enter code block (cursor at desired_column from click)
     await page.waitForTimeout(150);
+    await pressKeys(page, "0"); // normalize to line 0 col 0, desired_column=0
+    await page.waitForTimeout(80);
     await pressKeys(page, "j"); // line 1 col 0
     await page.waitForTimeout(150);
 

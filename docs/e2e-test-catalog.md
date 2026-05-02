@@ -2,7 +2,7 @@
 
 All Playwright E2E tests for Vimtion. Update this file when adding, removing, or renaming tests.
 
-**Total: 393 tests** (12 spec files)
+**Total: 396 tests** (12 spec files)
 
 ---
 
@@ -485,7 +485,7 @@ Block types not already in operators-block-types.spec.ts.
 |---|------|-------------|--------|
 | 149-160 | i inserts text on {type} | All 12 types | Pass |
 
-## code-block-nav.spec.ts (18 tests, serial)
+## code-block-nav.spec.ts (21 tests, serial)
 
 ### j/k entering and within code block
 
@@ -554,6 +554,19 @@ Block types not already in operators-block-types.spec.ts.
 | # | Test | Status | Notes |
 |---|------|--------|-------|
 | 18 | BUG-029: j exiting code block syncs DOM cursor with active_line | Fail (expected) | Asserts BOTH DOM index and active_line advance |
+
+### BUG-012 strong reproducer (existing-paragraph trigger)
+
+| # | Test | Status | Notes |
+|---|------|--------|-------|
+| 19 | BUG-012: convert existing non-empty paragraph to code block via ``` keeps active_line in sync | Fail (expected) | Triggers refreshLines stale-ref by destroying existing element in place |
+
+### desired_column corruption in multi-line code blocks (BUG-035 / BUG-036)
+
+| # | Test | Status | Notes |
+|---|------|--------|-------|
+| 20 | BUG-036: h in code block preserves visual column for subsequent j/k | Fail (expected) | h/l set desired_column to absolute textContent offset |
+| 21 | BUG-035: f in code block preserves visual column for subsequent j | Fail (expected) | f/F/t/T set desired_column to absolute textContent offset |
 
 ## undo-redo.spec.ts (17 tests, serial)
 
@@ -629,6 +642,6 @@ Block types not already in operators-block-types.spec.ts.
 
 ## Related Docs
 
-- [Known Bugs](known-bugs.md) — BUG-001 through BUG-014, BUG-029
+- [Known Bugs](known-bugs.md) — BUG-001 through BUG-014, BUG-029, BUG-035, BUG-036
 - [Bug Investigation](test-overhaul/bug-investigation.md) — full latent-bug catalog (BUG-014 through BUG-043)
 - [Missing Features](missing-features.md) — MISSING-001 through MISSING-019
