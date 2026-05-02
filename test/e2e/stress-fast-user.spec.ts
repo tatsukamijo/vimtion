@@ -589,6 +589,21 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
 
     expect(await getActualCursorBlockIndex(page), "after I→type→Esc").toBe(headingIdx);
 
+    // BUG-002 — see docs/known-bugs.md
+    // Direct proximate-cause assertion: re-find the heading element by its mutated
+    // textContent ("Section 8: Code blockX") and verify vim_info.active_line still
+    // tracks it. If refreshLines lost the element ref during the typing, the
+    // active_line points to whatever block now occupies the old index — no need to
+    // press j/k to observe the desync; the bug is observable directly post-Escape.
+    const afterRef = await page.evaluate(() => {
+      const root = document.querySelector('[data-content-editable-root="true"]');
+      if (!root) return -1;
+      const leaves = Array.from(root.querySelectorAll('[data-content-editable-leaf="true"]'));
+      return leaves.findIndex((l) => (l.textContent || "").includes("Section 8: Code blockX"));
+    });
+    const vimActive = (await getVimState(page)).activeLine - 1;
+    expect(vimActive, "BUG-002: active_line tracks heading element after I→type→Esc").toBe(afterRef);
+
     await fastKeys(page, "j");
     await page.waitForTimeout(50);
     const inCodeState = await getVimState(page);

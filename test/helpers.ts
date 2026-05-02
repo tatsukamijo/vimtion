@@ -1,5 +1,31 @@
 import type { Page } from "@playwright/test";
 
+export {
+  pressKeys,
+  assertCursorInvariant,
+  useCursorInvariant,
+  type InvariantOptions,
+} from "./cursor-invariant";
+
+// Realistic-input helpers — see test/realistic-input.ts for the rationale on
+// why these route through CDP rather than synthetic KeyboardEvents.
+export {
+  holdKey,
+  typeRealistic,
+  pressKeysWithIME,
+  type HoldKeyOptions,
+  type TypeRealisticOptions,
+} from "./realistic-input";
+
+// Wait helpers — async DOM waits for Notion's post-input mutations
+// (e.g., markdown-shortcut block conversions). See test/wait-helpers.ts.
+export {
+  waitForBlockConversion,
+  getCurrentBlockType,
+  type BlockType,
+  type WaitForBlockConversionOptions,
+} from "./wait-helpers";
+
 const TEST_PAGE_URL = process.env.NOTION_TEST_PAGE_URL || "";
 
 export interface VimState {
@@ -111,15 +137,9 @@ export async function waitForBodyClass(
   await page.waitForSelector(`body.${className}`, { timeout });
 }
 
-export async function pressKeys(
-  page: Page,
-  ...keys: string[]
-): Promise<void> {
-  for (const key of keys) {
-    await page.keyboard.press(key);
-    await page.waitForTimeout(50);
-  }
-}
+// pressKeys is now exported from ./cursor-invariant via the re-export at the
+// top of this file. The new signature is a strict superset of the legacy one
+// (`...string[]` still works), with optional trailing InvariantOptions.
 
 export async function getLineText(
   page: Page,
@@ -172,6 +192,49 @@ export async function getActualCursorBlockIndex(page: Page): Promise<number> {
     if (!leaf) return -1;
     const allLeaves = document.querySelectorAll('[data-content-editable-leaf="true"]');
     return Array.from(allLeaves).indexOf(leaf);
+  });
+}
+
+export async function getCursorPosition(page: Page): Promise<{ line: number; col: number }> {
+  const state = await getVimState(page);
+  // activeLine from status bar is 1-based, convert to 0-based
+  const line = state.activeLine > 0 ? state.activeLine - 1 : -1;
+
+  // Read cursor_position from vim_info via content script's injected DOM attribute
+  // Since vim_info is in the content script's isolated world, we read from the
+  // vim-block-cursor element's position or the status bar
+  const col = await page.evaluate(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return -1;
+    // Calculate character offset from the start of the leaf block
+    const node = sel.anchorNode;
+    if (!node) return -1;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+    const leaf = el?.closest('[data-content-editable-leaf="true"]');
+    if (!leaf) return sel.anchorOffset;
+
+    // Walk all text nodes in the leaf to compute absolute offset
+    const walker = document.createTreeWalker(leaf, NodeFilter.SHOW_TEXT);
+    let offset = 0;
+    let current = walker.nextNode();
+    while (current) {
+      if (current === sel.anchorNode) {
+        return offset + sel.anchorOffset;
+      }
+      offset += (current.textContent || "").length;
+      current = walker.nextNode();
+    }
+    return sel.anchorOffset;
+  });
+
+  return { line, col };
+}
+
+export async function getSelectionOffset(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return -1;
+    return sel.anchorOffset;
   });
 }
 
