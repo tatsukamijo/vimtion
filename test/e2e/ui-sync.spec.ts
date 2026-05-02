@@ -21,13 +21,14 @@
  * here are *the proof the new tool works*. They are not marked `test.fail`;
  * they document the bugs with diagnostic output.
  */
-import { test } from "../fixtures";
+import { test, expect } from "../fixtures";
 import {
   navigateToTestPage,
   waitForMode,
   pressKeys,
   useCursorInvariant,
   useUiInvariant,
+  assertUiInvariant,
 } from "../helpers";
 
 async function goToBlock(
@@ -81,13 +82,53 @@ test.describe.serial("UI-sync invariant — BUG-016 / BUG-017 canary", () => {
   }) => {
     await goToBlock(page, "Plain text line 1");
     await pressKeys(page, "$"); // end of line
+
+    // Diagnostic probes: capture vim_info.active_line and the status bar
+    // text BEFORE and AFTER the `w` keystroke. This documents whether
+    // BUG-016 actually triggers in headless Playwright. If active_line
+    // increments but the status bar text stays at the old "Line N", we have
+    // proof the bug fired; if neither moves, the cross-block branch in
+    // jumpToNextWord wasn't taken.
+    const before = await page.evaluate(() => {
+      const vi = (window as unknown as { vim_info: { active_line: number } }).vim_info;
+      const bar = document.querySelector(".vim-mode")?.textContent ?? "";
+      return { activeLine: vi.active_line, bar };
+    });
+
     // Pressing `w` here should advance into "Plain text line 2".
     // Per BUG-016, active_line increments and DOM cursor moves, but the
-    // status bar `.vim-mode` text and the block-cursor overlay are stale
-    // because jumpToNextWord at word.ts:27 doesn't call updateInfoContainer()
-    // / updateBlockCursor(). The useUiInvariant hook should flag the very
-    // keystroke that breaks it.
+    // status bar `.vim-mode` text is stale because jumpToNextWord at
+    // word.ts:27 doesn't call updateInfoContainer().
     await pressKeys(page, "w");
+
+    const after = await page.evaluate(() => {
+      const vi = (window as unknown as { vim_info: { active_line: number } }).vim_info;
+      const bar = document.querySelector(".vim-mode")?.textContent ?? "";
+      return { activeLine: vi.active_line, bar };
+    });
+
+    // Annotate the test result so the diagnostic surfaces even on pass.
+    test.info().annotations.push({
+      type: "diagnostic",
+      description: `BEFORE active_line=${before.activeLine} bar=${JSON.stringify(before.bar)} | AFTER active_line=${after.activeLine} bar=${JSON.stringify(after.bar)}`,
+    });
+
+    // If active_line incremented, this was a cross-block w. In that case
+    // assert UI sync explicitly with strict mode (forces the check even if
+    // mode transitioned). Use expect to surface a clear pass/fail signal.
+    if (after.activeLine !== before.activeLine) {
+      // Cross-block w fired. Status bar's "Line N" must reflect the new
+      // active line. If BUG-016 manifests, this assertion fails loudly.
+      const expectedFragment = `Line ${after.activeLine + 1}/`;
+      expect(
+        after.bar,
+        `BUG-016: status bar should contain "${expectedFragment}" after cross-block w but got ${JSON.stringify(after.bar)}`,
+      ).toContain(expectedFragment);
+    }
+
+    // Run the invariant explicitly as a fence-post to confirm the hooked
+    // version is doing the same check.
+    await assertUiInvariant(page, { label: "post cross-block w", strict: true });
   });
 
   // -------------------------------------------------------------------------

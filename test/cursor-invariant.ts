@@ -247,9 +247,16 @@ export function useCursorInvariant(
 // ===========================================================================
 
 interface UiSnapshot {
+  // mode is inferred from body classes (set by updateInfoContainer); page-DOM
+  // accessible. window.vim_info itself is in the content script's ISOLATED
+  // world and not reachable from page.evaluate's MAIN world, so this
+  // invariant is intentionally DOM-only.
   mode: string;
-  activeLine: number;
-  linesLength: number;
+  // Source of truth for "where the cursor really is": the [contenteditable="true"]
+  // index of the DOM selection's leaf. The cursor invariant guarantees this
+  // tracks vim_info.active_line, so we use it as a proxy.
+  domCursorBlockIdx: number;
+  domEditableCount: number;
   // Status bar
   statusBarText: string;
   statusBarLine: number; // 1-based; -1 if unparseable
@@ -261,33 +268,46 @@ interface UiSnapshot {
   overlayBottom: number;
   activeBlockTop: number;
   activeBlockBottom: number;
-  overlayMatch: boolean; // overlay vertical center inside active block range
+  overlayMatch: boolean;
   // Diagnostic context
   textWindow: Array<{ idx: number; text: string }>;
 }
 
 async function uiSnapshot(page: Page): Promise<UiSnapshot> {
   return page.evaluate(() => {
-    interface VimLineLite {
-      element: HTMLElement;
-    }
-    interface VimInfoLite {
-      active_line: number;
-      lines: VimLineLite[];
-      mode: string;
-    }
-    const vi = (window as unknown as { vim_info?: VimInfoLite }).vim_info;
-    const activeLine = vi?.active_line ?? -1;
-    const linesLength = vi?.lines?.length ?? 0;
-    const mode = vi?.mode ?? "unknown";
+    // Mode from body class (set by updateInfoContainer).
+    const body = document.body;
+    let mode = "unknown";
+    if (body.classList.contains("vim-normal-mode")) mode = "normal";
+    else if (body.classList.contains("vim-insert-mode")) mode = "insert";
+    else if (body.classList.contains("vim-visual-mode")) mode = "visual";
+    else if (body.classList.contains("vim-visual-line-mode")) mode = "visual-line";
+
+    const allEditable = Array.from(
+      document.querySelectorAll('[contenteditable="true"]'),
+    );
+    const domEditableCount = allEditable.length;
+
+    // DOM cursor's block via the same logic as cursor-invariant.
+    const sel = window.getSelection();
+    const anchor = sel?.anchorNode ?? null;
+    const el =
+      anchor && anchor.nodeType === 1
+        ? (anchor as Element)
+        : anchor?.parentElement ?? null;
+    const cursorLeaf = el?.closest('[contenteditable="true"]') ?? null;
+    const domCursorBlockIdx = cursorLeaf ? allEditable.indexOf(cursorLeaf) : -1;
 
     // Status bar
     const modeEl = document.querySelector(".vim-mode") as HTMLElement | null;
     const statusBarText = modeEl?.textContent ?? "";
     const lineMatch = statusBarText.match(/Line\s+(\d+)\/(\d+)/);
     const statusBarLine = lineMatch ? parseInt(lineMatch[1], 10) : -1;
+    // Compare 1-based status bar to 0-based DOM index.
     const statusBarMatch =
-      statusBarLine !== -1 && statusBarLine - 1 === activeLine;
+      statusBarLine !== -1 &&
+      domCursorBlockIdx !== -1 &&
+      statusBarLine - 1 === domCursorBlockIdx;
 
     // Block cursor overlay
     const overlay = document.querySelector(
@@ -301,15 +321,14 @@ async function uiSnapshot(page: Page): Promise<UiSnapshot> {
     const overlayTop = overlayRect?.top ?? Number.NaN;
     const overlayBottom = overlayRect?.bottom ?? Number.NaN;
 
-    const activeEl = vi?.lines?.[activeLine]?.element;
+    const activeEl = cursorLeaf as HTMLElement | null;
     const activeRect = activeEl?.getBoundingClientRect();
     const activeBlockTop = activeRect?.top ?? Number.NaN;
     const activeBlockBottom = activeRect?.bottom ?? Number.NaN;
 
-    let overlayMatch = true; // default true so we can short-circuit on skip
+    let overlayMatch = true;
     if (overlay && overlayDisplayed && activeRect) {
       const overlayCenter = (overlayTop + overlayBottom) / 2;
-      // Allow 4px slack: overlay vertical center within active block ± 4px.
       overlayMatch =
         overlayCenter >= activeBlockTop - 4 &&
         overlayCenter <= activeBlockBottom + 4;
@@ -317,15 +336,15 @@ async function uiSnapshot(page: Page): Promise<UiSnapshot> {
 
     const textWindow: Array<{ idx: number; text: string }> = [];
     for (const d of [-2, -1, 0, 1, 2]) {
-      const j = activeLine + d;
-      if (j < 0 || j >= linesLength) continue;
-      const text = (vi!.lines[j].element.textContent ?? "").slice(0, 60);
+      const j = domCursorBlockIdx + d;
+      if (j < 0 || j >= allEditable.length) continue;
+      const text = (allEditable[j].textContent ?? "").slice(0, 60);
       textWindow.push({ idx: j, text });
     }
     return {
       mode,
-      activeLine,
-      linesLength,
+      domCursorBlockIdx,
+      domEditableCount,
       statusBarText: statusBarText.slice(0, 200),
       statusBarLine,
       statusBarMatch,
@@ -343,7 +362,8 @@ async function uiSnapshot(page: Page): Promise<UiSnapshot> {
 
 function shouldCheckUi(s: UiSnapshot, strict: boolean): boolean {
   if (s.mode === "link-hint") return false;
-  if (s.linesLength === 0) return false;
+  if (s.domEditableCount === 0) return false;
+  if (s.domCursorBlockIdx === -1) return false; // selection lost — separate failure
   // In insert/visual modes, the overlay is hidden and the status bar still
   // updates. Honor the same conservative default as cursor-invariant: skip
   // insert by default unless `strict` is on.
@@ -376,22 +396,23 @@ export async function assertUiInvariant(
   const lines = [
     `[UiInvariant] Mismatch after key "${lastKey}" — ${failures.join(", ")}${label}`,
     ``,
-    `  mode:                 ${s.mode}`,
-    `  vim_info.active_line: ${s.activeLine}  (expected status-bar Line ${s.activeLine + 1})`,
-    `  status-bar text:      ${JSON.stringify(s.statusBarText)}`,
-    `  status-bar Line N:    ${s.statusBarLine}  → ${s.statusBarMatch ? "MATCH" : "STALE"}`,
+    `  mode:                       ${s.mode}`,
+    `  DOM cursor block idx:       ${s.domCursorBlockIdx}  (expected status-bar Line ${s.domCursorBlockIdx + 1})`,
+    `  status-bar text:            ${JSON.stringify(s.statusBarText)}`,
+    `  status-bar Line N:          ${s.statusBarLine}  → ${s.statusBarMatch ? "MATCH" : "STALE"}`,
+    `  DOM editable count:         ${s.domEditableCount}`,
     ``,
-    `  overlay present:      ${s.overlayPresent}`,
-    `  overlay displayed:    ${s.overlayDisplayed}`,
-    `  overlay viewport y:   ${s.overlayTop.toFixed(1)} … ${s.overlayBottom.toFixed(1)}`,
-    `  active block y:       ${s.activeBlockTop.toFixed(1)} … ${s.activeBlockBottom.toFixed(1)}`,
-    `  overlay vs active:    ${s.overlayMatch ? "OVERLAPS" : "STALE (frozen at previous block?)"}`,
+    `  overlay present:            ${s.overlayPresent}`,
+    `  overlay displayed:          ${s.overlayDisplayed}`,
+    `  overlay viewport y:         ${s.overlayTop.toFixed(1)} … ${s.overlayBottom.toFixed(1)}`,
+    `  active block (cursor) y:    ${s.activeBlockTop.toFixed(1)} … ${s.activeBlockBottom.toFixed(1)}`,
+    `  overlay vs active:          ${s.overlayMatch ? "OVERLAPS" : "STALE (frozen at previous block?)"}`,
     ``,
     `  Last keys: ${JSON.stringify(recentKeys.slice(-5))}`,
     ``,
-    `  Block contents (active_line ± 2):`,
+    `  Block contents (DOM cursor idx ± 2):`,
     ...s.textWindow.map((w) => {
-      const marker = w.idx === s.activeLine ? "→ " : "  ";
+      const marker = w.idx === s.domCursorBlockIdx ? "→ " : "  ";
       return `${marker}${w.idx}: ${JSON.stringify(w.text)}`;
     }),
     ``,
