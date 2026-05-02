@@ -92,12 +92,37 @@ export async function navigateToTestPage(
   }
   if (lastError) throw lastError;
 
+  // Dismiss Vimtion's update / vimium-warning notification overlay if it appears.
+  // The overlay (`.vimtion-notification-overlay`) absolutely-positions a transparent
+  // div that intercepts pointer events, so locator.click() on any block fails until
+  // it's gone. The notification surfaces after `npm run build` bumps the stored
+  // version; we strip it unconditionally for tests.
+  await page
+    .evaluate(() => {
+      document
+        .querySelectorAll(
+          ".vimtion-update-notification, .vimtion-notification-overlay",
+        )
+        .forEach((el) => el.remove());
+    })
+    .catch(() => {});
+
   // Dismiss Notion's "using Vimium?" warning if it appears
   const gotItButton = page.getByRole("button", { name: "Got it" });
   if (await gotItButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await gotItButton.click();
     // Reload to restart Vimtion's line detection polling
     await page.reload({ waitUntil: "domcontentloaded" });
+    // Re-strip the Vimtion overlay after reload — it can re-render.
+    await page
+      .evaluate(() => {
+        document
+          .querySelectorAll(
+            ".vimtion-update-notification, .vimtion-notification-overlay",
+          )
+          .forEach((el) => el.remove());
+      })
+      .catch(() => {});
   }
 
   await waitForVimtionReady(page, timeout);
