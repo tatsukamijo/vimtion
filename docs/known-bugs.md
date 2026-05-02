@@ -146,6 +146,32 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 - **Test result**: Tests now check `active_line` vs DOM cursor index — **confirmed off-by-one** for all four variants: `## + Enter`, `- + Enter`, `> + Enter`, and `## no-enter` (intermittent). All marked `test.fail()`. Bug triggers when Notion converts block type via markdown shortcuts, causing `refreshLines` to lose track of the active element.
 - **Severity**: High — every Notion power user creates headings/lists via markdown shortcuts
 
+### Verification (2026-05-03 — confirmed real)
+
+`test/e2e/scenario-markdown-chaos.spec.ts` (Scenario 6) catches this on the
+literal `Escape` after `## hogehoge`+Enter once the test harness's main-world
+bridge (commit ec8cda4) is active. Diagnostic:
+
+```
+vim_info.active_line: 7 → "Plain text line 5"
+DOM cursor block:     9 → "" (new empty paragraph after the heading)
+Off-by-2: heading + new paragraph
+```
+
+Earlier "all conversions passed" report from this spec was a false negative —
+the cursor invariant was silently no-opping because `window.vim_info` lives
+in the content script's isolated world and is inaccessible from Playwright's
+main-world `page.evaluate`. The bridge resolves that; the bug is real today.
+
+Root cause confirmed: `refreshLines()` at `line-management.ts:120-128`'s
+`findIndex === -1` silently leaves `active_line` at its stale value when
+Notion destroys the original paragraph element during markdown conversion.
+
+The conversion-chain test now serves as a **regression check** — any future
+re-introduction of the bug surfaces as a labeled `[CursorInvariant]`
+violation naming the exact shortcut that broke (`## conversion + Esc`,
+`- conversion + Esc`, etc.).
+
 ## BUG-014: `pending_operator = "g"` leaks across V→Esc into normal mode
 
 - **Detected**: 2026-05-03
