@@ -65,14 +65,39 @@ export async function navigateToTestPage(
     }
   }
 
-  await page.goto(TEST_PAGE_URL, { waitUntil: "load" });
+  // Retry page.goto on transient Notion failures (net::ERR_FAILED, timeouts, ABORTED).
+  // These come from Notion's CDN / rate limiter intermittently and used to halt entire
+  // describe.serial blocks via beforeAll. Three attempts with brief backoff is enough
+  // to absorb the flake without papering over genuine "Notion is down" outages.
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await page.goto(TEST_PAGE_URL, {
+        waitUntil: "domcontentloaded",
+        timeout,
+      });
+      lastError = null;
+      break;
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const transient =
+        msg.includes("net::ERR_FAILED") ||
+        msg.includes("net::ERR_ABORTED") ||
+        msg.includes("net::ERR_TIMED_OUT") ||
+        msg.includes("Timeout");
+      if (!transient || attempt === 3) throw err;
+      await page.waitForTimeout(1500 * attempt);
+    }
+  }
+  if (lastError) throw lastError;
 
   // Dismiss Notion's "using Vimium?" warning if it appears
   const gotItButton = page.getByRole("button", { name: "Got it" });
   if (await gotItButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await gotItButton.click();
     // Reload to restart Vimtion's line detection polling
-    await page.reload({ waitUntil: "load" });
+    await page.reload({ waitUntil: "domcontentloaded" });
   }
 
   await waitForVimtionReady(page, timeout);
