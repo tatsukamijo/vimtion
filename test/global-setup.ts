@@ -45,9 +45,12 @@ setup("authenticate with Notion", async () => {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
 
+  // Setup runs in headless mode by default. Set PW_HEADLESS=false when
+  // first-time manual login is required (the auth project pauses for the
+  // user to complete login in a real window). See playwright.config.ts.
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: process.env.PW_HEADLESS !== "false",
     args: [
       `--disable-extensions-except=${distPath}`,
       `--load-extension=${distPath}`,

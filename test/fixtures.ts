@@ -15,12 +15,38 @@ type ExtensionWorkerFixtures = {
   extensionPage: Page;
 };
 
+/**
+ * Resolve whether this worker should launch Chromium headless.
+ *
+ * Resolution order (first match wins):
+ *   1. process.env.PW_HEADLESS — explicit env override:
+ *        PW_HEADLESS=false → headed
+ *        PW_HEADLESS=true  → headless
+ *   2. workerInfo.project.metadata.headless — per-project setting from
+ *        playwright.config.ts (this is how `e2e-headed` opts into headed mode).
+ *   3. Default → headless (matches pre-Gap-2 behavior).
+ *
+ * See playwright.config.ts top comment for the headed/headless lane setup.
+ */
+function resolveHeadless(metadata: unknown): boolean {
+  const envOverride = process.env.PW_HEADLESS;
+  if (envOverride === "false") return false;
+  if (envOverride === "true") return true;
+
+  const projectHeadless = (metadata as { headless?: boolean } | undefined)
+    ?.headless;
+  if (typeof projectHeadless === "boolean") return projectHeadless;
+
+  return true;
+}
+
 export const test = base.extend<{}, ExtensionWorkerFixtures>({
   extensionContext: [
-    async ({}, use) => {
+    async ({}, use, workerInfo) => {
+      const headless = resolveHeadless(workerInfo.project.metadata);
       const context = await chromium.launchPersistentContext(userDataDir, {
         channel: "chromium",
-        headless: !process.env.HEADED,
+        headless,
         args: [
           `--disable-extensions-except=${distPath}`,
           `--load-extension=${distPath}`,
