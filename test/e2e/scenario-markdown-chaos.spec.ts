@@ -47,11 +47,8 @@ import {
   pressKeys,
   getVimState,
   getAllBlockTexts,
-  getCurrentBlockType,
-  waitForBlockConversion,
   useCursorInvariant,
   assertCursorInvariant,
-  type BlockType,
 } from "../helpers";
 
 /**
@@ -93,27 +90,73 @@ async function goToBlock(
  * `assertCursorInvariant({ label })` immediately after to be the failure
  * site, with a meaningful label rather than a generic "after key Escape".
  */
+/**
+ * Poll until the leaf block containing window.getSelection()'s anchor matches
+ * `expectedType`. Used in place of `waitForBlockConversion` for this spec
+ * because `waitForBlockConversion` reads `document.activeElement`, which in
+ * Playwright headless is often `<body>` rather than a Notion block — Notion
+ * uses Selection (Range) for cursor position and doesn't always keep
+ * document focus on the contenteditable leaf. The existing BUG-013
+ * reproducer at test/e2e/insert-open-line.spec.ts:737 sidesteps this with
+ * a fixed 500ms sleep; we poll instead so the test is faster on the happy
+ * path and times out cleanly with a useful diagnostic on the unhappy one.
+ *
+ * NOTE: this helper deliberately does NOT live in shared helpers/ — the
+ * "selection-based" vs "activeElement-based" trade-off is a per-spec
+ * decision and shouldn't bake into the shared API while wait-helpers.ts is
+ * still settling.
+ */
+async function waitForBlockConversionViaSelection(
+  page: import("@playwright/test").Page,
+  expectedTypeFragment: string,
+  timeoutMs = 2500,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastDiagnostic = "no snapshot taken";
+  while (Date.now() < deadline) {
+    const snap = await page.evaluate((needle: string) => {
+      const sel = window.getSelection();
+      const node = sel?.anchorNode ?? null;
+      const el = node?.nodeType === 1 ? (node as Element) : node?.parentElement ?? null;
+      const block = el?.closest("[data-block-id]") as HTMLElement | null;
+      if (!block) {
+        return { hit: false, reason: "no [data-block-id] ancestor of selection anchor", className: "", text: "" };
+      }
+      return {
+        hit: (block.className || "").includes(needle),
+        reason: "ok",
+        className: block.className || "",
+        text: (block.textContent || "").slice(0, 80),
+      };
+    }, expectedTypeFragment);
+    if (snap.hit) return;
+    lastDiagnostic = `expected class fragment "${expectedTypeFragment}", actual className="${snap.className}", text="${snap.text}", reason=${snap.reason}`;
+    await page.waitForTimeout(40);
+  }
+  throw new Error(
+    `waitForBlockConversionViaSelection timed out after ${timeoutMs}ms.\n  ${lastDiagnostic}`,
+  );
+}
+
 async function convertOnSpace(
   page: import("@playwright/test").Page,
   prefix: string,
   sampleText: string,
-  expectedType: BlockType,
+  expectedClassFragment: string,
   label: string,
 ): Promise<void> {
   await pressKeys(page, "o", { assertInvariant: false });
   // `o` must fully transition into insert mode AND Notion must finish creating
-  // the new paragraph + placing focus inside it before we start typing —
-  // otherwise the markdown shortcut fires against the wrong block (or against
-  // no block at all, with focus on document.body, which is what failed the
-  // first run of this spec). The existing BUG-013 reproducer at
-  // test/e2e/insert-open-line.spec.ts:741 waits 500 ms here for the same
-  // reason.
+  // the new paragraph + placing the selection inside it before we start typing —
+  // otherwise the markdown shortcut fires against the wrong block. The existing
+  // BUG-013 reproducer at test/e2e/insert-open-line.spec.ts:741 waits 500ms here
+  // for the same reason.
   await waitForMode(page, "insert");
   await page.waitForTimeout(500);
 
   // Type the prefix (ending with a space) — Notion fires conversion here.
   await page.keyboard.type(prefix);
-  await waitForBlockConversion(page, expectedType);
+  await waitForBlockConversionViaSelection(page, expectedClassFragment);
 
   // Continue typing inside the converted block.
   await page.keyboard.type(sampleText);
@@ -180,7 +223,7 @@ test.describe.serial("Scenario 6 — Markdown shortcut chaos", () => {
       page,
       "## ",
       "Heading sample",
-      "heading_2",
+      "notion-sub_header-block",
       "after ## conversion + Esc — BUG-013 surface",
     );
 
@@ -189,7 +232,7 @@ test.describe.serial("Scenario 6 — Markdown shortcut chaos", () => {
       page,
       "- ",
       "Bullet sample",
-      "bulleted_list",
+      "notion-bulleted_list-block",
       "after - conversion + Esc — BUG-013 surface",
     );
 
@@ -198,17 +241,23 @@ test.describe.serial("Scenario 6 — Markdown shortcut chaos", () => {
       page,
       "1. ",
       "Numbered sample",
-      "numbered_list",
+      "notion-numbered_list-block",
       "after 1. conversion + Esc — BUG-013 surface",
     );
 
-    // Round 4 — `> ` quote conversion.
+    // Round 4 — `> ` produces a TOGGLE in Notion (NOT a quote). Notion has
+    // no markdown shortcut for quote — quote requires the slash menu. The
+    // existing BUG-013 reproducer at insert-open-line.spec.ts:817 uses `>`
+    // but only checks DOM text content (not block type) so it accidentally
+    // passes against a toggle. We test the toggle conversion since it's
+    // still a markdown-shortcut → block-type conversion, which is exactly
+    // what BUG-013 surfaces.
     await convertOnSpace(
       page,
       "> ",
-      "Quote sample",
-      "quote",
-      "after > conversion + Esc — BUG-013 surface",
+      "Toggle sample",
+      "notion-toggle-block",
+      "after > conversion (TOGGLE — Notion has no quote shortcut) + Esc — BUG-013 surface",
     );
 
     // Round 5 — `[] ` todo conversion.
@@ -216,7 +265,7 @@ test.describe.serial("Scenario 6 — Markdown shortcut chaos", () => {
       page,
       "[] ",
       "Todo sample",
-      "to_do",
+      "notion-to_do-block",
       "after [] conversion + Esc — BUG-013 surface",
     );
 
@@ -231,7 +280,7 @@ test.describe.serial("Scenario 6 — Markdown shortcut chaos", () => {
 
     await page.keyboard.type("```py");
     await page.keyboard.press("Enter");
-    await waitForBlockConversion(page, "code");
+    await waitForBlockConversionViaSelection(page, "notion-code-block");
 
     await page.keyboard.type("x = 1");
     await page.waitForTimeout(200);
@@ -244,18 +293,37 @@ test.describe.serial("Scenario 6 — Markdown shortcut chaos", () => {
 
   // ---------------------------------------------------------------------------
   // Validate — gg to top, walk down, and assert that the converted-block
-  // type sequence appears IN ORDER somewhere in the page (subset match —
+  // class fragments appear IN ORDER somewhere in the page (subset match —
   // intermediate blocks like the empty paragraphs Notion inserts after Enter
   // may sit between conversions).
+  //
+  // Uses a selection-based block-class read (NOT the shipped getCurrentBlockType,
+  // which uses document.activeElement and frequently returns "unknown" in this
+  // headless environment). The shipped helper is correct in spirit but the
+  // activeElement-vs-Selection trade-off doesn't favor it here.
   // ---------------------------------------------------------------------------
-  test("Validate: walked types contain expected sequence in order", async ({ extensionPage: page }) => {
+  test("Validate: walked block classes contain expected sequence in order", async ({ extensionPage: page }) => {
+    // Re-anchor: the conversion-chain test left us deep in the page; a click
+    // resets focus and ensures gg starts cleanly.
+    await goToBlock(page, "Plain text line 1");
     await pressKeys(page, "g", "g");
 
-    const observedTypes: Array<BlockType | "unknown"> = [];
+    /** Read the class-fragment list of the leaf containing window.getSelection's anchor. */
+    async function selectionClass(): Promise<string> {
+      return page.evaluate(() => {
+        const sel = window.getSelection();
+        const node = sel?.anchorNode ?? null;
+        const el = node?.nodeType === 1 ? (node as Element) : node?.parentElement ?? null;
+        const block = el?.closest("[data-block-id]") as HTMLElement | null;
+        return block?.className ?? "";
+      });
+    }
+
+    const observed: string[] = [];
     // Cap at 200 j-presses — page is large but bounded; this is plenty
     // and guards against an infinite loop if status-bar parsing fails.
     for (let i = 0; i < 200; i++) {
-      observedTypes.push(await getCurrentBlockType(page));
+      observed.push(await selectionClass());
       const state = await getVimState(page);
       // status bar's activeLine is 1-based; lineCount is the total. Stop
       // when we've reached the bottom.
@@ -263,23 +331,26 @@ test.describe.serial("Scenario 6 — Markdown shortcut chaos", () => {
       await pressKeys(page, "j");
     }
 
-    const expectedOrder: BlockType[] = [
-      "heading_2",
-      "bulleted_list",
-      "numbered_list",
-      "quote",
-      "to_do",
-      "code",
+    // The class fragments we expect to see in order. NOTE: "notion-toggle-block"
+    // appears here because Notion's `>` shortcut produces a toggle (not the
+    // quote the design doc assumed — see Round 4 commentary).
+    const expectedOrder: string[] = [
+      "notion-sub_header-block",
+      "notion-bulleted_list-block",
+      "notion-numbered_list-block",
+      "notion-toggle-block",
+      "notion-to_do-block",
+      "notion-code-block",
     ];
 
     let cursor = 0;
-    for (const t of observedTypes) {
-      if (t === expectedOrder[cursor]) cursor += 1;
+    for (const cls of observed) {
+      if (cls.includes(expectedOrder[cursor])) cursor += 1;
       if (cursor === expectedOrder.length) break;
     }
     expect(
       cursor,
-      `expected to encounter types in order ${JSON.stringify(expectedOrder)} during walkdown; observed sequence: ${JSON.stringify(observedTypes)}`,
+      `expected to encounter class fragments in order ${JSON.stringify(expectedOrder)} during walkdown; observed: ${JSON.stringify(observed)}`,
     ).toBe(expectedOrder.length);
   });
 
