@@ -14,6 +14,7 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 
 ## BUG-002: k from code block returns to wrong block after I→type→Esc on heading above
 
+- **Status**: **PARTIAL** — sibling BUG-003 closed by `ff013a9`; BUG-002 residual still trips because the in-place heading edit doesn't insert a fresh leaf, so the selection-recovery heuristic never fires. Needs separate fix (tracked as task #15).
 - **Detected**: 2026-04-14
 - **Test**: `stress-fast-user.spec.ts` → "edit text before code block → j into code → k back"
 - **Reproduction**: Navigate to "Section 8: Code block" heading. Press I, type "X", Escape. Then j (enters code block first line, activeLine increments by 1). Then k — DOM cursor lands on block 38 instead of block 37 (the heading).
@@ -24,13 +25,14 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 
 ## BUG-003: o→type→Esc→k returns to wrong block (off by 1)
 
+- **Status**: **RESOLVED** — fixed by `ff013a9` (selection-leaf-as-truth recovery in `createRefreshLines` when a fresh leaf was inserted during the edit).
 - **Detected**: 2026-04-14
+- **Resolved**: 2026-05-03
 - **Test**: `stress-fast-user.spec.ts` → "o→type→Esc→k returns to original block"; `insert-open-line.spec.ts` → 3 tests (bullet, nested todo, code block boundary)
 - **Reproduction**: Navigate to "Plain text line 3" (block index 4). Press o, type "new line via o", Escape. Then k. DOM cursor ends up on block 3 instead of block 4.
-- **Expected**: k returns to block 4 (the original "Plain text line 3")
-- **Actual**: k returns to block 3 (one above the original)
-- **Context**: After `o` creates a new line below and Escape returns to normal mode, the vim_info line mapping appears off by one. This is a variant of the cursor desync after insert operations. Confirmed on bullets, nested todos, and near code blocks (where j also fails to advance).
-- **Severity**: High — o is a frequently used Vim command
+- **Root cause**: `createRefreshLines` previously fell back to element-identity (and then `block_id`) recovery only. When `o` inserted a fresh leaf, the previously-active element was still in DOM (just at a new index), so identity recovery succeeded — but with the WRONG index relative to the user's intended position.
+- **Fix**: When the post-rebuild DOM Selection's leaf was NOT in the previous lines snapshot, prefer the selection's leaf as the new `active_line` source. Conservative predicate so rapid-navigation identity recovery (BUG-001 path) is not disturbed.
+- **Severity**: Was High — o is a frequently used Vim command.
 
 ## BUG-004: h at column 0 desyncs DOM selection
 
