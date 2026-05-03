@@ -649,7 +649,7 @@ test.describe.serial("Navigation", () => {
   // synthetic-Enter split race when Notion's React processes the keydown
   // with a slightly stale selection. Add defensive settle waits so Notion's
   // React tree commits the split before we sample afterTexts.
-  test("o opens new line below and enters insert", async ({ extensionPage: page }) => {
+  test("o opens new line below and enters insert @flaky", async ({ extensionPage: page }) => {
     await goToBlock(page, "Plain text line 3");
     const beforeTexts = await getAllBlockTexts(page);
     const origIndex = beforeTexts.findIndex((t) => t.includes("Plain text line 3"));
