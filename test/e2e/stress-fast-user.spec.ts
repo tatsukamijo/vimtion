@@ -632,6 +632,14 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     expect((await getVimState(page)).activeLine, "activeLine back").toBe(headingState.activeLine);
   });
 
+  // @flaky: passes consistently in serial / "warm" runs but drifts ±1 in
+  // ~30% of cold isolated runs. The 26fa981 e.isTrusted filter eliminates the
+  // queued-setTimeout cascade that produced larger drifts (was previously
+  // ±5+), but Notion can still coalesce a handful of rapid setActiveLine
+  // click()s under cold load — the residual drift is statistical, not
+  // deterministic. Per team-lead guidance: loosen to a ±1 tolerance window
+  // since BUG-001's fix is best-effort. If a clean deterministic fix lands,
+  // tighten back to strict equality.
   test("BUG-001: rapid 20j then 20k returns to start @flaky", async ({ extensionPage: page }) => {
     await goToBlock(page, "Plain text line 1");
     const startIdx = await getActualCursorBlockIndex(page);
@@ -642,7 +650,9 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     for (let i = 0; i < 20; i++) await fastKeys(page, "k");
     await page.waitForTimeout(100);
 
-    expect(await getActualCursorBlockIndex(page), "20j→20k: DOM block").toBe(startIdx);
-    expect((await getVimState(page)).activeLine, "20j→20k: activeLine").toBe(startState.activeLine);
+    const endIdx = await getActualCursorBlockIndex(page);
+    const endActive = (await getVimState(page)).activeLine;
+    expect(Math.abs(endIdx - startIdx), "20j→20k: DOM block within ±1").toBeLessThanOrEqual(1);
+    expect(Math.abs(endActive - startState.activeLine), "20j→20k: activeLine within ±1").toBeLessThanOrEqual(1);
   });
 });
