@@ -232,3 +232,23 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Reproduction**: In an empty paragraph in insert mode, type ``` then Enter (or any code-block trigger). Notion converts the block to a code block. After Escape, `vim_info.active_line` and DOM cursor are misaligned similar to BUG-012/013 but specifically for the code-block conversion case.
 - **Root cause**: Likely the same MutationObserver-driven leaf swap as BUG-012/013, but the code-block leaf's structure (single contenteditable wrapping `\n`-separated lines) interacts with the block_id recovery in `core/line-management.ts:createRefreshLines` differently than regular paragraph swaps.
 - **Severity**: Medium — happens once per code-block creation via shortcut.
+
+## BUG-042: o on nested bullet/todo child creates wrong sibling
+
+- **Detected**: 2026-05-03 (tester smoke-set after BUG-001/010/011/029 batch)
+- **Test**: `insert-open-line.spec.ts:80` (nested bullet child), `:104` (last nested bullet child), `:156` (nested todo child) — all three fail consistently
+- **Reproduction**: Position cursor on a child item of a nested bullet (or todo). Press `o` to open a new line below.
+- **Expected**: New sibling created at index `child + 1`.
+- **Actual**: NEW_SIBLING lands at index 23 / -1 instead.
+- **Root-cause hypothesis**: vim_info.lines indexing issue specific to nested contenteditable structures — bullet/todo children wrap their text in extra `<div>` ancestors, which interact with our index resolution differently than top-level blocks.
+- **Severity**: Medium — only nested bullet/todo, but those are common Notion patterns.
+
+## BUG-043: gg / k-at-line-1 land on page-title role=group, not h1 leaf
+
+- **Detected**: 2026-05-03 (tester smoke-set after BUG-001/010/011/029 batch)
+- **Test**: `navigation.spec.ts:75` (`gg moves to line 0`), `:96` (`k at first line stays at 0`)
+- **Reproduction**: Press `gg` (or `k` repeatedly while on line 1).
+- **Expected**: vim_info.active_line = 0 with DOM cursor on the page-title h1 leaf.
+- **Actual**: vim_info.active_line lands on the page-title `<div role="group">` (block 0) while DOM cursor goes to the h1 leaf — desync.
+- **Root-cause hypothesis**: page-title element gets included in our `[contenteditable=true]` query but with a wrapper that's not the actual cursor-receiving leaf. Either filter the title from vim_info.lines or normalize index resolution to the leaf.
+- **Severity**: Medium — every page hits this on initial gg.
