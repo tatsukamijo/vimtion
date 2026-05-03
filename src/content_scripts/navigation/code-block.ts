@@ -141,7 +141,7 @@ export const moveCursorForwardsInCodeBlock = () => {
 // does. document.execCommand("insertText", "\n") used to be the
 // implementation but the browser silently dropped the "\n" in
 // contenteditables, leaving subsequent typed text concatenated to the
-// current line (BUG-011).
+// current line.
 const insertNewlineInCodeBlock = (element: Element): void => {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return;

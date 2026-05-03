@@ -51,8 +51,8 @@ export const setActiveLine = (idx: number): void => {
     // Notion code blocks frequently end their textContent with a trailing
     // "\n", which split("\n") turns into a phantom empty entry. If we treat
     // it as a real line, k-from-the-block-below lands the cursor at
-    // textLength (past the visible last line) — the BUG-010 ghost line.
-    // Drop it so "last line" means the last *visible* code line.
+    // textLength (past the visible last line). Drop it so "last line"
+    // means the last *visible* code line.
     const codeLines =
       rawCodeLines.length > 1 && rawCodeLines[rawCodeLines.length - 1] === ""
         ? rawCodeLines.slice(0, -1)
