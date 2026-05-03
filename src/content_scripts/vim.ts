@@ -229,8 +229,23 @@ const getBlockType = (element: HTMLElement): string => {
 
 // Visual select paragraph functions now created via factory below (after updateVisualLineSelection is defined)
 
+// Position the DOM cursor PAST the last visible character of the current
+// line (offset === textContent.length). $ in normal mode lands ON the last
+// char (col len-1) — that's the right Vim semantic for $, but A and o need
+// to be past the end so insert/typing/synthetic-Enter act after the line.
+// Without this, on a nested bullet child "Nested bullet child 1" the
+// dispatched Enter from o split the leaf at offset 20, producing
+// "Nested bullet child " + "1" instead of an empty new sibling.
+const setCursorPastLineEnd = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const lineLength = currentElement.textContent?.length || 0;
+  setCursorPosition(currentElement, lineLength);
+  vim_info.desired_column = lineLength;
+};
+
 const insertAtLineEnd = () => {
-  jumpToLineEnd();
+  setCursorPastLineEnd();
   window.vim_info.mode = "insert";
   updateInfoContainer();
 };
@@ -244,8 +259,8 @@ const insertAtLineStart = () => {
 const openLineBelow = () => {
   const { vim_info } = window;
 
-  // Move to end of current line
-  jumpToLineEnd();
+  // Position cursor past last char so synthetic Enter splits at end.
+  setCursorPastLineEnd();
 
   // Switch to insert mode first
   vim_info.mode = "insert";

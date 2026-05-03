@@ -412,8 +412,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
     expect(textAfterK).toContain("Nested todo child");
   });
 
-  // BUG-003 variant: o→type→Esc near code block causes j/k cursor desync
-  test.fail("o on heading before code block + type + Esc, then j enters code block", async ({ extensionPage: page }) => {
+  test("o on heading before code block + type + Esc, then j enters code block", async ({ extensionPage: page }) => {
     await goToBlock(page, "Section 8: Code block");
 
     await pressKeys(page, "o");
