@@ -414,14 +414,7 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(4);
   });
 
-  // T{c}: tillCharBackward implementation reads correctly when invoked
-  // (verified by isolating the call), but the strict assertion still trips
-  // intermittently in the headless test environment — the cursor selection
-  // appears to be lost (col === -1) by the time getCursorPosition reads it.
-  // The Shift+T modifier path is identical to Shift+F (which now passes),
-  // so the failure is more likely a test-environment timing issue around
-  // selection survival than a logic bug. Marker stays until that's diagnosed.
-  test.fail("T{c} stops one after target char backward", async ({ extensionPage: page }) => {
+  test("T{c} stops one after target char backward", async ({ extensionPage: page }) => {
     await goToBlock(page, "find char: abcdefghij");
     // Move to 'j' via f+j, then T+c
     await pressKeys(page, "0");
