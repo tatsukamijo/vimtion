@@ -79,6 +79,16 @@ export const moveCursorUpInCodeBlock = () => {
   setCursorPosition(currentElement, targetPos);
 };
 
+// Visual column of an absolute offset within a code block's textContent.
+// Code blocks are a single contenteditable element holding `\n`-separated
+// logical lines, so column must be measured from the most recent `\n` (or
+// 0 if none). Without this, h/l would store the absolute offset in
+// desired_column and corrupt subsequent j/k column memory.
+const codeBlockVisualColumn = (text: string, offset: number): number => {
+  const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
+  return offset - lineStart;
+};
+
 // Move cursor left within a code block, wrapping to previous line if at start
 export const moveCursorBackwardsInCodeBlock = () => {
   const { vim_info } = window;
@@ -94,7 +104,7 @@ export const moveCursorBackwardsInCodeBlock = () => {
   // Just move back one character
   const newPos = currentPos - 1;
   setCursorPosition(currentElement, newPos);
-  vim_info.desired_column = newPos;
+  vim_info.desired_column = codeBlockVisualColumn(text, newPos);
 };
 
 // Move cursor right within a code block, wrapping to next line if at end
@@ -113,7 +123,7 @@ export const moveCursorForwardsInCodeBlock = () => {
   // Just move forward one character
   const newPos = currentPos + 1;
   setCursorPosition(currentElement, newPos);
-  vim_info.desired_column = newPos;
+  vim_info.desired_column = codeBlockVisualColumn(text, newPos);
 };
 
 // Open line below in code block (o command)
