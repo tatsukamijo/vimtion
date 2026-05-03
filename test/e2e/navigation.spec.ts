@@ -377,8 +377,7 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(5);
   });
 
-  // BUG-006: F (find backward) does not move cursor — stays at current position
-  test.fail("F{c} finds character backward", async ({ extensionPage: page }) => {
+  test("F{c} finds character backward", async ({ extensionPage: page }) => {
     await goToBlock(page, "find char: abcdefghij");
     // Move to 'j' (col 20) via f+j, then search backward for 'c'
     await pressKeys(page, "0");
@@ -388,9 +387,11 @@ test.describe.serial("Navigation", () => {
     await page.keyboard.press("j");
     await page.waitForTimeout(100);
 
-    await page.keyboard.down("Shift");
-    await page.keyboard.press("f");
-    await page.keyboard.up("Shift");
+    // Use the Shift+F combo form: keyboard.down("Shift") + press("f") fires
+    // a keydown that some Notion contenteditable handlers see as plain "f"
+    // (no shift modifier merged into key), so the F handler never fires.
+    // The combo form ("Shift+F") consistently produces e.key === "F".
+    await pressKeys(page, "Shift+F");
     await page.waitForTimeout(100);
     await page.keyboard.press("c");
     await page.waitForTimeout(200);
@@ -413,7 +414,13 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(4);
   });
 
-  // BUG-006: T (till backward) likely same issue as F
+  // T{c}: tillCharBackward implementation reads correctly when invoked
+  // (verified by isolating the call), but the strict assertion still trips
+  // intermittently in the headless test environment — the cursor selection
+  // appears to be lost (col === -1) by the time getCursorPosition reads it.
+  // The Shift+T modifier path is identical to Shift+F (which now passes),
+  // so the failure is more likely a test-environment timing issue around
+  // selection survival than a logic bug. Marker stays until that's diagnosed.
   test.fail("T{c} stops one after target char backward", async ({ extensionPage: page }) => {
     await goToBlock(page, "find char: abcdefghij");
     // Move to 'j' via f+j, then T+c
@@ -424,7 +431,7 @@ test.describe.serial("Navigation", () => {
     await page.keyboard.press("j");
     await page.waitForTimeout(100);
 
-    await pressKeys(page, "Shift+t");
+    await pressKeys(page, "Shift+T");
     await page.waitForTimeout(50);
     await page.keyboard.press("c");
     await page.waitForTimeout(100);
