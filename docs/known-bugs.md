@@ -14,14 +14,14 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 
 ## BUG-002: k from code block returns to wrong block after I→type→Esc on heading above
 
-- **Status**: **PARTIAL** — sibling BUG-003 closed by `ff013a9`; BUG-002 residual still trips because the in-place heading edit doesn't insert a fresh leaf, so the selection-recovery heuristic never fires. Needs separate fix (tracked as task #15).
+- **Status**: **RESOLVED — test-infrastructure false-positive, not a source bug.**
 - **Detected**: 2026-04-14
+- **Resolved**: 2026-05-03 (commit `0cee452`)
 - **Test**: `stress-fast-user.spec.ts` → "edit text before code block → j into code → k back"
-- **Reproduction**: Navigate to "Section 8: Code block" heading. Press I, type "X", Escape. Then j (enters code block first line, activeLine increments by 1). Then k — DOM cursor lands on block 38 instead of block 37 (the heading).
-- **Expected**: k returns to the heading block (index 37)
-- **Actual**: k returns to the block after the heading (index 38, which is the code block itself)
-- **Context**: After editing a heading block that's directly above a code block, the cursor position mapping between vim_info and DOM gets off by one. The I→type→Esc sequence on the heading seems to shift the vim line mapping.
-- **Severity**: High — this is likely the bug users experience where "j/k goes to the wrong line after insert mode"
+- **Original symptom**: After `I→type→Esc→j→k` on a heading above a code block, the test asserted DOM cursor landed on block 37 but observed block 38.
+- **Root cause**: Test queried `[data-content-editable-leaf="true"]` (93 elements) for its reference index while vim_info.lines is built from `[contenteditable="true"]` (94 elements — includes the page-title wrapper at index 0). The two index frames differed by exactly one. Vim's tracking was correct throughout; the test was reading the wrong frame.
+- **Fix**: Test now queries the same `[contenteditable="true"]` set as vim, with a wrapper-exclusion filter (`!editables.some((other) => other !== l && l.contains(other))`) to skip the page-title wrapper's substring false-match. Once BUG-043's wrapper filter lands in `vim_info.lines` proper, this test's wrapper-exclusion can be simplified.
+- **Severity**: Was High — actual user impact: none, since real-world `I→type→Esc→j→k` behavior was always correct.
 
 ## BUG-003: o→type→Esc→k returns to wrong block (off by 1)
 
