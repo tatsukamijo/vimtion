@@ -92,8 +92,13 @@ export const createRefreshLines = (handlers: EventHandlers) => {
       document.querySelectorAll("[contenteditable=true]"),
     ) as HTMLDivElement[];
 
-    // Store the current active element to find its new index later
-    const currentActiveElement = vim_info.lines[vim_info.active_line]?.element;
+    // Snapshot the active line's identity BEFORE rebuilding the lines array.
+    // The element reference may become stale (Notion swaps leaf elements during
+    // markdown-shortcut conversion); block_id was cached eagerly when the entry
+    // was built, so it survives the swap. (BUG-013/BUG-012)
+    const previousActive = vim_info.lines[vim_info.active_line];
+    const previousActiveElement = previousActive?.element ?? null;
+    const previousActiveBlockId = previousActive?.block_id ?? null;
 
     // Find new elements that aren't in our lines array yet
     const existingElements = new Set(
@@ -111,17 +116,25 @@ export const createRefreshLines = (handlers: EventHandlers) => {
       });
     }
 
-    // Rebuild lines array in DOM order
+    // Rebuild lines array in DOM order, caching block_id per entry
     vim_info.lines = allEditableElements.map((elem) => ({
       cursor_position: 0,
       element: elem,
+      block_id:
+        elem.closest("[data-block-id]")?.getAttribute("data-block-id") ?? null,
     }));
 
-    // Update active line index to match the current active element
-    if (currentActiveElement) {
-      const newIndex = vim_info.lines.findIndex(
-        (line) => line.element === currentActiveElement,
+    // Recover active line: try element-identity first, then fall back to
+    // block_id matching for replaced leaves.
+    if (previousActiveElement) {
+      let newIndex = vim_info.lines.findIndex(
+        (line) => line.element === previousActiveElement,
       );
+      if (newIndex === -1 && previousActiveBlockId) {
+        newIndex = vim_info.lines.findIndex(
+          (line) => line.block_id === previousActiveBlockId,
+        );
+      }
       if (newIndex !== -1) {
         vim_info.active_line = newIndex;
       }
@@ -147,6 +160,8 @@ export const createSetLines = (
     vim_info.lines = elements.map((elem) => ({
       cursor_position: 0,
       element: elem as HTMLDivElement,
+      block_id:
+        elem.closest("[data-block-id]")?.getAttribute("data-block-id") ?? null,
     }));
 
     // Set initial active line to 0 BEFORE adding event listeners

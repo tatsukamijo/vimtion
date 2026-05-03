@@ -1,6 +1,12 @@
 interface VimLine {
   element: HTMLDivElement;
   cursor_position: number;
+  // Notion's data-block-id of the nearest [data-block-id] ancestor, if any.
+  // Cached so we can recover active_line after Notion's MutationObserver swaps
+  // the leaf element (e.g., during markdown-shortcut block conversion). The old
+  // element reference becomes stale and findIndex by element fails — block_id
+  // survives the replacement. (BUG-013/BUG-012)
+  block_id: string | null;
 }
 
 interface LinkHint {
