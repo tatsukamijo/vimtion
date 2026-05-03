@@ -19,7 +19,14 @@ export const moveCursorDownInCodeBlock = () => {
 
   // Find current line end (next newline)
   let lineEnd = text.indexOf("\n", currentPos);
-  if (lineEnd === -1) {
+  // Notion code blocks frequently end their textContent with a trailing
+  // "\n", which split("\n") turns into a phantom empty entry past the
+  // visible last line. If the only newline ahead of us IS that trailing
+  // one (i.e. there's no content after it), there is no real next line —
+  // we should exit the block, not advance the cursor into the phantom
+  // position where the browser renders it just below the leaf.
+  const onLastRealLine = lineEnd === -1 || lineEnd === text.length - 1;
+  if (onLastRealLine) {
     // Already on last line of code block — exit downward into the next block.
     // setActiveLine handles cursor placement (click/focus or in-block offset)
     // and updateInfoContainer refreshes the status bar + block cursor so the

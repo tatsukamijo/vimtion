@@ -47,7 +47,16 @@ export const setActiveLine = (idx: number): void => {
     // If moving up (idx < previous active_line), go to the last line of the code block
     // If moving down (idx > previous active_line), go to the first line
     const text = targetElement.textContent || "";
-    const codeLines = text.split("\n");
+    const rawCodeLines = text.split("\n");
+    // Notion code blocks frequently end their textContent with a trailing
+    // "\n", which split("\n") turns into a phantom empty entry. If we treat
+    // it as a real line, k-from-the-block-below lands the cursor at
+    // textLength (past the visible last line) — the BUG-010 ghost line.
+    // Drop it so "last line" means the last *visible* code line.
+    const codeLines =
+      rawCodeLines.length > 1 && rawCodeLines[rawCodeLines.length - 1] === ""
+        ? rawCodeLines.slice(0, -1)
+        : rawCodeLines;
     const movingUp = i < previousActiveLine;
 
     let cursorPosition = 0;

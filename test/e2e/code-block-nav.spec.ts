@@ -128,7 +128,13 @@ test.describe("Code block navigation", () => {
     expect(lineIndex).toBe(0);
   });
 
-  // BUG-010: k from first code block line doesn't exit (same root cause as j exit)
+  // BUG-010: k from first code block line — the navigation FIX is in
+  // moveCursorUpInCodeBlock (lineStart === -1 routes through setActiveLine +
+  // updateInfoContainer), but the strict cursor-invariant still trips during
+  // the k press: active_line correctly steps back to the heading, yet the
+  // DOM cursor lands two leaves further down, suggesting setActiveLine's
+  // heading.click() does not reliably move the selection in the test
+  // environment. Marker stays until that sync issue is resolved separately.
   test.fail("k from code block first line exits to block above", async ({ extensionPage: page }) => {
     await goToBlock(page, "Section 8: Code block");
     await pressKeys(page, "j"); // enter code block
@@ -153,10 +159,18 @@ test.describe("Code block navigation", () => {
 
     const info = await getCodeBlockInfo(page);
     const { lineCount } = getCodeLineFromOffset(info.text, 0);
-    console.log("code block has", lineCount, "lines, text length =", info.totalLength);
+    // Drop the trailing-empty split entry (BUG-010 fix: j on the visible
+    // last line now exits, so iterating to lineCount-1 would walk us out
+    // of the block).
+    const rawLines = info.text.split("\n");
+    const realLineCount =
+      rawLines.length > 1 && rawLines[rawLines.length - 1] === ""
+        ? lineCount - 1
+        : lineCount;
+    console.log("code block has", lineCount, "raw lines (real:", realLineCount, "), text length =", info.totalLength);
 
-    // Navigate to last line
-    for (let i = 1; i < lineCount; i++) {
+    // Navigate to the visible last line
+    for (let i = 1; i < realLineCount; i++) {
       await pressKeys(page, "j");
       await page.waitForTimeout(100);
     }
@@ -164,20 +178,29 @@ test.describe("Code block navigation", () => {
     const afterInfo = await getCodeBlockInfo(page);
     const pos = getCodeLineFromOffset(afterInfo.text, afterInfo.offset);
     console.log("code-last-line: lineIndex =", pos.lineIndex, "/", pos.lineCount, "offset =", afterInfo.offset);
-    expect(pos.lineIndex).toBe(lineCount - 1);
+    expect(pos.lineIndex).toBe(realLineCount - 1);
   });
 
-  // BUG-010: j on last line should exit code block to next block
-  test.fail("j on last code block line exits to block below", async ({ extensionPage: page }) => {
+  // BUG-010 (fixed): j on the visible last line of the code block exits
+  // downward. Previously, the trailing "\n" in textContent let split("\n")
+  // produce a phantom empty entry, so j navigated into ghost territory
+  // before the next j finally exited.
+  test("j on last code block line exits to block below", async ({ extensionPage: page }) => {
     await goToBlock(page, "Section 8: Code block");
     await pressKeys(page, "j"); // enter code block
     await page.waitForTimeout(200);
 
     const info = await getCodeBlockInfo(page);
-    const { lineCount } = getCodeLineFromOffset(info.text, 0);
+    // Strip the trailing-empty entry from a code block whose textContent
+    // ends in "\n" — that entry is no longer treated as a real line.
+    const rawLines = info.text.split("\n");
+    const realLineCount =
+      rawLines.length > 1 && rawLines[rawLines.length - 1] === ""
+        ? rawLines.length - 1
+        : rawLines.length;
 
-    // Navigate to last line
-    for (let i = 1; i < lineCount; i++) {
+    // Navigate to the visible last line
+    for (let i = 1; i < realLineCount; i++) {
       await pressKeys(page, "j");
       await page.waitForTimeout(100);
     }
@@ -192,48 +215,15 @@ test.describe("Code block navigation", () => {
     expect(text).toContain("Text after code block");
   });
 
-  // From the ghost line (BUG-010), another j does exit correctly
-  test("j on ghost line (past last code line) exits code block", async ({ extensionPage: page }) => {
-    // Reset vim state by navigating to a plain text block first
-    await goToBlock(page, "Plain text line 1");
+  // BUG-010 (fixed): i in code block enters insert mode without crashing.
+  // Used to test recovery from the ghost-line slot reached via repeated j;
+  // the ghost line is now unreachable, so this just sanity-checks i.
+  test("i in code block enters insert mode", async ({ extensionPage: page }) => {
     await goToBlock(page, "Section 8: Code block");
     await pressKeys(page, "j"); // enter code block
     await page.waitForTimeout(200);
 
-    const info = await getCodeBlockInfo(page);
-    const { lineCount } = getCodeLineFromOffset(info.text, 0);
-
-    // Navigate past last line (into ghost territory)
-    for (let i = 1; i <= lineCount; i++) {
-      await pressKeys(page, "j");
-      await page.waitForTimeout(100);
-    }
-
-    // Now press j again — should definitely exit
-    await pressKeys(page, "j");
-    await page.waitForTimeout(200);
-
-    const text = await getActualCursorBlockText(page);
-    console.log("code-ghost-j-exit: text =", JSON.stringify(text));
-    expect(text).toContain("Text after code block");
-  });
-
-  // BUG-010: i on ghost line should not crash, should return to last real line
-  test("i on ghost line returns to editable content", async ({ extensionPage: page }) => {
-    await goToBlock(page, "Section 8: Code block");
-    await pressKeys(page, "j"); // enter code block
-    await page.waitForTimeout(200);
-
-    const info = await getCodeBlockInfo(page);
-    const { lineCount } = getCodeLineFromOffset(info.text, 0);
-
-    // Navigate past last line
-    for (let i = 1; i <= lineCount; i++) {
-      await pressKeys(page, "j");
-      await page.waitForTimeout(100);
-    }
-
-    // i should enter insert mode (even from ghost line)
+    // i should enter insert mode
     await pressKeys(page, "i");
     await page.waitForTimeout(200);
 
@@ -407,10 +397,18 @@ test.describe("Code block navigation", () => {
 
     const info = await getCodeBlockInfo(page);
     if (info.text.includes("function hello")) {
-      // We're in the code block — check we're on the last line
+      // We're in the code block — check we're on the visible last line.
+      // Code blocks frequently end their textContent with a trailing "\n";
+      // setActiveLine now drops that phantom entry on enter-from-below
+      // (BUG-010 fix), so "last line" means the last non-empty split entry.
       const { lineIndex, lineCount } = getCodeLineFromOffset(info.text, info.offset);
-      console.log("code-k-enter-from-below: lineIndex =", lineIndex, "/", lineCount);
-      expect(lineIndex).toBe(lineCount - 1);
+      const rawLines = info.text.split("\n");
+      const lastRealIndex =
+        rawLines.length > 1 && rawLines[rawLines.length - 1] === ""
+          ? lineCount - 2
+          : lineCount - 1;
+      console.log("code-k-enter-from-below: lineIndex =", lineIndex, "/", lineCount, "lastRealIndex =", lastRealIndex);
+      expect(lineIndex).toBe(lastRealIndex);
     } else {
       // If k didn't enter code block, that's also a valid finding (block ordering)
       console.log("code-k-enter-from-below: landed on", JSON.stringify(info.text.slice(0, 50)));
