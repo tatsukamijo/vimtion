@@ -15,7 +15,7 @@ export const saveCursorPosition = () => {
 
   // Try to find block ID from element or its ancestors
   let blockId = "N/A";
-  let elem = currentElement;
+  let elem: HTMLElement | null = currentElement;
   while (elem) {
     const foundId = elem.getAttribute("data-block-id");
     if (foundId) {
@@ -69,7 +69,7 @@ export const restoreCursorPosition = () => {
         let targetLineIndex = data.active_line;
         if (data.block_id) {
           const foundIndex = vim_info.lines.findIndex((line) => {
-            let elem = line.element;
+            let elem: HTMLElement | null = line.element;
             while (elem) {
               const foundId = elem.getAttribute("data-block-id");
               if (foundId === data.block_id) {
