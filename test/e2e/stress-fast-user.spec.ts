@@ -568,7 +568,6 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
   // ==== Known bugs — marked test.fail() so they pass when broken, alert when fixed ====
 
   test("BUG-003: o→type→Esc→k returns to original block", async ({ extensionPage: page }) => {
-    test.fail();
     await goToBlock(page, "Plain text line 3");
     const origIdx = await getActualCursorBlockIndex(page);
     const origState = await getVimState(page);

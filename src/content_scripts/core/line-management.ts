@@ -145,8 +145,41 @@ export const createRefreshLines = (handlers: EventHandlers) => {
         elem.closest("[data-block-id]")?.getAttribute("data-block-id") ?? null,
     }));
 
-    // Recover active line: try element-identity first, then fall back to
-    // block_id matching for replaced leaves.
+    // Recover active line. Two signals:
+    //   - identity: previousActiveElement still in the rebuilt lines array
+    //   - selection: the DOM selection's leaf in the rebuilt lines array
+    // For ordinary navigation (rapid j/k) the cursor stays on
+    // previousActiveElement and the lines set is unchanged, so identity is
+    // correct. For mutations that insert a fresh leaf (o/O/Enter) the
+    // selection moves to that brand-new element. Identity recovery in that
+    // case finds the OLD element at its new index, which is no longer where
+    // the cursor actually is. Detect the o/O/Enter case narrowly: the
+    // selection sits on a leaf that did NOT exist in the previous lines
+    // snapshot. Using "freshly inserted" as the trigger keeps rapid
+    // navigation (no insertions) on the identity path, where Notion's
+    // transient leaf re-renders during click() can't shift active_line.
+    const selection = window.getSelection();
+    const selAnchor = selection?.anchorNode ?? null;
+    const selAnchorEl =
+      selAnchor && selAnchor.nodeType === Node.ELEMENT_NODE
+        ? (selAnchor as Element)
+        : selAnchor?.parentElement ?? null;
+    const selLeaf = selAnchorEl?.closest('[contenteditable="true"]') ?? null;
+
+    if (
+      selLeaf &&
+      selLeaf !== previousActiveElement &&
+      !existingElements.has(selLeaf as HTMLDivElement)
+    ) {
+      const selIndex = vim_info.lines.findIndex(
+        (line) => line.element === selLeaf,
+      );
+      if (selIndex !== -1) {
+        vim_info.active_line = selIndex;
+        return;
+      }
+    }
+
     if (previousActiveElement) {
       let newIndex = vim_info.lines.findIndex(
         (line) => line.element === previousActiveElement,
