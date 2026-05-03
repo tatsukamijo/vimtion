@@ -54,11 +54,11 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 
 - **Status**: **RESOLVED — test-infrastructure false-positive, not a source bug.**
 - **Detected**: 2026-04-14
-- **Resolved**: 2026-05-03 (commit `e4aaf09`)
+- **Resolved**: 2026-05-03 (F: `e4aaf09`, T: `b8d5c0d`)
 - **Test**: `navigation.spec.ts` → "F{c} finds character backward", "T{c} stops one after target char backward"
 - **Original symptom**: Cursor did not move on `Shift+f` followed by `a`.
 - **Root cause**: Playwright's `keyboard.down("Shift") / press("f") / up("Shift")` form did not produce `e.key === "F"` in Notion's contenteditable — the keydown delivered `e.key === "f"` (lowercase). Vimtion's normal-mode reducer correctly matched `case "f"` (forward find), set `pending_operator = "f"`, and the next char ran `findCharForward` instead of `findCharBackward`. The source paths for F/T were always correct.
-- **Fix**: Switched the F-test to `pressKeys(page, "Shift+F")`, which yields `e.key === "F"`. T-test was symmetrically updated; verification tracked separately as task #14.
+- **Fix**: Switched the F-test to `pressKeys(page, "Shift+F")`, which yields `e.key === "F"`. T-test was symmetrically updated and tester verified 4/4 isolated strict runs (commit `b8d5c0d`).
 - **Severity**: Was Medium — actual user impact: none, since real keyboards produce `e.key === "F"` natively.
 
 ## BUG-007: { and } (paragraph motions) do not move cursor
