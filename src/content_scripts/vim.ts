@@ -506,7 +506,6 @@ const handleClick = (e: MouseEvent) => {
         // Update active line without moving cursor
         vim_info.active_line = lineIndex;
         vim_info.desired_column = cursorPos;
-        updateBlockCursor();
         updateInfoContainer();
       }
     }

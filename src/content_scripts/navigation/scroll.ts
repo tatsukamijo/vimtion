@@ -2,7 +2,7 @@
  * Scroll and viewport navigation (Ctrl+d, Ctrl+u, Ctrl+f, Ctrl+b, gg, G)
  */
 
-import { setCursorPosition, updateBlockCursor } from "../cursor";
+import { setCursorPosition } from "../cursor";
 import { setActiveLine } from "../core/line-management";
 
 export const findScrollableContainer = (): HTMLElement => {
@@ -92,7 +92,6 @@ export function createJumpToTop(updateInfoContainer: () => void) {
     setTimeout(() => {
       vim_info.desired_column = 0;
       setActiveLine(0);
-      updateBlockCursor();
       updateInfoContainer();
     }, 10);
   };
@@ -137,7 +136,6 @@ export function createJumpToBottom(
       if (targetElement) {
         setCursorPosition(targetElement, 0);
         targetElement.focus({ preventScroll: true });
-        updateBlockCursor();
         updateInfoContainer();
       }
     }, 10);

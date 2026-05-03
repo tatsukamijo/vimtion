@@ -274,3 +274,22 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Withdrawn**: 2026-05-03 — implementer re-investigated on a clean baseline (no source changes) with a 3-scenario debug spec (clean Escape, H1-touched-then-Escape, accumulated activity then Escape). Cursor stayed on the target leaf in all three; vim_info and DOM agreed throughout.
 - **Misattribution origin**: The Escape→H1 behavior was a coupling artifact of the partial BUG-043 WIP (page-title wrapper filter + bare `vim_info.active_line = 0` in `createSetLines`). With the filter applied, `lines[0]` became the real H1 leaf rather than the inert wrapper, and the partial WIP's init paths primed Notion's focus tracking onto H1. Neither happens without the partial WIP.
 - **Implication for BUG-043**: page-title-filter approach is viable on its own; no Escape reconciliation needed.
+
+## BUG-045: Table-walk drift after 6-markdown-shortcut chain (rapid j×5 → +1 active_line)
+
+- **Detected**: 2026-05-04 (surfaced during BUG-040 bisect verification on `d55a4f3`)
+- **Status**: Pre-existing — reproduces standalone on `main`, on `c0b111c`, and on the bisect attempt `d55a4f3` alike. Not introduced by any 2026-05-03 / 2026-05-04 sprint.
+- **Test**: `scenario-markdown-chaos.spec.ts:305` (`Validate: walked block classes contain expected sequence`)
+- **Reproduction**: After `convertOnSpace` runs the 6-shortcut conversion chain (Rounds 1–6 in the same `scenario-markdown-chaos` test), press `j` rapidly 5 times to walk into the table region below. `vim_info.active_line` lands one block past where the DOM cursor is — the walked-block-class sequence is off by one.
+- **Suspected root cause**: Likely interacts with the same identity/block_id recovery paths that BUG-001 / BUG-040 exercise, but specifically the rapid-j burst that crosses from the post-conversion region into a table block. Tables wrap their contenteditable cells differently from regular blocks; the recovery's wrapper-skip may not match table-cell shape.
+- **Severity**: Low–Medium — rare in practice (requires sequential markdown conversions then immediate rapid j into a table), but indicates a gap in our recovery paths for table-cell DOM shape.
+
+## BUG-046: Cross-spec cumulative flake under `npm test` full-suite run
+
+- **Detected**: 2026-05-03 (surfaced during BUG-040 PR #12 final verification on `c0b111c`)
+- **Status**: Accepted as known intermittent under `npm test` full-suite; both tests pass standalone or on retry.
+- **Tests**: `cursor-sync.spec.ts:186` (`I → Escape → k on text after code block stays consistent`) and `scenario-markdown-chaos.spec.ts:213` (`Conversion chain: 6 markdown shortcuts in sequence`).
+- **Reproduction**: Run `npm test` (full Playwright suite). Both tests fail intermittently in the full-suite run on `c0b111c` and later. Re-running either test in isolation passes cleanly. The bisect attempt on `d55a4f3` (which removed the new `selectionchange` listener and `characterData: true` from the MutationObserver) fixed these two but caused 22 other failures and 81 total test losses, confirming the new listeners are load-bearing for cross-spec state cleanliness elsewhere.
+- **Suspected root cause**: The `selectionchange` listener and `characterData`-watching MutationObserver added in `c0b111c` likely accumulate state or fire mid-teardown across spec boundaries, contaminating the next spec's setup. Specifically: `selectionchange` listeners attached across page navigations may not be detached cleanly when Playwright reuses contexts, and the broadened observer fires on mid-teardown text mutations that wouldn't happen in a real session.
+- **Severity**: Low — only triggers under cumulative cross-spec state in CI-like full-suite runs. Real users with single-page sessions are not affected. Net trade was +23 reliable passes for these 2 intermittents (PR #12).
+- **Possible fix directions**: Detach `selectionchange` on page unload; rate-limit or debounce `reconcileFromSelection`; narrow the `characterData` observer to specific subtree roots; or re-architect the reconciliation so it doesn't need either listener.
