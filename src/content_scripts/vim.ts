@@ -425,6 +425,19 @@ const getLines = () => {
 const handleClick = (e: MouseEvent) => {
   const { vim_info } = window;
 
+  // Only handle real human mouse clicks. Programmatic clicks (e.isTrusted
+  // === false) come from setActiveLine doing element.click() during j/k
+  // navigation; those already update vim_info synchronously, so processing
+  // them here would queue a deferred setTimeout that re-reads the
+  // selection AFTER the rapid keystroke burst has settled and rewrites
+  // active_line / desired_column based on whatever the cursor happens to
+  // be on at that later moment. Under fast j-then-k sequences those queued
+  // callbacks accumulate and leave vim_info out of sync with the DOM
+  // cursor.
+  if (!e.isTrusted) {
+    return;
+  }
+
   // Only handle clicks in normal mode
   if (vim_info.mode !== "normal") {
     return;
