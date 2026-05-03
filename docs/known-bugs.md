@@ -239,13 +239,13 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 
 ## BUG-042: o on nested bullet/todo child creates wrong sibling
 
+- **Status**: **RESOLVED** — fixed by `2e5ee72` (added `setCursorPastLineEnd` helper for `A` and `o`; `$` keeps the Vim len-1 semantics).
 - **Detected**: 2026-05-03 (tester smoke-set after BUG-001/010/011/029 batch)
+- **Resolved**: 2026-05-03
 - **Test**: `insert-open-line.spec.ts:80` (nested bullet child), `:104` (last nested bullet child), `:156` (nested todo child) — all three fail consistently
-- **Reproduction**: Position cursor on a child item of a nested bullet (or todo). Press `o` to open a new line below.
-- **Expected**: New sibling created at index `child + 1`.
-- **Actual**: NEW_SIBLING lands at index 23 / -1 instead.
-- **Root-cause hypothesis**: vim_info.lines indexing issue specific to nested contenteditable structures — bullet/todo children wrap their text in extra `<div>` ancestors, which interact with our index resolution differently than top-level blocks.
-- **Severity**: Medium — only nested bullet/todo, but those are common Notion patterns.
+- **Root cause**: Earlier commit `f261a89` correctly moved `$` to land at len-1, but `A` and `o` shared the same `jumpToLineEnd` helper. The synthetic Enter from `o` then split the leaf at len-1 ("Nested bullet child 1" len 21 split at 20) instead of appending below. Plain-bullet tests asserted only on the new sibling's content so the silent split went unnoticed; nested bullet/todo children surfaced it because their tests checked parent-line integrity.
+- **Fix**: New `setCursorPastLineEnd` helper used by `A` and `o` only; `$` still uses `jumpToLineEnd`. `O`/`I` and code-block o/O paths untouched.
+- **Severity**: Was Medium — only nested bullet/todo, but those are common Notion patterns.
 
 ## BUG-043: gg / k-at-line-1 land on page-title role=group, not h1 leaf
 
