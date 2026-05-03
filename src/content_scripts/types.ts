@@ -41,9 +41,8 @@ export interface VimLine {
   cursor_position: number;
   element: HTMLDivElement;
   // Notion's data-block-id of the nearest [data-block-id] ancestor, if any.
-  // Cached so we can recover active_line after Notion's MutationObserver swaps
-  // the leaf element (e.g., during markdown-shortcut block conversion).
-  // (BUG-013/BUG-012)
+  // Cached so active_line can be recovered after Notion's MutationObserver
+  // swaps the leaf element under the same block container.
   block_id: string | null;
 }
 

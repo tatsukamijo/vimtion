@@ -523,9 +523,9 @@ const handleKeydown = (e: KeyboardEvent) => {
 
   // Mirror vim_info → document.body.dataset.vimtionState for test harnesses
   // running in the page's MAIN world. Catches all reducer paths, including
-  // motion handlers (BUG-016/017) that mutate active_line directly without
-  // calling updateInfoContainer(). Side-effect-only — pure DOM write, no
-  // change to extension behavior.
+  // motion handlers that mutate active_line directly without going through
+  // updateInfoContainer(). Side-effect-only — pure DOM write, no change to
+  // extension behavior.
   syncVimInfoToDOM();
 };
 

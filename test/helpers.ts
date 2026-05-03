@@ -37,6 +37,25 @@ export interface VimState {
   statusText: string;
 }
 
+async function installOverlayStripper(page: Page): Promise<void> {
+  await page
+    .evaluate(() => {
+      const SELECTOR =
+        ".vimtion-update-notification, .vimtion-notification-overlay, .vimtion-vimium-warning";
+      const strip = (): void => {
+        document.querySelectorAll(SELECTOR).forEach((el) => el.remove());
+      };
+      strip();
+      // Marker prevents installing duplicate observers on re-entry.
+      const w = window as unknown as { __vimtionOverlayStripper?: boolean };
+      if (w.__vimtionOverlayStripper) return;
+      w.__vimtionOverlayStripper = true;
+      const obs = new MutationObserver(() => strip());
+      obs.observe(document.body, { childList: true, subtree: false });
+    })
+    .catch(() => {});
+}
+
 async function waitForVimtionReady(page: Page, timeout: number): Promise<void> {
   // Wait for Vimtion's status bar to appear
   await page.waitForSelector(".vim-mode", { timeout });
@@ -95,17 +114,11 @@ export async function navigateToTestPage(
   // Dismiss Vimtion's update / vimium-warning notification overlay if it appears.
   // The overlay (`.vimtion-notification-overlay`) absolutely-positions a transparent
   // div that intercepts pointer events, so locator.click() on any block fails until
-  // it's gone. The notification surfaces after `npm run build` bumps the stored
-  // version; we strip it unconditionally for tests.
-  await page
-    .evaluate(() => {
-      document
-        .querySelectorAll(
-          ".vimtion-update-notification, .vimtion-notification-overlay",
-        )
-        .forEach((el) => el.remove());
-    })
-    .catch(() => {});
+  // it's gone. The notification renders asynchronously after a chrome.storage.local
+  // read, so a one-shot strip races with its insertion. Install a MutationObserver
+  // in-page that keeps stripping for the rest of the session — the overhead is
+  // negligible and it's idempotent (a no-op once the flag has been cleared).
+  await installOverlayStripper(page);
 
   // Dismiss Notion's "using Vimium?" warning if it appears
   const gotItButton = page.getByRole("button", { name: "Got it" });
@@ -113,16 +126,7 @@ export async function navigateToTestPage(
     await gotItButton.click();
     // Reload to restart Vimtion's line detection polling
     await page.reload({ waitUntil: "domcontentloaded" });
-    // Re-strip the Vimtion overlay after reload — it can re-render.
-    await page
-      .evaluate(() => {
-        document
-          .querySelectorAll(
-            ".vimtion-update-notification, .vimtion-notification-overlay",
-          )
-          .forEach((el) => el.remove());
-      })
-      .catch(() => {});
+    await installOverlayStripper(page);
   }
 
   await waitForVimtionReady(page, timeout);

@@ -42,7 +42,7 @@ export const jumpToPreviousWord = () => {
   const text = currentElement.textContent || "";
 
   // Vim semantics in Notion (block = line): b at col 0 is a no-op (no wrap to
-  // previous block). Matches the h no-wrap policy. (BUG-004)
+  // previous block). Matches the h no-wrap policy.
   if (currentCursorPosition === 0) return;
 
   let pos = currentCursorPosition - 1;

@@ -9,7 +9,7 @@ export const moveCursorBackwards = () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
 
-  // Vim semantics: h at col 0 is a no-op (no wrap to previous line). (BUG-004)
+  // Vim semantics: h at col 0 is a no-op (no wrap to previous line).
   if (currentCursorPosition <= 0) return;
 
   const newPosition = currentCursorPosition - 1;
@@ -25,7 +25,7 @@ export const moveCursorForwards = () => {
   // Vim's normal-mode cursor sits ON a character; max valid column is len-1.
   const maxCol = Math.max(0, lineLength - 1);
 
-  // Vim semantics: l at last char is a no-op (no wrap to next line). (BUG-004)
+  // Vim semantics: l at last char is a no-op (no wrap to next line).
   if (currentCursorPosition >= maxCol) return;
 
   const newPosition = currentCursorPosition + 1;
@@ -47,7 +47,7 @@ export const jumpToLineEnd = () => {
   const lineLength = currentElement.textContent?.length || 0;
 
   // Vim semantics: $ lands ON the last character (col = len - 1), not past it.
-  // Empty line: clamp to 0. (BUG-005)
+  // Empty line: clamp to 0.
   const newPos = Math.max(0, lineLength - 1);
   setCursorPosition(currentElement, newPos);
   vim_info.desired_column = newPos;

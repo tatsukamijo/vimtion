@@ -95,7 +95,7 @@ export const createRefreshLines = (handlers: EventHandlers) => {
     // Snapshot the active line's identity BEFORE rebuilding the lines array.
     // The element reference may become stale (Notion swaps leaf elements during
     // markdown-shortcut conversion); block_id was cached eagerly when the entry
-    // was built, so it survives the swap. (BUG-013/BUG-012)
+    // was built, so it survives the swap.
     const previousActive = vim_info.lines[vim_info.active_line];
     const previousActiveElement = previousActive?.element ?? null;
     const previousActiveBlockId = previousActive?.block_id ?? null;
