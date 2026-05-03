@@ -20,7 +20,7 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 - **Test**: `stress-fast-user.spec.ts` → "edit text before code block → j into code → k back"
 - **Original symptom**: After `I→type→Esc→j→k` on a heading above a code block, the test asserted DOM cursor landed on block 37 but observed block 38.
 - **Root cause**: Test queried `[data-content-editable-leaf="true"]` (93 elements) for its reference index while vim_info.lines is built from `[contenteditable="true"]` (94 elements — includes the page-title wrapper at index 0). The two index frames differed by exactly one. Vim's tracking was correct throughout; the test was reading the wrong frame.
-- **Fix**: Test now queries the same `[contenteditable="true"]` set as vim, with a wrapper-exclusion filter (`!editables.some((other) => other !== l && l.contains(other))`) to skip the page-title wrapper's substring false-match. Once BUG-043's wrapper filter lands in `vim_info.lines` proper, this test's wrapper-exclusion can be simplified.
+- **Fix**: Test now queries the same `[contenteditable="true"]` set as vim, with a wrapper-exclusion filter (`!editables.some((other) => other !== l && l.contains(other))`) to skip the page-title wrapper's substring false-match. (Note: BUG-043 ultimately took the index-normalization route rather than wrapper-out-of-lines, so this test's wrapper-exclusion remains load-bearing — the wrapper still sits at `lines[0]` for keydown-listener stability.)
 - **Severity**: Was High — actual user impact: none, since real-world `I→type→Esc→j→k` behavior was always correct.
 
 ## BUG-003: o→type→Esc→k returns to wrong block (off by 1)
