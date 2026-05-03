@@ -444,8 +444,7 @@ test.describe.serial("Navigation", () => {
   // { / } — paragraph motions
   // =========================================================================
 
-  // BUG-007: } paragraph motion doesn't move cursor forward
-  test.fail("} moves forward past current block group", async ({ extensionPage: page }) => {
+  test("} moves forward past current block group", async ({ extensionPage: page }) => {
     await goToBlock(page, "Plain text line 1");
     const before = (await getCursorPosition(page)).line;
 
@@ -455,8 +454,7 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).line).toBeGreaterThan(before);
   });
 
-  // BUG-007: { paragraph motion likely same issue
-  test.fail("{ moves backward past current block group", async ({ extensionPage: page }) => {
+  test("{ moves backward past current block group", async ({ extensionPage: page }) => {
     await goToBlock(page, "Bullet item 3");
     const before = (await getCursorPosition(page)).line;
 
