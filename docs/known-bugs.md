@@ -221,13 +221,19 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Severity**: High — every code-block exit hits this path; explains "I pressed j but my cursor didn't move" reports.
 
 
-## BUG-040: Post-undo cursor desync in code blocks (o → type → u)
+## BUG-040: Post-undo cursor desync after o / O / A insert (broader than code blocks)
 
 - **Detected**: 2026-05-03
-- **Source**: Surfaced during BUG-011 fix work (see commit `6614210`).
-- **Reproduction**: Inside a code block, press `o` to open a new line, type something, then press `u` to undo. The undo restores the textContent correctly, but the DOM cursor lands on the heading above the code block while `vim_info.active_line` still points at the code-block leaf.
-- **Root cause hypothesis**: `document.execCommand("undo")` rewinds DOM mutations inside the code-block leaf, but the DOM Selection state isn't restored to a position the code-block-aware navigation expects, and our undo path doesn't re-sync `vim_info` + cursor afterward.
-- **Severity**: Medium — most undo paths work; this is specific to code blocks.
+- **Source**: Surfaced during BUG-011 fix work (see commit `6614210`); scope broadened during e07b3e5 verification.
+- **Reproduction patterns** (all fingerprint-identical):
+  - Inside a code block: `o` → type → `u`. DOM cursor lands on the heading above; `vim_info.active_line` still points at the code-block leaf.
+  - On a numbered/regular/nested bullet item: `A` → type → `Esc` → `j` → `u`. `vim_info.active_line` advances; DOM cursor stays one block back.
+  - On any insert variant: `o` → `Esc` (immediately, empty new line) → `u`. `vim_info.lines.length` (95) outpaces actual DOM editable count (94) — refreshLines missed the undo-driven leaf removal.
+  - On a nested bullet: `O` → `Esc` immediately → `u`. Same fingerprint.
+- **Root cause hypothesis**: `document.execCommand("undo")` rewinds Notion's DOM mutations (including leaf insertions/restorations), but our refreshLines/active_line reconciliation isn't triggered or doesn't follow the undo-driven changes — `vim_info` keeps the post-insert state while DOM rolls back.
+- **Verified pre-existing**: Reproduced on `0677b34` (parent of A/o `setCursorPastLineEnd` fix `2e5ee72`), so this is NOT a regression from any 2026-05-03 sprint commit.
+- **Tests `test.fail()`'d for this**: `insert-open-line.spec.ts:581` (A on numbered), `:691` (o + Esc empty), `:725` (O on nested bullet), `:362` (o in code block). Likely also `code-block-nav.spec.ts:424` and `:490` (same fingerprint, not yet marked).
+- **Severity**: Medium-High — broader than initially scoped; affects A/o/O across most block types after undo.
 
 ## BUG-041: ``` markdown shortcut → code block conversion leaves cursor desynced
 
