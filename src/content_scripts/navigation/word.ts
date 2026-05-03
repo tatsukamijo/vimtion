@@ -41,17 +41,9 @@ export const jumpToPreviousWord = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const text = currentElement.textContent || "";
 
-  // If at beginning of line, move to end of previous line
-  if (currentCursorPosition === 0) {
-    if (vim_info.active_line > 0) {
-      vim_info.active_line = vim_info.active_line - 1;
-      const prevElement = vim_info.lines[vim_info.active_line].element;
-      const prevLineLength = prevElement.textContent?.length || 0;
-      setCursorPosition(prevElement, prevLineLength);
-      vim_info.desired_column = prevLineLength;
-    }
-    return;
-  }
+  // Vim semantics in Notion (block = line): b at col 0 is a no-op (no wrap to
+  // previous block). Matches the h no-wrap policy. (BUG-004)
+  if (currentCursorPosition === 0) return;
 
   let pos = currentCursorPosition - 1;
 

@@ -274,8 +274,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(4);
   });
 
-  // BUG-004: same as h — b at column 0 desyncs DOM cursor
-  test.fail("b at column 0 stays at 0", async ({ extensionPage: page }) => {
+  // BUG-004 fixed (jumpToPreviousWord no-ops at col 0).
+  test("b at column 0 stays at 0", async ({ extensionPage: page }) => {
     await goToBlock(page, "The quick brown fox");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
