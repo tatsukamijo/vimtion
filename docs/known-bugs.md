@@ -32,6 +32,7 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 - **Reproduction**: Navigate to "Plain text line 3" (block index 4). Press o, type "new line via o", Escape. Then k. DOM cursor ends up on block 3 instead of block 4.
 - **Root cause**: `createRefreshLines` previously fell back to element-identity (and then `block_id`) recovery only. When `o` inserted a fresh leaf, the previously-active element was still in DOM (just at a new index), so identity recovery succeeded — but with the WRONG index relative to the user's intended position.
 - **Fix**: When the post-rebuild DOM Selection's leaf was NOT in the previous lines snapshot, prefer the selection's leaf as the new `active_line` source. Conservative predicate so rapid-navigation identity recovery (BUG-001 path) is not disturbed.
+- **Additional regression coverage**: `insert-open-line.spec.ts:370` (bullet) and `:393` (nested todo) markers were preserved through subsequent sprints and finally flipped to strict-pass during the BUG-040 sprint (commit `c0b111c` broadened the same selection-leaf recovery path used here, restoring stability for these BUG-003 fingerprints).
 - **Severity**: Was High — o is a frequently used Vim command.
 
 ## BUG-004: h at column 0 desyncs DOM selection
@@ -223,17 +224,20 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 
 ## BUG-040: Post-undo cursor desync after o / O / A insert (broader than code blocks)
 
+- **Status**: **RESOLVED — PARTIAL**: 3 of 4 fingerprints fixed by `c0b111c`. Code-block-specific case (`o` inside code block + `u`) remains: Notion's undo moves DOM cursor to the heading above the code block while vim_info stays in code block — tier-1 broadening doesn't capture this. Test marker preserved at `code-block-nav.spec.ts:362`. Future work: needs code-block-specific reconciliation path.
 - **Detected**: 2026-05-03
+- **Resolved (partial)**: 2026-05-03
 - **Source**: Surfaced during BUG-011 fix work (see commit `6614210`); scope broadened during e07b3e5 verification.
 - **Reproduction patterns** (all fingerprint-identical):
-  - Inside a code block: `o` → type → `u`. DOM cursor lands on the heading above; `vim_info.active_line` still points at the code-block leaf.
-  - On a numbered/regular/nested bullet item: `A` → type → `Esc` → `j` → `u`. `vim_info.active_line` advances; DOM cursor stays one block back.
-  - On any insert variant: `o` → `Esc` (immediately, empty new line) → `u`. `vim_info.lines.length` (95) outpaces actual DOM editable count (94) — refreshLines missed the undo-driven leaf removal.
-  - On a nested bullet: `O` → `Esc` immediately → `u`. Same fingerprint.
-- **Root cause hypothesis**: `document.execCommand("undo")` rewinds Notion's DOM mutations (including leaf insertions/restorations), but our refreshLines/active_line reconciliation isn't triggered or doesn't follow the undo-driven changes — `vim_info` keeps the post-insert state while DOM rolls back.
-- **Verified pre-existing**: Reproduced on `0677b34` (parent of A/o `setCursorPastLineEnd` fix `2e5ee72`), so this is NOT a regression from any 2026-05-03 sprint commit.
-- **Tests `test.fail()`'d for this**: `insert-open-line.spec.ts:581` (A on numbered), `:691` (o + Esc empty), `:725` (O on nested bullet), `:362` (o in code block). Likely also `code-block-nav.spec.ts:424` and `:490` (same fingerprint, not yet marked).
-- **Severity**: Medium-High — broader than initially scoped; affects A/o/O across most block types after undo.
+  - Inside a code block: `o` → type → `u`. DOM cursor lands on the heading above; `vim_info.active_line` still points at the code-block leaf. **Still failing strict** (`code-block-nav.spec.ts:362`); marker preserved.
+  - On a numbered/regular/nested bullet item: `A` → type → `Esc` → `j` → `u`. `vim_info.active_line` advances; DOM cursor stays one block back. **Fixed** (`insert-open-line.spec.ts:586`).
+  - On any insert variant: `o` → `Esc` (immediately, empty new line) → `u`. `vim_info.lines.length` (95) outpaces actual DOM editable count (94) — refreshLines missed the undo-driven leaf removal. **Fixed** (`insert-open-line.spec.ts:702`).
+  - On a nested bullet: `O` → `Esc` immediately → `u`. Same fingerprint. **Fixed** (`insert-open-line.spec.ts:731`).
+- **Root cause**: `document.execCommand("undo")` rewinds Notion's DOM mutations (including leaf insertions/restorations), but the previous refreshLines/active_line reconciliation didn't follow undo-driven cursor jumps to pre-existing leaves — `vim_info` kept the post-insert state while DOM rolled back.
+- **Fix**: `c0b111c` broadens tier-1 (selection-leaf) recovery in `core/line-management.ts:createRefreshLines` to catch undo cursor-jumps to pre-existing leaves, and adds a characterData MutationObserver + `selectionchange` listener for the no-mutation cases. Three-tier recovery (selection-leaf / identity / block_id) preserved.
+- **Verified pre-existing**: Reproduced on `0677b34` (parent of A/o `setCursorPastLineEnd` fix `2e5ee72`), so this was NOT a regression from any 2026-05-03 sprint commit.
+- **Remaining work**: The code-block `o` + `u` fingerprint (`code-block-nav.spec.ts:362`) needs separate investigation — Notion's undo for code-block inserts moves DOM cursor to the heading above the code block, an interaction the current selection-leaf recovery doesn't capture. Marker stays until that case is addressed.
+- **Severity**: Was Medium-High — broader than initially scoped; affects A/o/O across most block types after undo. Three of four fingerprints now resolved.
 
 ## BUG-041: ``` markdown shortcut → code block conversion leaves cursor desynced
 
