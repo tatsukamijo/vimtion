@@ -608,6 +608,17 @@ test.describe("Code block navigation", () => {
     await pressKeys(page, "j"); // land on the existing empty paragraph
     await page.waitForTimeout(200);
 
+    // Capture the baseline offset between vim's active_line and the DOM
+    // leaf index BEFORE the conversion. vim_info.lines is built from
+    // [contenteditable="true"] (which includes the page-title wrapper),
+    // while getActualCursorBlockIndex queries [data-content-editable-leaf]
+    // (which excludes the wrapper). The two index frames are offset by a
+    // constant (typically 1) — that constant must be preserved across the
+    // conversion. This mirrors the offset-aware pattern in BUG-029.
+    const beforeIdx = await getActualCursorBlockIndex(page);
+    const beforeActive = (await getVimState(page)).activeLine;
+    const expectedOffset = beforeActive - 1 - beforeIdx;
+
     await pressKeys(page, "i"); // insert mode at col 0 of existing empty paragraph
     await page.waitForTimeout(200);
 
@@ -653,10 +664,13 @@ test.describe("Code block navigation", () => {
 
     // Sanity: DOM cursor is in the new code block
     expect(text).toContain("converted_in_place");
-    // BUG-012 — see docs/known-bugs.md
-    // The single proximate-cause assertion: vim_info.active_line must point
-    // to the same leaf-block index that the DOM cursor is in.
-    expect(vimIdxAfterEsc, "BUG-012: vim active_line === DOM cursor block (existing-paragraph trigger)").toBe(domIdxAfterEsc);
+    // The single proximate-cause assertion: vim_info.active_line must
+    // track the same leaf-block as the DOM cursor. Compare via the
+    // pre-conversion offset (see BUG-029 for the same pattern); a
+    // direct vimIdx === domIdx assertion would trip on the constant
+    // wrapper-induced offset between the two index frames.
+    const actualOffset = vimIdxAfterEsc - domIdxAfterEsc;
+    expect(actualOffset, "BUG-012: vim active_line ↔ DOM index offset preserved across conversion").toBe(expectedOffset);
   });
 
   // =========================================================================
