@@ -52,12 +52,14 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 
 ## BUG-006: F and T (backward character search) do not move cursor
 
+- **Status**: **RESOLVED — test-infrastructure false-positive, not a source bug.**
 - **Detected**: 2026-04-14
+- **Resolved**: 2026-05-03 (commit `e4aaf09`)
 - **Test**: `navigation.spec.ts` → "F{c} finds character backward", "T{c} stops one after target char backward"
-- **Reproduction**: Navigate to "find char: abcdefghij", press `$` to go to end, then `Shift+f` followed by `a`. Cursor does not move.
-- **Expected**: `F{c}` searches backward from cursor to find the character
-- **Actual**: Cursor stays at current position
-- **Severity**: Medium — backward character search is a common Vim operation
+- **Original symptom**: Cursor did not move on `Shift+f` followed by `a`.
+- **Root cause**: Playwright's `keyboard.down("Shift") / press("f") / up("Shift")` form did not produce `e.key === "F"` in Notion's contenteditable — the keydown delivered `e.key === "f"` (lowercase). Vimtion's normal-mode reducer correctly matched `case "f"` (forward find), set `pending_operator = "f"`, and the next char ran `findCharForward` instead of `findCharBackward`. The source paths for F/T were always correct.
+- **Fix**: Switched the F-test to `pressKeys(page, "Shift+F")`, which yields `e.key === "F"`. T-test was symmetrically updated; verification tracked separately as task #14.
+- **Severity**: Was Medium — actual user impact: none, since real keyboards produce `e.key === "F"` natively.
 
 ## BUG-007: { and } (paragraph motions) do not move cursor
 
