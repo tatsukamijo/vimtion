@@ -142,8 +142,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(2);
   });
 
-  // BUG-004: h at column 0 moves DOM selection to wrong position instead of staying at 0
-  test.fail("h at column 0 stays at column 0", async ({ extensionPage: page }) => {
+  // BUG-004 fixed (moveCursorBackwards now no-ops at col 0).
+  test("h at column 0 stays at column 0", async ({ extensionPage: page }) => {
     await goToBlock(page, "The quick brown fox");
     await pressKeys(page, "0");
     await page.waitForTimeout(200);
@@ -155,9 +155,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(0);
   });
 
-  // BUG-005: $ sets cursor to len (past end) instead of len-1.
-  // Then l from past-end wraps to 0.
-  test.fail("l at end of line does not go past last char", async ({ extensionPage: page }) => {
+  // BUG-004/005 fixed (moveCursorForwards no-ops at last char).
+  test("l at end of line does not go past last char", async ({ extensionPage: page }) => {
     await goToBlock(page, "short");
     await pressKeys(page, "$");
     await page.waitForTimeout(200);
@@ -209,8 +208,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(0);
   });
 
-  // BUG-005: $ sets cursor to textContent.length instead of length-1
-  test.fail("$ moves to last char (len-1)", async ({ extensionPage: page }) => {
+  // BUG-005 fixed (jumpToLineEnd now sets newPos = len-1).
+  test("$ moves to last char (len-1)", async ({ extensionPage: page }) => {
     await goToBlock(page, "short");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
@@ -222,8 +221,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(4);
   });
 
-  // BUG-005: same $ off-by-one
-  test.fail("$ on long line goes to len-1", async ({ extensionPage: page }) => {
+  // BUG-005 fixed (jumpToLineEnd now sets newPos = len-1).
+  test("$ on long line goes to len-1", async ({ extensionPage: page }) => {
     await goToBlock(page, "The quick brown fox");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);

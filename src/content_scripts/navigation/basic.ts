@@ -9,17 +9,8 @@ export const moveCursorBackwards = () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
 
-  // If at beginning of line, move to end of previous line
-  if (currentCursorPosition === 0) {
-    if (vim_info.active_line > 0) {
-      vim_info.active_line = vim_info.active_line - 1;
-      const prevElement = vim_info.lines[vim_info.active_line].element;
-      const prevLineLength = prevElement.textContent?.length || 0;
-      setCursorPosition(prevElement, prevLineLength);
-      vim_info.desired_column = prevLineLength;
-    }
-    return;
-  }
+  // Vim semantics: h at col 0 is a no-op (no wrap to previous line). (BUG-004)
+  if (currentCursorPosition <= 0) return;
 
   const newPosition = currentCursorPosition - 1;
   setCursorPosition(currentElement, newPosition);
@@ -31,17 +22,11 @@ export const moveCursorForwards = () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const lineLength = currentElement.textContent?.length || 0;
+  // Vim's normal-mode cursor sits ON a character; max valid column is len-1.
+  const maxCol = Math.max(0, lineLength - 1);
 
-  // If at end of line, move to next line
-  if (currentCursorPosition >= lineLength) {
-    if (vim_info.active_line < vim_info.lines.length - 1) {
-      vim_info.active_line = vim_info.active_line + 1;
-      const nextElement = vim_info.lines[vim_info.active_line].element;
-      setCursorPosition(nextElement, 0);
-      vim_info.desired_column = 0;
-    }
-    return;
-  }
+  // Vim semantics: l at last char is a no-op (no wrap to next line). (BUG-004)
+  if (currentCursorPosition >= maxCol) return;
 
   const newPosition = currentCursorPosition + 1;
   setCursorPosition(currentElement, newPosition);
@@ -61,6 +46,9 @@ export const jumpToLineEnd = () => {
   const currentElement = vim_info.lines[vim_info.active_line].element;
   const lineLength = currentElement.textContent?.length || 0;
 
-  setCursorPosition(currentElement, lineLength);
-  vim_info.desired_column = lineLength;
+  // Vim semantics: $ lands ON the last character (col = len - 1), not past it.
+  // Empty line: clamp to 0. (BUG-005)
+  const newPos = Math.max(0, lineLength - 1);
+  setCursorPosition(currentElement, newPos);
+  vim_info.desired_column = newPos;
 };
