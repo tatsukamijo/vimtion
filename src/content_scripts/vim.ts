@@ -838,6 +838,10 @@ const visualReducer = (e: KeyboardEvent): boolean => {
   switch (e.key) {
     case "Escape":
       vim_info.mode = "normal";
+      // Discard any pending operator (vi, va, or one carried over from
+      // normal mode like "d"/"c"/"y") so the next normal-mode key isn't
+      // consumed as the operator's motion argument.
+      vim_info.pending_operator = null;
       window.getSelection()?.removeAllRanges();
       // Restore cursor position when exiting visual mode
       const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -913,6 +917,10 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
       // Clear background highlights from all elements
       clearAllBackgroundColors();
       vim_info.mode = "normal";
+      // Discard any pending operator (e.g. half-typed "g" toward gg, or one
+      // carried over from normal mode like "d"/"c"/"y") so the next
+      // normal-mode key isn't consumed as the operator's motion argument.
+      vim_info.pending_operator = null;
       window.getSelection()?.removeAllRanges();
       // Clear saved positions
       delete vim_info.visual_end_pos;
