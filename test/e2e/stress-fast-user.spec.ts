@@ -586,7 +586,6 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
   });
 
   test("BUG-002: I→type→Esc near code block → j → k returns to correct block", async ({ extensionPage: page }) => {
-    test.fail();
     await goToBlock(page, "Section 8: Code block");
     const headingIdx = await getActualCursorBlockIndex(page);
     const headingState = await getVimState(page);
@@ -598,17 +597,26 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
 
     expect(await getActualCursorBlockIndex(page), "after I→type→Esc").toBe(headingIdx);
 
-    // BUG-002 — see docs/known-bugs.md
-    // Direct proximate-cause assertion: re-find the heading element by its mutated
-    // textContent ("Section 8: Code blockX") and verify vim_info.active_line still
-    // tracks it. If refreshLines lost the element ref during the typing, the
-    // active_line points to whatever block now occupies the old index — no need to
-    // press j/k to observe the desync; the bug is observable directly post-Escape.
+    // Direct proximate-cause assertion: re-find the heading element after the
+    // edit and verify vim_info.active_line still tracks it. We compute the
+    // reference index from `[contenteditable="true"]` (NOT `[data-content-
+    // editable-leaf]`) because vim_info.lines is built from the same query —
+    // see src/content_scripts/core/line-management.ts. The two queries diverge
+    // by the page-title wrapper `<div role="group" class="whenContentEditable">`
+    // which is contenteditable but not a leaf, so the leaf-only list is shifted
+    // -1 against vim's index. Status bar prints `Line ${active_line + 1}`, so
+    // we subtract 1 to get the 0-based vim index for comparison.
     const afterRef = await page.evaluate(() => {
-      const root = document.querySelector('[data-content-editable-root="true"]');
-      if (!root) return -1;
-      const leaves = Array.from(root.querySelectorAll('[data-content-editable-leaf="true"]'));
-      return leaves.findIndex((l) => (l.textContent || "").includes("Section 8: Code blockX"));
+      const editables = Array.from(document.querySelectorAll('[contenteditable="true"]'));
+      // Match by the heading leaf only — the page-title wrapper at index 0
+      // ALSO matches via its descendant textContent (it contains the entire
+      // page), so filter wrapper editables out of the search even though they
+      // remain in the index frame for vim's active_line.
+      return editables.findIndex(
+        (l) =>
+          !editables.some((other) => other !== l && l.contains(other)) &&
+          (l.textContent || "").includes("Section 8: Code blockX"),
+      );
     });
     const vimActive = (await getVimState(page)).activeLine - 1;
     expect(vimActive, "BUG-002: active_line tracks heading element after I→type→Esc").toBe(afterRef);
