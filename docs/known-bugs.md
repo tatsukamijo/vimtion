@@ -215,3 +215,20 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Expected**: `j` from the last real line of a code block (or its ghost line) moves the DOM cursor to the next block.
 - **Actual**: DOM cursor remains inside the code block's contenteditable; subsequent operations target the wrong block.
 - **Severity**: High — every code-block exit hits this path; explains "I pressed j but my cursor didn't move" reports.
+
+
+## BUG-040: Post-undo cursor desync in code blocks (o → type → u)
+
+- **Detected**: 2026-05-03
+- **Source**: Surfaced during BUG-011 fix work (see commit `6614210`).
+- **Reproduction**: Inside a code block, press `o` to open a new line, type something, then press `u` to undo. The undo restores the textContent correctly, but the DOM cursor lands on the heading above the code block while `vim_info.active_line` still points at the code-block leaf.
+- **Root cause hypothesis**: `document.execCommand("undo")` rewinds DOM mutations inside the code-block leaf, but the DOM Selection state isn't restored to a position the code-block-aware navigation expects, and our undo path doesn't re-sync `vim_info` + cursor afterward.
+- **Severity**: Medium — most undo paths work; this is specific to code blocks.
+
+## BUG-041: ``` markdown shortcut → code block conversion leaves cursor desynced
+
+- **Detected**: 2026-05-03
+- **Source**: Residual from BUG-012 territory; surfaced as 2-3 still-failing tests in code-block-nav after the BUG-001/010/011/029 batch.
+- **Reproduction**: In an empty paragraph in insert mode, type ``` then Enter (or any code-block trigger). Notion converts the block to a code block. After Escape, `vim_info.active_line` and DOM cursor are misaligned similar to BUG-012/013 but specifically for the code-block conversion case.
+- **Root cause**: Likely the same MutationObserver-driven leaf swap as BUG-012/013, but the code-block leaf's structure (single contenteditable wrapping `\n`-separated lines) interacts with the block_id recovery in `core/line-management.ts:createRefreshLines` differently than regular paragraph swaps.
+- **Severity**: Medium — happens once per code-block creation via shortcut.
