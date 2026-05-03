@@ -256,3 +256,13 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Actual**: vim_info.active_line lands on the page-title `<div role="group">` (block 0) while DOM cursor goes to the h1 leaf — desync.
 - **Root-cause hypothesis**: page-title element gets included in our `[contenteditable=true]` query but with a wrapper that's not the actual cursor-receiving leaf. Either filter the title from vim_info.lines or normalize index resolution to the leaf.
 - **Severity**: Medium — every page hits this on initial gg.
+
+## BUG-044: Escape relocates DOM cursor to page-title H1 in normal mode
+
+- **Detected**: 2026-05-03 (surfaced during BUG-043 investigation)
+- **Reproduction**: Click into any non-title block. Press Escape (or trigger any normal-mode entry path). DOM cursor jumps to the page-title H1 leaf even though vim_info.active_line correctly stays on the original block.
+- **Verified via**: `click("Plain text line 5") → cursor on line 5 ✓; press Escape → cursor on H1 ✗ (vim_info correctly stays on line 5)`.
+- **Root cause hypothesis**: Notion's React click/escape handler relocates the DOM Selection onto the page-title H1 after recent activity. Independent of Vimtion's reducers — vim_info stays correct.
+- **Impact**: Blocks the BUG-043 page-title-filter approach (every test using `goToBlock → Escape` ends up with cursor on H1), and explains background flakiness in tests that rely on cursor location post-Escape.
+- **Likely fix**: Escape handler re-asserts cursor at `vim_info.cursor_position` on `vim_info.active_line`'s element via `setCursorPosition`.
+- **Severity**: Medium-High — explains a class of flakiness; user-facing impact is occasional cursor-moves-to-title surprises after Escape.
