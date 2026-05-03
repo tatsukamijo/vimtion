@@ -15,6 +15,35 @@ type EventHandlers = {
 };
 
 /**
+ * True iff `lines[idx]` is a container contenteditable that wraps another
+ * contenteditable also tracked in vim_info.lines.
+ *
+ * The concrete case is Notion's page-title editor wrapper
+ * (`<div role="group" class="whenContentEditable">`): it has
+ * contenteditable=true and contains the H1 leaf inside it. Placing the
+ * DOM cursor on the wrapper is a visual no-op — Notion immediately
+ * relocates the selection to the inner H1 leaf — but vim would still
+ * record `active_line = wrapper-index`, producing a persistent invariant
+ * mismatch (vim says "you're on line N", DOM cursor is on line N+1).
+ * Detect structurally rather than by class name so the fix doesn't
+ * depend on Notion-specific markup that may change.
+ *
+ * Filtering wrappers OUT of `lines` entirely is tempting but brittle —
+ * Notion frequently swaps the H1 element under DOM mutation, and
+ * keeping the wrapper in `lines` means `addEventListener("keydown", ...)`
+ * on the stable wrapper catches keystrokes that bubble up from
+ * transiently-stranded H1's. So we keep wrappers in `lines` but skip
+ * them at the navigation boundary here.
+ */
+const isWrapperLine = (idx: number): boolean => {
+  const el = window.vim_info.lines[idx]?.element;
+  if (!el) return false;
+  return window.vim_info.lines.some(
+    (line) => line.element !== el && el.contains(line.element),
+  );
+};
+
+/**
  * Set the active line and position cursor appropriately
  * Handles both normal blocks and code blocks differently
  *
@@ -28,6 +57,15 @@ export const setActiveLine = (idx: number): void => {
 
   if (idx >= lines.length) i = lines.length - 1;
   if (i < 0) i = 0;
+
+  // Walk past wrapper contenteditables. gg / k-at-line-1 land here when
+  // lines[0] is the page-title wrapper; without the skip, vim's
+  // active_line points at the wrapper while the DOM cursor is on the
+  // inner H1. Walk forward (toward higher indices, deeper into the
+  // document) — going backward would loop on lines[0].
+  while (i < lines.length - 1 && isWrapperLine(i)) {
+    i++;
+  }
 
   const previousActiveLine = window.vim_info.active_line;
   window.vim_info.active_line = i;

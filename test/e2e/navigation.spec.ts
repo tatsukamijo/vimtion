@@ -78,8 +78,13 @@ test.describe.serial("Navigation", () => {
     await pressKeys(page, "g", "g");
     await page.waitForTimeout(200);
 
+    // gg lands on the first navigable line. vim_info.lines[0] is the
+    // page-title editor wrapper (`<div role="group" class="whenContentEditable">`)
+    // which has contenteditable=true but isn't a real cursor target —
+    // setActiveLine walks past it to lines[1] (the H1 page-title leaf).
+    // pos.line is 0-based status-bar value; status bar shows Line 2 → pos.line=1.
     const pos = await getCursorPosition(page);
-    expect(pos.line).toBe(0);
+    expect(pos.line).toBe(1);
   });
 
   test("G moves to last line", async ({ extensionPage: page }) => {
@@ -100,7 +105,10 @@ test.describe.serial("Navigation", () => {
     await pressKeys(page, "k");
     await page.waitForTimeout(100);
 
-    expect((await getCursorPosition(page)).line).toBe(0);
+    // After gg vim is on lines[1] (H1, since lines[0] is the page-title
+    // wrapper that setActiveLine skips). k tries setActiveLine(0); the
+    // wrapper-skip walks forward back to 1, so cursor stays on H1.
+    expect((await getCursorPosition(page)).line).toBe(1);
   });
 
   test("j at last line stays at last line", async ({ extensionPage: page }) => {
