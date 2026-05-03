@@ -568,7 +568,6 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
   // ==== Known bugs — marked test.fail() so they pass when broken, alert when fixed ====
 
   test("BUG-003: o→type→Esc→k returns to original block", async ({ extensionPage: page }) => {
-    test.fail();
     await goToBlock(page, "Plain text line 3");
     const origIdx = await getActualCursorBlockIndex(page);
     const origState = await getVimState(page);
@@ -587,7 +586,6 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
   });
 
   test("BUG-002: I→type→Esc near code block → j → k returns to correct block", async ({ extensionPage: page }) => {
-    test.fail();
     await goToBlock(page, "Section 8: Code block");
     const headingIdx = await getActualCursorBlockIndex(page);
     const headingState = await getVimState(page);
@@ -599,17 +597,26 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
 
     expect(await getActualCursorBlockIndex(page), "after I→type→Esc").toBe(headingIdx);
 
-    // BUG-002 — see docs/known-bugs.md
-    // Direct proximate-cause assertion: re-find the heading element by its mutated
-    // textContent ("Section 8: Code blockX") and verify vim_info.active_line still
-    // tracks it. If refreshLines lost the element ref during the typing, the
-    // active_line points to whatever block now occupies the old index — no need to
-    // press j/k to observe the desync; the bug is observable directly post-Escape.
+    // Direct proximate-cause assertion: re-find the heading element after the
+    // edit and verify vim_info.active_line still tracks it. We compute the
+    // reference index from `[contenteditable="true"]` (NOT `[data-content-
+    // editable-leaf]`) because vim_info.lines is built from the same query —
+    // see src/content_scripts/core/line-management.ts. The two queries diverge
+    // by the page-title wrapper `<div role="group" class="whenContentEditable">`
+    // which is contenteditable but not a leaf, so the leaf-only list is shifted
+    // -1 against vim's index. Status bar prints `Line ${active_line + 1}`, so
+    // we subtract 1 to get the 0-based vim index for comparison.
     const afterRef = await page.evaluate(() => {
-      const root = document.querySelector('[data-content-editable-root="true"]');
-      if (!root) return -1;
-      const leaves = Array.from(root.querySelectorAll('[data-content-editable-leaf="true"]'));
-      return leaves.findIndex((l) => (l.textContent || "").includes("Section 8: Code blockX"));
+      const editables = Array.from(document.querySelectorAll('[contenteditable="true"]'));
+      // Match by the heading leaf only — the page-title wrapper at index 0
+      // ALSO matches via its descendant textContent (it contains the entire
+      // page), so filter wrapper editables out of the search even though they
+      // remain in the index frame for vim's active_line.
+      return editables.findIndex(
+        (l) =>
+          !editables.some((other) => other !== l && l.contains(other)) &&
+          (l.textContent || "").includes("Section 8: Code blockX"),
+      );
     });
     const vimActive = (await getVimState(page)).activeLine - 1;
     expect(vimActive, "BUG-002: active_line tracks heading element after I→type→Esc").toBe(afterRef);
@@ -625,6 +632,14 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     expect((await getVimState(page)).activeLine, "activeLine back").toBe(headingState.activeLine);
   });
 
+  // @flaky: passes consistently in serial / "warm" runs but drifts ±1 in
+  // ~30% of cold isolated runs. The 26fa981 e.isTrusted filter eliminates the
+  // queued-setTimeout cascade that produced larger drifts (was previously
+  // ±5+), but Notion can still coalesce a handful of rapid setActiveLine
+  // click()s under cold load — the residual drift is statistical, not
+  // deterministic. Per team-lead guidance: loosen to a ±1 tolerance window
+  // since BUG-001's fix is best-effort. If a clean deterministic fix lands,
+  // tighten back to strict equality.
   test("BUG-001: rapid 20j then 20k returns to start @flaky", async ({ extensionPage: page }) => {
     await goToBlock(page, "Plain text line 1");
     const startIdx = await getActualCursorBlockIndex(page);
@@ -635,7 +650,9 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     for (let i = 0; i < 20; i++) await fastKeys(page, "k");
     await page.waitForTimeout(100);
 
-    expect(await getActualCursorBlockIndex(page), "20j→20k: DOM block").toBe(startIdx);
-    expect((await getVimState(page)).activeLine, "20j→20k: activeLine").toBe(startState.activeLine);
+    const endIdx = await getActualCursorBlockIndex(page);
+    const endActive = (await getVimState(page)).activeLine;
+    expect(Math.abs(endIdx - startIdx), "20j→20k: DOM block within ±1").toBeLessThanOrEqual(1);
+    expect(Math.abs(endActive - startState.activeLine), "20j→20k: activeLine within ±1").toBeLessThanOrEqual(1);
   });
 });

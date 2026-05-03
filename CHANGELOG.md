@@ -5,6 +5,25 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] - 2026-05-03
+
+### Fixed
+- **Cursor positioning at line edges**: `h` at column 0, `l` at last char, and `b` at column 0 are now no-ops (no wrap to neighboring blocks). `$` lands ON the last character per Vim semantics (col `len-1`), not past it.
+- **Paragraph motions `{` and `}`**: now correctly move the cursor and update the active line.
+- **Visual mode escape**: `V g Esc g` no longer jumps to line 1 — pending operator state is cleared when leaving visual / visual-line mode.
+- **Code block navigation**:
+  - `j` exiting a code block now moves the actual DOM cursor, not just internal state.
+  - Code blocks ending with a trailing newline no longer trap `j` on a phantom empty line past the visible last row.
+  - `o` and `O` inside code blocks now insert newlines correctly (via Range API instead of broken `execCommand`).
+  - Column memory (`f`, `F`, `t`, `T`, `h`, `l` inside code blocks) now uses the visual column on the current logical line, so subsequent `j` / `k` lands at the right column.
+- **Insert / open-line operations**:
+  - `o` and `A` no longer eat the parent line's last character when opening a new sibling on nested bullets, todos, or numbered items.
+  - `o` followed by Escape now keeps `vim_info` and the DOM cursor in sync on the newly-created block.
+- **Markdown shortcut conversions** (`##`, `-`, `1.`, ` ``` `, etc.): cursor and `active_line` no longer drift to a wrong block after Notion swaps the converted leaf element under the same `data-block-id`.
+- **Top-edge navigation**: `gg` and `k` at line 1 now correctly land on the H1 leaf instead of getting stuck on the inert page-title wrapper.
+- **Heading sync from code block**: navigating to a heading via `k` from a code block no longer triggers Notion's React click-relocate, so the DOM cursor follows `active_line` correctly.
+- **Rapid `j` / `k`**: programmatic clicks from internal navigation no longer trigger `handleClick`'s deferred state-sync, eliminating the cumulative cursor drift that appeared under fast key bursts.
+
 ## [1.5.3] - 2026-04-13
 
 ### Fixed

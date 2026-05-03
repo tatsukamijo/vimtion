@@ -3,6 +3,7 @@
  */
 
 import { setCursorPosition, updateBlockCursor } from "../cursor";
+import { setActiveLine } from "../core/line-management";
 
 export const findScrollableContainer = (): HTMLElement => {
   // The main content scroller is inside .notion-frame
@@ -84,18 +85,15 @@ export function createJumpToTop(updateInfoContainer: () => void) {
       });
     }
 
-    // Explicitly set cursor to first line (don't rely on scroll event listener)
+    // Explicitly set cursor to first line (don't rely on scroll event listener).
+    // Route through setActiveLine so its wrapper-skip handles the case where
+    // lines[0] is the page-title editor wrapper — without it, gg would set
+    // active_line=0 (wrapper) while the DOM cursor lands on the H1 leaf.
     setTimeout(() => {
-      vim_info.active_line = 0;
       vim_info.desired_column = 0;
-
-      const targetElement = vim_info.lines[0]?.element;
-      if (targetElement) {
-        setCursorPosition(targetElement, 0);
-        targetElement.focus({ preventScroll: true });
-        updateBlockCursor();
-        updateInfoContainer();
-      }
+      setActiveLine(0);
+      updateBlockCursor();
+      updateInfoContainer();
     }, 10);
   };
 }

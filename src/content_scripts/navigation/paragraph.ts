@@ -2,8 +2,9 @@
  * Paragraph navigation functions ({ and })
  */
 
-import { setCursorPosition } from "../cursor";
+import { setActiveLine } from "../core/line-management";
 import { isParagraphBoundary } from "../notion";
+import { updateInfoContainer } from "../ui/info-container";
 
 // Jump to the beginning of the previous paragraph
 export const jumpToPreviousParagraph = (): void => {
@@ -27,13 +28,15 @@ export const jumpToPreviousParagraph = (): void => {
     targetLine--;
   }
 
-  // Move to target line
-  vim_info.active_line = targetLine;
+  // Pre-stage desired_column to col 0 so setActiveLine clamps the cursor
+  // there on the destination block. Routing through setActiveLine instead
+  // of mutating active_line directly is what triggers Notion's leaf
+  // click/focus bookkeeping and the explicit setCursorPosition; without it,
+  // the status bar advanced but the DOM cursor stayed put.
   vim_info.cursor_position = 0;
   vim_info.desired_column = 0;
-
-  const targetElement = vim_info.lines[targetLine].element;
-  setCursorPosition(targetElement, 0);
+  setActiveLine(targetLine);
+  updateInfoContainer();
 };
 
 // Jump to the beginning of the next paragraph
@@ -59,20 +62,18 @@ export const jumpToNextParagraph = (): void => {
     targetLine++;
   }
 
-  // Move to target line
-  vim_info.active_line = targetLine;
-
   const targetElement = vim_info.lines[targetLine].element;
 
-  // If at the last line, move cursor to end of line (like Vim)
+  // Pre-stage desired_column for setActiveLine: col 0 normally, end-of-line
+  // when landing on the very last block (matches Vim's }-at-EOF behavior).
   if (targetLine === maxLine) {
     const lineLength = targetElement.textContent?.length || 0;
     vim_info.cursor_position = lineLength;
     vim_info.desired_column = lineLength;
-    setCursorPosition(targetElement, lineLength);
   } else {
     vim_info.cursor_position = 0;
     vim_info.desired_column = 0;
-    setCursorPosition(targetElement, 0);
   }
+  setActiveLine(targetLine);
+  updateInfoContainer();
 };

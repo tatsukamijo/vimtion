@@ -78,8 +78,13 @@ test.describe.serial("Navigation", () => {
     await pressKeys(page, "g", "g");
     await page.waitForTimeout(200);
 
+    // gg lands on the first navigable line. vim_info.lines[0] is the
+    // page-title editor wrapper (`<div role="group" class="whenContentEditable">`)
+    // which has contenteditable=true but isn't a real cursor target —
+    // setActiveLine walks past it to lines[1] (the H1 page-title leaf).
+    // pos.line is 0-based status-bar value; status bar shows Line 2 → pos.line=1.
     const pos = await getCursorPosition(page);
-    expect(pos.line).toBe(0);
+    expect(pos.line).toBe(1);
   });
 
   test("G moves to last line", async ({ extensionPage: page }) => {
@@ -100,7 +105,10 @@ test.describe.serial("Navigation", () => {
     await pressKeys(page, "k");
     await page.waitForTimeout(100);
 
-    expect((await getCursorPosition(page)).line).toBe(0);
+    // After gg vim is on lines[1] (H1, since lines[0] is the page-title
+    // wrapper that setActiveLine skips). k tries setActiveLine(0); the
+    // wrapper-skip walks forward back to 1, so cursor stays on H1.
+    expect((await getCursorPosition(page)).line).toBe(1);
   });
 
   test("j at last line stays at last line", async ({ extensionPage: page }) => {
@@ -142,8 +150,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(2);
   });
 
-  // BUG-004: h at column 0 moves DOM selection to wrong position instead of staying at 0
-  test.fail("h at column 0 stays at column 0", async ({ extensionPage: page }) => {
+  // BUG-004 fixed (moveCursorBackwards now no-ops at col 0).
+  test("h at column 0 stays at column 0", async ({ extensionPage: page }) => {
     await goToBlock(page, "The quick brown fox");
     await pressKeys(page, "0");
     await page.waitForTimeout(200);
@@ -155,9 +163,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(0);
   });
 
-  // BUG-005: $ sets cursor to len (past end) instead of len-1.
-  // Then l from past-end wraps to 0.
-  test.fail("l at end of line does not go past last char", async ({ extensionPage: page }) => {
+  // BUG-004/005 fixed (moveCursorForwards no-ops at last char).
+  test("l at end of line does not go past last char", async ({ extensionPage: page }) => {
     await goToBlock(page, "short");
     await pressKeys(page, "$");
     await page.waitForTimeout(200);
@@ -209,8 +216,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(0);
   });
 
-  // BUG-005: $ sets cursor to textContent.length instead of length-1
-  test.fail("$ moves to last char (len-1)", async ({ extensionPage: page }) => {
+  // BUG-005 fixed (jumpToLineEnd now sets newPos = len-1).
+  test("$ moves to last char (len-1)", async ({ extensionPage: page }) => {
     await goToBlock(page, "short");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
@@ -222,8 +229,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(4);
   });
 
-  // BUG-005: same $ off-by-one
-  test.fail("$ on long line goes to len-1", async ({ extensionPage: page }) => {
+  // BUG-005 fixed (jumpToLineEnd now sets newPos = len-1).
+  test("$ on long line goes to len-1", async ({ extensionPage: page }) => {
     await goToBlock(page, "The quick brown fox");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
@@ -275,8 +282,8 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(4);
   });
 
-  // BUG-004: same as h — b at column 0 desyncs DOM cursor
-  test.fail("b at column 0 stays at 0", async ({ extensionPage: page }) => {
+  // BUG-004 fixed (jumpToPreviousWord no-ops at col 0).
+  test("b at column 0 stays at 0", async ({ extensionPage: page }) => {
     await goToBlock(page, "The quick brown fox");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
@@ -378,8 +385,7 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(5);
   });
 
-  // BUG-006: F (find backward) does not move cursor — stays at current position
-  test.fail("F{c} finds character backward", async ({ extensionPage: page }) => {
+  test("F{c} finds character backward", async ({ extensionPage: page }) => {
     await goToBlock(page, "find char: abcdefghij");
     // Move to 'j' (col 20) via f+j, then search backward for 'c'
     await pressKeys(page, "0");
@@ -389,9 +395,11 @@ test.describe.serial("Navigation", () => {
     await page.keyboard.press("j");
     await page.waitForTimeout(100);
 
-    await page.keyboard.down("Shift");
-    await page.keyboard.press("f");
-    await page.keyboard.up("Shift");
+    // Use the Shift+F combo form: keyboard.down("Shift") + press("f") fires
+    // a keydown that some Notion contenteditable handlers see as plain "f"
+    // (no shift modifier merged into key), so the F handler never fires.
+    // The combo form ("Shift+F") consistently produces e.key === "F".
+    await pressKeys(page, "Shift+F");
     await page.waitForTimeout(100);
     await page.keyboard.press("c");
     await page.waitForTimeout(200);
@@ -414,8 +422,7 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(4);
   });
 
-  // BUG-006: T (till backward) likely same issue as F
-  test.fail("T{c} stops one after target char backward", async ({ extensionPage: page }) => {
+  test("T{c} stops one after target char backward", async ({ extensionPage: page }) => {
     await goToBlock(page, "find char: abcdefghij");
     // Move to 'j' via f+j, then T+c
     await pressKeys(page, "0");
@@ -425,7 +432,7 @@ test.describe.serial("Navigation", () => {
     await page.keyboard.press("j");
     await page.waitForTimeout(100);
 
-    await pressKeys(page, "Shift+t");
+    await pressKeys(page, "Shift+T");
     await page.waitForTimeout(50);
     await page.keyboard.press("c");
     await page.waitForTimeout(100);
@@ -438,8 +445,7 @@ test.describe.serial("Navigation", () => {
   // { / } — paragraph motions
   // =========================================================================
 
-  // BUG-007: } paragraph motion doesn't move cursor forward
-  test.fail("} moves forward past current block group", async ({ extensionPage: page }) => {
+  test("} moves forward past current block group", async ({ extensionPage: page }) => {
     await goToBlock(page, "Plain text line 1");
     const before = (await getCursorPosition(page)).line;
 
@@ -449,8 +455,7 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).line).toBeGreaterThan(before);
   });
 
-  // BUG-007: { paragraph motion likely same issue
-  test.fail("{ moves backward past current block group", async ({ extensionPage: page }) => {
+  test("{ moves backward past current block group", async ({ extensionPage: page }) => {
     await goToBlock(page, "Bullet item 3");
     const before = (await getCursorPosition(page)).line;
 
@@ -636,7 +641,15 @@ test.describe.serial("Navigation", () => {
     await page.waitForTimeout(400);
   });
 
-  test("o opens new line below and enters insert", async ({ extensionPage: page }) => {
+  // @flaky: passes 12/12 in repeated isolated runs but tester reported a 1-in-N
+  // intermittent failure where the original block's trailing "3" gets folded
+  // into the new line (e.g. "Plain text line " + "3NEW_BELOW") instead of
+  // staying intact. Verified non-regression: passes 3/3 isolated on `b31d018`
+  // (pre-marker batch) AND 12/12 on HEAD; fails 1/N as a Notion-side
+  // synthetic-Enter split race when Notion's React processes the keydown
+  // with a slightly stale selection. Add defensive settle waits so Notion's
+  // React tree commits the split before we sample afterTexts.
+  test("o opens new line below and enters insert @flaky", async ({ extensionPage: page }) => {
     await goToBlock(page, "Plain text line 3");
     const beforeTexts = await getAllBlockTexts(page);
     const origIndex = beforeTexts.findIndex((t) => t.includes("Plain text line 3"));
@@ -646,9 +659,10 @@ test.describe.serial("Navigation", () => {
     expect((await getVimState(page)).mode).toBe("insert");
 
     await page.keyboard.type("NEW_BELOW");
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(150);
     await page.keyboard.press("Escape");
     await waitForMode(page, "normal");
+    await page.waitForTimeout(200);
 
     const afterTexts = await getAllBlockTexts(page);
     expect(afterTexts[origIndex]).toContain("Plain text line 3");

@@ -66,6 +66,18 @@ function getCodeLineFromOffset(fullText: string, offset: number): { lineIndex: n
   return { lineIndex: lines.length - 1, lineCount: lines.length };
 }
 
+// Notion code blocks frequently end their textContent with a trailing
+// "\n", which split("\n") produces as a phantom empty entry past the
+// visible last line. The extension no longer treats that entry as a real
+// line; tests that need to know "how many visible code lines are there"
+// must drop it the same way the implementation does.
+function realLineCount(fullText: string): number {
+  const lines = fullText.split("\n");
+  return lines.length > 1 && lines[lines.length - 1] === ""
+    ? lines.length - 1
+    : lines.length;
+}
+
 // NOTE: dropped `describe.serial` so the invariants don't halt the full
 // diagnostic capture on the first violation. Each test does its own
 // `goToBlock(...)` reset, so they're already independent of each other.
@@ -128,8 +140,13 @@ test.describe("Code block navigation", () => {
     expect(lineIndex).toBe(0);
   });
 
-  // BUG-010: k from first code block line doesn't exit (same root cause as j exit)
-  test.fail("k from code block first line exits to block above", async ({ extensionPage: page }) => {
+  // k from first code block line exits upward via the moveCursorUpInCodeBlock
+  // lineStart === -1 branch, which routes through setActiveLine +
+  // updateInfoContainer. The cursor-invariant trip that previously kept
+  // this marked test.fail was a side effect of handleClick processing
+  // setActiveLine's programmatic click() and overwriting active_line with
+  // a deferred setTimeout — that path now skips e.isTrusted === false events.
+  test("k from code block first line exits to block above", async ({ extensionPage: page }) => {
     await goToBlock(page, "Section 8: Code block");
     await pressKeys(page, "j"); // enter code block
     await page.waitForTimeout(200);
@@ -152,10 +169,10 @@ test.describe("Code block navigation", () => {
     await page.waitForTimeout(200);
 
     const info = await getCodeBlockInfo(page);
-    const { lineCount } = getCodeLineFromOffset(info.text, 0);
-    console.log("code block has", lineCount, "lines, text length =", info.totalLength);
+    const lineCount = realLineCount(info.text);
+    console.log("code block has", lineCount, "real lines, text length =", info.totalLength);
 
-    // Navigate to last line
+    // Navigate to the visible last line
     for (let i = 1; i < lineCount; i++) {
       await pressKeys(page, "j");
       await page.waitForTimeout(100);
@@ -167,16 +184,40 @@ test.describe("Code block navigation", () => {
     expect(pos.lineIndex).toBe(lineCount - 1);
   });
 
-  // BUG-010: j on last line should exit code block to next block
-  test.fail("j on last code block line exits to block below", async ({ extensionPage: page }) => {
+  // The trailing-newline ghost slot used to let j navigate past the visible
+  // last line; now j on the last visible line exits cleanly. Mashing j
+  // more times than there are real lines must still land on the next block,
+  // never get stuck inside the code block or on the (former) ghost slot.
+  test("more j presses than real lines still cleanly exits code block", async ({ extensionPage: page }) => {
+    await goToBlock(page, "Plain text line 1"); // reset
     await goToBlock(page, "Section 8: Code block");
     await pressKeys(page, "j"); // enter code block
     await page.waitForTimeout(200);
 
     const info = await getCodeBlockInfo(page);
-    const { lineCount } = getCodeLineFromOffset(info.text, 0);
+    const lineCount = realLineCount(info.text);
 
-    // Navigate to last line
+    // One more j than there are real lines — the extra press should fall
+    // through into the block below rather than parking on a ghost slot.
+    for (let i = 1; i <= lineCount; i++) {
+      await pressKeys(page, "j");
+      await page.waitForTimeout(100);
+    }
+
+    const text = await getActualCursorBlockText(page);
+    console.log("code-extra-j-exit: text =", JSON.stringify(text));
+    expect(text).toContain("Text after code block");
+  });
+
+  test("j on last code block line exits to block below", async ({ extensionPage: page }) => {
+    await goToBlock(page, "Section 8: Code block");
+    await pressKeys(page, "j"); // enter code block
+    await page.waitForTimeout(200);
+
+    const info = await getCodeBlockInfo(page);
+    const lineCount = realLineCount(info.text);
+
+    // Navigate to the visible last line
     for (let i = 1; i < lineCount; i++) {
       await pressKeys(page, "j");
       await page.waitForTimeout(100);
@@ -190,58 +231,6 @@ test.describe("Code block navigation", () => {
     console.log("code-j-exit: text =", JSON.stringify(text));
     // Should land on "Text after code block", not still in code block
     expect(text).toContain("Text after code block");
-  });
-
-  // From the ghost line (BUG-010), another j does exit correctly
-  test("j on ghost line (past last code line) exits code block", async ({ extensionPage: page }) => {
-    // Reset vim state by navigating to a plain text block first
-    await goToBlock(page, "Plain text line 1");
-    await goToBlock(page, "Section 8: Code block");
-    await pressKeys(page, "j"); // enter code block
-    await page.waitForTimeout(200);
-
-    const info = await getCodeBlockInfo(page);
-    const { lineCount } = getCodeLineFromOffset(info.text, 0);
-
-    // Navigate past last line (into ghost territory)
-    for (let i = 1; i <= lineCount; i++) {
-      await pressKeys(page, "j");
-      await page.waitForTimeout(100);
-    }
-
-    // Now press j again — should definitely exit
-    await pressKeys(page, "j");
-    await page.waitForTimeout(200);
-
-    const text = await getActualCursorBlockText(page);
-    console.log("code-ghost-j-exit: text =", JSON.stringify(text));
-    expect(text).toContain("Text after code block");
-  });
-
-  // BUG-010: i on ghost line should not crash, should return to last real line
-  test("i on ghost line returns to editable content", async ({ extensionPage: page }) => {
-    await goToBlock(page, "Section 8: Code block");
-    await pressKeys(page, "j"); // enter code block
-    await page.waitForTimeout(200);
-
-    const info = await getCodeBlockInfo(page);
-    const { lineCount } = getCodeLineFromOffset(info.text, 0);
-
-    // Navigate past last line
-    for (let i = 1; i <= lineCount; i++) {
-      await pressKeys(page, "j");
-      await page.waitForTimeout(100);
-    }
-
-    // i should enter insert mode (even from ghost line)
-    await pressKeys(page, "i");
-    await page.waitForTimeout(200);
-
-    const state = await getVimState(page);
-    expect(state.mode).toBe("insert");
-
-    await page.keyboard.press("Escape");
-    await waitForMode(page, "normal");
   });
 
   // =========================================================================
@@ -362,8 +351,14 @@ test.describe("Code block navigation", () => {
   // Code block: o/O behavior
   // =========================================================================
 
-  // BUG-011: o in code block fails to insert newline — execCommand("insertText", "\n") doesn't
-  // create a new line in automated tests; text appends to current line without line break
+  // BUG-011: the actual `o` insertion now works (Range + Text("\n") +
+  // dispatched input event), and the test's two content assertions pass
+  // (afterLines.length === beforeLineCount + 1 and "NEW_CODE_LINE" appears
+  // on its own line). What still fails is the strict cursor-invariant
+  // during the cleanup `u`: Notion's undo moves the DOM cursor to the
+  // heading above while vim_info.active_line stays on the code block —
+  // a post-undo cursor-desync issue (BUG-001 family), not BUG-011.
+  // Marker stays until that desync is addressed separately.
   test.fail("o inside code block creates new line below within block", async ({ extensionPage: page }) => {
     await goToBlock(page, "Section 8: Code block");
     await pressKeys(page, "j"); // code block line 0
@@ -407,10 +402,13 @@ test.describe("Code block navigation", () => {
 
     const info = await getCodeBlockInfo(page);
     if (info.text.includes("function hello")) {
-      // We're in the code block — check we're on the last line
+      // We're in the code block — check we're on the visible last line.
+      // setActiveLine now drops the trailing-empty entry on enter-from-below,
+      // so "last line" is realLineCount(text) - 1.
       const { lineIndex, lineCount } = getCodeLineFromOffset(info.text, info.offset);
-      console.log("code-k-enter-from-below: lineIndex =", lineIndex, "/", lineCount);
-      expect(lineIndex).toBe(lineCount - 1);
+      const lastRealIndex = realLineCount(info.text) - 1;
+      console.log("code-k-enter-from-below: lineIndex =", lineIndex, "/", lineCount, "lastRealIndex =", lastRealIndex);
+      expect(lineIndex).toBe(lastRealIndex);
     } else {
       // If k didn't enter code block, that's also a valid finding (block ordering)
       console.log("code-k-enter-from-below: landed on", JSON.stringify(info.text.slice(0, 50)));
@@ -610,6 +608,17 @@ test.describe("Code block navigation", () => {
     await pressKeys(page, "j"); // land on the existing empty paragraph
     await page.waitForTimeout(200);
 
+    // Capture the baseline offset between vim's active_line and the DOM
+    // leaf index BEFORE the conversion. vim_info.lines is built from
+    // [contenteditable="true"] (which includes the page-title wrapper),
+    // while getActualCursorBlockIndex queries [data-content-editable-leaf]
+    // (which excludes the wrapper). The two index frames are offset by a
+    // constant (typically 1) — that constant must be preserved across the
+    // conversion. This mirrors the offset-aware pattern in BUG-029.
+    const beforeIdx = await getActualCursorBlockIndex(page);
+    const beforeActive = (await getVimState(page)).activeLine;
+    const expectedOffset = beforeActive - 1 - beforeIdx;
+
     await pressKeys(page, "i"); // insert mode at col 0 of existing empty paragraph
     await page.waitForTimeout(200);
 
@@ -655,10 +664,13 @@ test.describe("Code block navigation", () => {
 
     // Sanity: DOM cursor is in the new code block
     expect(text).toContain("converted_in_place");
-    // BUG-012 — see docs/known-bugs.md
-    // The single proximate-cause assertion: vim_info.active_line must point
-    // to the same leaf-block index that the DOM cursor is in.
-    expect(vimIdxAfterEsc, "BUG-012: vim active_line === DOM cursor block (existing-paragraph trigger)").toBe(domIdxAfterEsc);
+    // The single proximate-cause assertion: vim_info.active_line must
+    // track the same leaf-block as the DOM cursor. Compare via the
+    // pre-conversion offset (see BUG-029 for the same pattern); a
+    // direct vimIdx === domIdx assertion would trip on the constant
+    // wrapper-induced offset between the two index frames.
+    const actualOffset = vimIdxAfterEsc - domIdxAfterEsc;
+    expect(actualOffset, "BUG-012: vim active_line ↔ DOM index offset preserved across conversion").toBe(expectedOffset);
   });
 
   // =========================================================================

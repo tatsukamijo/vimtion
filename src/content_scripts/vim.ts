@@ -229,8 +229,23 @@ const getBlockType = (element: HTMLElement): string => {
 
 // Visual select paragraph functions now created via factory below (after updateVisualLineSelection is defined)
 
+// Position the DOM cursor PAST the last visible character of the current
+// line (offset === textContent.length). $ in normal mode lands ON the last
+// char (col len-1) — that's the right Vim semantic for $, but A and o need
+// to be past the end so insert/typing/synthetic-Enter act after the line.
+// Without this, on a nested bullet child "Nested bullet child 1" the
+// dispatched Enter from o split the leaf at offset 20, producing
+// "Nested bullet child " + "1" instead of an empty new sibling.
+const setCursorPastLineEnd = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const lineLength = currentElement.textContent?.length || 0;
+  setCursorPosition(currentElement, lineLength);
+  vim_info.desired_column = lineLength;
+};
+
 const insertAtLineEnd = () => {
-  jumpToLineEnd();
+  setCursorPastLineEnd();
   window.vim_info.mode = "insert";
   updateInfoContainer();
 };
@@ -244,8 +259,8 @@ const insertAtLineStart = () => {
 const openLineBelow = () => {
   const { vim_info } = window;
 
-  // Move to end of current line
-  jumpToLineEnd();
+  // Position cursor past last char so synthetic Enter splits at end.
+  setCursorPastLineEnd();
 
   // Switch to insert mode first
   vim_info.mode = "insert";
@@ -425,6 +440,19 @@ const getLines = () => {
 const handleClick = (e: MouseEvent) => {
   const { vim_info } = window;
 
+  // Only handle real human mouse clicks. Programmatic clicks (e.isTrusted
+  // === false) come from setActiveLine doing element.click() during j/k
+  // navigation; those already update vim_info synchronously, so processing
+  // them here would queue a deferred setTimeout that re-reads the
+  // selection AFTER the rapid keystroke burst has settled and rewrites
+  // active_line / desired_column based on whatever the cursor happens to
+  // be on at that later moment. Under fast j-then-k sequences those queued
+  // callbacks accumulate and leave vim_info out of sync with the DOM
+  // cursor.
+  if (!e.isTrusted) {
+    return;
+  }
+
   // Only handle clicks in normal mode
   if (vim_info.mode !== "normal") {
     return;
@@ -523,9 +551,9 @@ const handleKeydown = (e: KeyboardEvent) => {
 
   // Mirror vim_info → document.body.dataset.vimtionState for test harnesses
   // running in the page's MAIN world. Catches all reducer paths, including
-  // motion handlers (BUG-016/017) that mutate active_line directly without
-  // calling updateInfoContainer(). Side-effect-only — pure DOM write, no
-  // change to extension behavior.
+  // motion handlers that mutate active_line directly without going through
+  // updateInfoContainer(). Side-effect-only — pure DOM write, no change to
+  // extension behavior.
   syncVimInfoToDOM();
 };
 
@@ -838,6 +866,10 @@ const visualReducer = (e: KeyboardEvent): boolean => {
   switch (e.key) {
     case "Escape":
       vim_info.mode = "normal";
+      // Discard any pending operator (vi, va, or one carried over from
+      // normal mode like "d"/"c"/"y") so the next normal-mode key isn't
+      // consumed as the operator's motion argument.
+      vim_info.pending_operator = null;
       window.getSelection()?.removeAllRanges();
       // Restore cursor position when exiting visual mode
       const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -913,6 +945,10 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
       // Clear background highlights from all elements
       clearAllBackgroundColors();
       vim_info.mode = "normal";
+      // Discard any pending operator (e.g. half-typed "g" toward gg, or one
+      // carried over from normal mode like "d"/"c"/"y") so the next
+      // normal-mode key isn't consumed as the operator's motion argument.
+      vim_info.pending_operator = null;
       window.getSelection()?.removeAllRanges();
       // Clear saved positions
       delete vim_info.visual_end_pos;

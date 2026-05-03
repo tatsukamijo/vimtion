@@ -14,23 +14,25 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 
 ## BUG-002: k from code block returns to wrong block after I→type→Esc on heading above
 
+- **Status**: **RESOLVED — test-infrastructure false-positive, not a source bug.**
 - **Detected**: 2026-04-14
+- **Resolved**: 2026-05-03 (commit `0cee452`)
 - **Test**: `stress-fast-user.spec.ts` → "edit text before code block → j into code → k back"
-- **Reproduction**: Navigate to "Section 8: Code block" heading. Press I, type "X", Escape. Then j (enters code block first line, activeLine increments by 1). Then k — DOM cursor lands on block 38 instead of block 37 (the heading).
-- **Expected**: k returns to the heading block (index 37)
-- **Actual**: k returns to the block after the heading (index 38, which is the code block itself)
-- **Context**: After editing a heading block that's directly above a code block, the cursor position mapping between vim_info and DOM gets off by one. The I→type→Esc sequence on the heading seems to shift the vim line mapping.
-- **Severity**: High — this is likely the bug users experience where "j/k goes to the wrong line after insert mode"
+- **Original symptom**: After `I→type→Esc→j→k` on a heading above a code block, the test asserted DOM cursor landed on block 37 but observed block 38.
+- **Root cause**: Test queried `[data-content-editable-leaf="true"]` (93 elements) for its reference index while vim_info.lines is built from `[contenteditable="true"]` (94 elements — includes the page-title wrapper at index 0). The two index frames differed by exactly one. Vim's tracking was correct throughout; the test was reading the wrong frame.
+- **Fix**: Test now queries the same `[contenteditable="true"]` set as vim, with a wrapper-exclusion filter (`!editables.some((other) => other !== l && l.contains(other))`) to skip the page-title wrapper's substring false-match. (Note: BUG-043 ultimately took the index-normalization route rather than wrapper-out-of-lines, so this test's wrapper-exclusion remains load-bearing — the wrapper still sits at `lines[0]` for keydown-listener stability.)
+- **Severity**: Was High — actual user impact: none, since real-world `I→type→Esc→j→k` behavior was always correct.
 
 ## BUG-003: o→type→Esc→k returns to wrong block (off by 1)
 
+- **Status**: **RESOLVED** — fixed by `ff013a9` (selection-leaf-as-truth recovery in `createRefreshLines` when a fresh leaf was inserted during the edit).
 - **Detected**: 2026-04-14
+- **Resolved**: 2026-05-03
 - **Test**: `stress-fast-user.spec.ts` → "o→type→Esc→k returns to original block"; `insert-open-line.spec.ts` → 3 tests (bullet, nested todo, code block boundary)
 - **Reproduction**: Navigate to "Plain text line 3" (block index 4). Press o, type "new line via o", Escape. Then k. DOM cursor ends up on block 3 instead of block 4.
-- **Expected**: k returns to block 4 (the original "Plain text line 3")
-- **Actual**: k returns to block 3 (one above the original)
-- **Context**: After `o` creates a new line below and Escape returns to normal mode, the vim_info line mapping appears off by one. This is a variant of the cursor desync after insert operations. Confirmed on bullets, nested todos, and near code blocks (where j also fails to advance).
-- **Severity**: High — o is a frequently used Vim command
+- **Root cause**: `createRefreshLines` previously fell back to element-identity (and then `block_id`) recovery only. When `o` inserted a fresh leaf, the previously-active element was still in DOM (just at a new index), so identity recovery succeeded — but with the WRONG index relative to the user's intended position.
+- **Fix**: When the post-rebuild DOM Selection's leaf was NOT in the previous lines snapshot, prefer the selection's leaf as the new `active_line` source. Conservative predicate so rapid-navigation identity recovery (BUG-001 path) is not disturbed.
+- **Severity**: Was High — o is a frequently used Vim command.
 
 ## BUG-004: h at column 0 desyncs DOM selection
 
@@ -52,12 +54,14 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 
 ## BUG-006: F and T (backward character search) do not move cursor
 
+- **Status**: **RESOLVED — test-infrastructure false-positive, not a source bug.**
 - **Detected**: 2026-04-14
+- **Resolved**: 2026-05-03 (F: `e4aaf09`, T: `b8d5c0d`)
 - **Test**: `navigation.spec.ts` → "F{c} finds character backward", "T{c} stops one after target char backward"
-- **Reproduction**: Navigate to "find char: abcdefghij", press `$` to go to end, then `Shift+f` followed by `a`. Cursor does not move.
-- **Expected**: `F{c}` searches backward from cursor to find the character
-- **Actual**: Cursor stays at current position
-- **Severity**: Medium — backward character search is a common Vim operation
+- **Original symptom**: Cursor did not move on `Shift+f` followed by `a`.
+- **Root cause**: Playwright's `keyboard.down("Shift") / press("f") / up("Shift")` form did not produce `e.key === "F"` in Notion's contenteditable — the keydown delivered `e.key === "f"` (lowercase). Vimtion's normal-mode reducer correctly matched `case "f"` (forward find), set `pending_operator = "f"`, and the next char ran `findCharForward` instead of `findCharBackward`. The source paths for F/T were always correct.
+- **Fix**: Switched the F-test to `pressKeys(page, "Shift+F")`, which yields `e.key === "F"`. T-test was symmetrically updated and tester verified 4/4 isolated strict runs (commit `b8d5c0d`).
+- **Severity**: Was Medium — actual user impact: none, since real keyboards produce `e.key === "F"` natively.
 
 ## BUG-007: { and } (paragraph motions) do not move cursor
 
@@ -215,3 +219,54 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Expected**: `j` from the last real line of a code block (or its ghost line) moves the DOM cursor to the next block.
 - **Actual**: DOM cursor remains inside the code block's contenteditable; subsequent operations target the wrong block.
 - **Severity**: High — every code-block exit hits this path; explains "I pressed j but my cursor didn't move" reports.
+
+
+## BUG-040: Post-undo cursor desync after o / O / A insert (broader than code blocks)
+
+- **Detected**: 2026-05-03
+- **Source**: Surfaced during BUG-011 fix work (see commit `6614210`); scope broadened during e07b3e5 verification.
+- **Reproduction patterns** (all fingerprint-identical):
+  - Inside a code block: `o` → type → `u`. DOM cursor lands on the heading above; `vim_info.active_line` still points at the code-block leaf.
+  - On a numbered/regular/nested bullet item: `A` → type → `Esc` → `j` → `u`. `vim_info.active_line` advances; DOM cursor stays one block back.
+  - On any insert variant: `o` → `Esc` (immediately, empty new line) → `u`. `vim_info.lines.length` (95) outpaces actual DOM editable count (94) — refreshLines missed the undo-driven leaf removal.
+  - On a nested bullet: `O` → `Esc` immediately → `u`. Same fingerprint.
+- **Root cause hypothesis**: `document.execCommand("undo")` rewinds Notion's DOM mutations (including leaf insertions/restorations), but our refreshLines/active_line reconciliation isn't triggered or doesn't follow the undo-driven changes — `vim_info` keeps the post-insert state while DOM rolls back.
+- **Verified pre-existing**: Reproduced on `0677b34` (parent of A/o `setCursorPastLineEnd` fix `2e5ee72`), so this is NOT a regression from any 2026-05-03 sprint commit.
+- **Tests `test.fail()`'d for this**: `insert-open-line.spec.ts:581` (A on numbered), `:691` (o + Esc empty), `:725` (O on nested bullet), `:362` (o in code block). Likely also `code-block-nav.spec.ts:424` and `:490` (same fingerprint, not yet marked).
+- **Severity**: Medium-High — broader than initially scoped; affects A/o/O across most block types after undo.
+
+## BUG-041: ``` markdown shortcut → code block conversion leaves cursor desynced
+
+- **Detected**: 2026-05-03
+- **Source**: Residual from BUG-012 territory; surfaced as 2-3 still-failing tests in code-block-nav after the BUG-001/010/011/029 batch.
+- **Reproduction**: In an empty paragraph in insert mode, type ``` then Enter (or any code-block trigger). Notion converts the block to a code block. After Escape, `vim_info.active_line` and DOM cursor are misaligned similar to BUG-012/013 but specifically for the code-block conversion case.
+- **Root cause**: Likely the same MutationObserver-driven leaf swap as BUG-012/013, but the code-block leaf's structure (single contenteditable wrapping `\n`-separated lines) interacts with the block_id recovery in `core/line-management.ts:createRefreshLines` differently than regular paragraph swaps.
+- **Severity**: Medium — happens once per code-block creation via shortcut.
+
+## BUG-042: o on nested bullet/todo child creates wrong sibling
+
+- **Status**: **RESOLVED** — fixed by `2e5ee72` (added `setCursorPastLineEnd` helper for `A` and `o`; `$` keeps the Vim len-1 semantics).
+- **Detected**: 2026-05-03 (tester smoke-set after BUG-001/010/011/029 batch)
+- **Resolved**: 2026-05-03
+- **Test**: `insert-open-line.spec.ts:80` (nested bullet child), `:104` (last nested bullet child), `:156` (nested todo child) — all three fail consistently
+- **Root cause**: Earlier commit `f261a89` correctly moved `$` to land at len-1, but `A` and `o` shared the same `jumpToLineEnd` helper. The synthetic Enter from `o` then split the leaf at len-1 ("Nested bullet child 1" len 21 split at 20) instead of appending below. Plain-bullet tests asserted only on the new sibling's content so the silent split went unnoticed; nested bullet/todo children surfaced it because their tests checked parent-line integrity.
+- **Fix**: New `setCursorPastLineEnd` helper used by `A` and `o` only; `$` still uses `jumpToLineEnd`. `O`/`I` and code-block o/O paths untouched.
+- **Severity**: Was Medium — only nested bullet/todo, but those are common Notion patterns.
+
+## BUG-043: gg / k-at-line-1 land on page-title role=group, not h1 leaf
+
+- **Detected**: 2026-05-03 (tester smoke-set after BUG-001/010/011/029 batch)
+- **Test**: `navigation.spec.ts:75` (`gg moves to line 0`), `:96` (`k at first line stays at 0`)
+- **Reproduction**: Press `gg` (or `k` repeatedly while on line 1).
+- **Expected**: vim_info.active_line = 0 with DOM cursor on the page-title h1 leaf.
+- **Actual**: vim_info.active_line lands on the page-title `<div role="group">` (block 0) while DOM cursor goes to the h1 leaf — desync.
+- **Root-cause hypothesis**: page-title element gets included in our `[contenteditable=true]` query but with a wrapper that's not the actual cursor-receiving leaf. Either filter the title from vim_info.lines or normalize index resolution to the leaf.
+- **Severity**: Medium — every page hits this on initial gg.
+
+## BUG-044: Escape relocates DOM cursor to page-title H1 in normal mode
+
+- **Status**: **NOT REPRODUCIBLE in baseline — withdrawn.**
+- **Detected**: 2026-05-03 (surfaced during BUG-043 investigation)
+- **Withdrawn**: 2026-05-03 — implementer re-investigated on a clean baseline (no source changes) with a 3-scenario debug spec (clean Escape, H1-touched-then-Escape, accumulated activity then Escape). Cursor stayed on the target leaf in all three; vim_info and DOM agreed throughout.
+- **Misattribution origin**: The Escape→H1 behavior was a coupling artifact of the partial BUG-043 WIP (page-title wrapper filter + bare `vim_info.active_line = 0` in `createSetLines`). With the filter applied, `lines[0]` became the real H1 leaf rather than the inert wrapper, and the partial WIP's init paths primed Notion's focus tracking onto H1. Neither happens without the partial WIP.
+- **Implication for BUG-043**: page-title-filter approach is viable on its own; no Escape reconciliation needed.

@@ -6,6 +6,19 @@
 import { getCursorIndexInElement, setCursorPosition } from "../cursor";
 
 /**
+ * Visual column of an absolute offset within the element's textContent.
+ *
+ * For normal blocks, textContent has no `\n` and column === offset. For
+ * multi-line code blocks (one contenteditable element with `\n`-separated
+ * logical lines), the column is measured from the start of the logical
+ * line containing the offset, so j/k can preserve horizontal position.
+ */
+const visualColumn = (text: string, offset: number): number => {
+  const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
+  return offset - lineStart;
+};
+
+/**
  * Find character forward (f command)
  * Moves cursor to the next occurrence of char on the current line
  */
@@ -19,7 +32,7 @@ export const findCharForward = (char: string) => {
   const foundIndex = text.indexOf(char, currentPos + 1);
   if (foundIndex !== -1) {
     setCursorPosition(currentElement, foundIndex);
-    vim_info.desired_column = foundIndex;
+    vim_info.desired_column = visualColumn(text, foundIndex);
   }
 };
 
@@ -37,7 +50,7 @@ export const findCharBackward = (char: string) => {
   const foundIndex = text.lastIndexOf(char, currentPos - 1);
   if (foundIndex !== -1) {
     setCursorPosition(currentElement, foundIndex);
-    vim_info.desired_column = foundIndex;
+    vim_info.desired_column = visualColumn(text, foundIndex);
   }
 };
 
@@ -56,7 +69,7 @@ export const tillCharForward = (char: string) => {
   if (foundIndex !== -1) {
     const targetPos = foundIndex - 1;
     setCursorPosition(currentElement, targetPos);
-    vim_info.desired_column = targetPos;
+    vim_info.desired_column = visualColumn(text, targetPos);
   }
 };
 
@@ -75,6 +88,6 @@ export const tillCharBackward = (char: string) => {
   if (foundIndex !== -1) {
     const targetPos = foundIndex + 1;
     setCursorPosition(currentElement, targetPos);
-    vim_info.desired_column = targetPos;
+    vim_info.desired_column = visualColumn(text, targetPos);
   }
 };

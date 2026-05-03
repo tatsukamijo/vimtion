@@ -15,6 +15,35 @@ type EventHandlers = {
 };
 
 /**
+ * True iff `lines[idx]` is a container contenteditable that wraps another
+ * contenteditable also tracked in vim_info.lines.
+ *
+ * The concrete case is Notion's page-title editor wrapper
+ * (`<div role="group" class="whenContentEditable">`): it has
+ * contenteditable=true and contains the H1 leaf inside it. Placing the
+ * DOM cursor on the wrapper is a visual no-op — Notion immediately
+ * relocates the selection to the inner H1 leaf — but vim would still
+ * record `active_line = wrapper-index`, producing a persistent invariant
+ * mismatch (vim says "you're on line N", DOM cursor is on line N+1).
+ * Detect structurally rather than by class name so the fix doesn't
+ * depend on Notion-specific markup that may change.
+ *
+ * Filtering wrappers OUT of `lines` entirely is tempting but brittle —
+ * Notion frequently swaps the H1 element under DOM mutation, and
+ * keeping the wrapper in `lines` means `addEventListener("keydown", ...)`
+ * on the stable wrapper catches keystrokes that bubble up from
+ * transiently-stranded H1's. So we keep wrappers in `lines` but skip
+ * them at the navigation boundary here.
+ */
+const isWrapperLine = (idx: number): boolean => {
+  const el = window.vim_info.lines[idx]?.element;
+  if (!el) return false;
+  return window.vim_info.lines.some(
+    (line) => line.element !== el && el.contains(line.element),
+  );
+};
+
+/**
  * Set the active line and position cursor appropriately
  * Handles both normal blocks and code blocks differently
  *
@@ -28,6 +57,15 @@ export const setActiveLine = (idx: number): void => {
 
   if (idx >= lines.length) i = lines.length - 1;
   if (i < 0) i = 0;
+
+  // Walk past wrapper contenteditables. gg / k-at-line-1 land here when
+  // lines[0] is the page-title wrapper; without the skip, vim's
+  // active_line points at the wrapper while the DOM cursor is on the
+  // inner H1. Walk forward (toward higher indices, deeper into the
+  // document) — going backward would loop on lines[0].
+  while (i < lines.length - 1 && isWrapperLine(i)) {
+    i++;
+  }
 
   const previousActiveLine = window.vim_info.active_line;
   window.vim_info.active_line = i;
@@ -47,7 +85,16 @@ export const setActiveLine = (idx: number): void => {
     // If moving up (idx < previous active_line), go to the last line of the code block
     // If moving down (idx > previous active_line), go to the first line
     const text = targetElement.textContent || "";
-    const codeLines = text.split("\n");
+    const rawCodeLines = text.split("\n");
+    // Notion code blocks frequently end their textContent with a trailing
+    // "\n", which split("\n") turns into a phantom empty entry. If we treat
+    // it as a real line, k-from-the-block-below lands the cursor at
+    // textLength (past the visible last line). Drop it so "last line"
+    // means the last *visible* code line.
+    const codeLines =
+      rawCodeLines.length > 1 && rawCodeLines[rawCodeLines.length - 1] === ""
+        ? rawCodeLines.slice(0, -1)
+        : rawCodeLines;
     const movingUp = i < previousActiveLine;
 
     let cursorPosition = 0;
@@ -67,8 +114,20 @@ export const setActiveLine = (idx: number): void => {
 
     setCursorPosition(targetElement, cursorPosition);
   } else {
-    // For normal blocks, use click() and focus() with preventScroll to avoid unwanted page jumps
-    targetElement.click();
+    // For normal blocks, click() and focus() with preventScroll to avoid
+    // unwanted page jumps. Headings are an exception: Notion's own click
+    // handler on a heading element relocates the DOM selection to an
+    // unrelated leaf below (observed: k from first code line lands the
+    // selection two leaves past the heading instead of in it). For
+    // headings, skip the synthetic click and let focus + setCursorPosition
+    // do the work directly. The block-type predicate matches Notion's
+    // semantic heading tags (H1–H4 plus the page-title H1).
+    const tag = targetElement.tagName;
+    const isHeading =
+      tag === "H1" || tag === "H2" || tag === "H3" || tag === "H4";
+    if (!isHeading) {
+      targetElement.click();
+    }
     targetElement.focus({ preventScroll: true });
 
     // Set cursor to desired column, or end of line if line is shorter
@@ -92,8 +151,13 @@ export const createRefreshLines = (handlers: EventHandlers) => {
       document.querySelectorAll("[contenteditable=true]"),
     ) as HTMLDivElement[];
 
-    // Store the current active element to find its new index later
-    const currentActiveElement = vim_info.lines[vim_info.active_line]?.element;
+    // Snapshot the active line's identity BEFORE rebuilding the lines array.
+    // The element reference may become stale (Notion swaps leaf elements during
+    // markdown-shortcut conversion); block_id was cached eagerly when the entry
+    // was built, so it survives the swap.
+    const previousActive = vim_info.lines[vim_info.active_line];
+    const previousActiveElement = previousActive?.element ?? null;
+    const previousActiveBlockId = previousActive?.block_id ?? null;
 
     // Find new elements that aren't in our lines array yet
     const existingElements = new Set(
@@ -111,17 +175,58 @@ export const createRefreshLines = (handlers: EventHandlers) => {
       });
     }
 
-    // Rebuild lines array in DOM order
+    // Rebuild lines array in DOM order, caching block_id per entry
     vim_info.lines = allEditableElements.map((elem) => ({
       cursor_position: 0,
       element: elem,
+      block_id:
+        elem.closest("[data-block-id]")?.getAttribute("data-block-id") ?? null,
     }));
 
-    // Update active line index to match the current active element
-    if (currentActiveElement) {
-      const newIndex = vim_info.lines.findIndex(
-        (line) => line.element === currentActiveElement,
+    // Recover active line. Two signals:
+    //   - identity: previousActiveElement still in the rebuilt lines array
+    //   - selection: the DOM selection's leaf in the rebuilt lines array
+    // For ordinary navigation (rapid j/k) the cursor stays on
+    // previousActiveElement and the lines set is unchanged, so identity is
+    // correct. For mutations that insert a fresh leaf (o/O/Enter) the
+    // selection moves to that brand-new element. Identity recovery in that
+    // case finds the OLD element at its new index, which is no longer where
+    // the cursor actually is. Detect the o/O/Enter case narrowly: the
+    // selection sits on a leaf that did NOT exist in the previous lines
+    // snapshot. Using "freshly inserted" as the trigger keeps rapid
+    // navigation (no insertions) on the identity path, where Notion's
+    // transient leaf re-renders during click() can't shift active_line.
+    const selection = window.getSelection();
+    const selAnchor = selection?.anchorNode ?? null;
+    const selAnchorEl =
+      selAnchor && selAnchor.nodeType === Node.ELEMENT_NODE
+        ? (selAnchor as Element)
+        : selAnchor?.parentElement ?? null;
+    const selLeaf = selAnchorEl?.closest('[contenteditable="true"]') ?? null;
+
+    if (
+      selLeaf &&
+      selLeaf !== previousActiveElement &&
+      !existingElements.has(selLeaf as HTMLDivElement)
+    ) {
+      const selIndex = vim_info.lines.findIndex(
+        (line) => line.element === selLeaf,
       );
+      if (selIndex !== -1) {
+        vim_info.active_line = selIndex;
+        return;
+      }
+    }
+
+    if (previousActiveElement) {
+      let newIndex = vim_info.lines.findIndex(
+        (line) => line.element === previousActiveElement,
+      );
+      if (newIndex === -1 && previousActiveBlockId) {
+        newIndex = vim_info.lines.findIndex(
+          (line) => line.block_id === previousActiveBlockId,
+        );
+      }
       if (newIndex !== -1) {
         vim_info.active_line = newIndex;
       }
@@ -147,6 +252,8 @@ export const createSetLines = (
     vim_info.lines = elements.map((elem) => ({
       cursor_position: 0,
       element: elem as HTMLDivElement,
+      block_id:
+        elem.closest("[data-block-id]")?.getAttribute("data-block-id") ?? null,
     }));
 
     // Set initial active line to 0 BEFORE adding event listeners

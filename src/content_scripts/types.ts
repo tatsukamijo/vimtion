@@ -40,6 +40,10 @@ export const DEFAULT_SETTINGS: VimtionSettings = {
 export interface VimLine {
   cursor_position: number;
   element: HTMLDivElement;
+  // Notion's data-block-id of the nearest [data-block-id] ancestor, if any.
+  // Cached so active_line can be recovered after Notion's MutationObserver
+  // swaps the leaf element under the same block container.
+  block_id: string | null;
 }
 
 // Link hint interface
