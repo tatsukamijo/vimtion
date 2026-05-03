@@ -140,15 +140,13 @@ test.describe("Code block navigation", () => {
     expect(lineIndex).toBe(0);
   });
 
-  // BUG-010: k from first code block line — the navigation FIX is in
-  // moveCursorUpInCodeBlock (lineStart === -1 routes through setActiveLine +
-  // updateInfoContainer), but the strict cursor-invariant still trips during
-  // the k press: active_line correctly steps back to the heading, yet the
-  // DOM cursor lands two leaves further down. setActiveLine's
-  // targetElement.click() on the heading element doesn't reliably move the
-  // selection (task #7 / heading-click sync). Marker stays until that
-  // sync issue is resolved separately.
-  test.fail("k from code block first line exits to block above", async ({ extensionPage: page }) => {
+  // k from first code block line exits upward via the moveCursorUpInCodeBlock
+  // lineStart === -1 branch, which routes through setActiveLine +
+  // updateInfoContainer. The cursor-invariant trip that previously kept
+  // this marked test.fail was a side effect of handleClick processing
+  // setActiveLine's programmatic click() and overwriting active_line with
+  // a deferred setTimeout — that path now skips e.isTrusted === false events.
+  test("k from code block first line exits to block above", async ({ extensionPage: page }) => {
     await goToBlock(page, "Section 8: Code block");
     await pressKeys(page, "j"); // enter code block
     await page.waitForTimeout(200);

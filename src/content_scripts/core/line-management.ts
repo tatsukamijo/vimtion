@@ -76,8 +76,20 @@ export const setActiveLine = (idx: number): void => {
 
     setCursorPosition(targetElement, cursorPosition);
   } else {
-    // For normal blocks, use click() and focus() with preventScroll to avoid unwanted page jumps
-    targetElement.click();
+    // For normal blocks, click() and focus() with preventScroll to avoid
+    // unwanted page jumps. Headings are an exception: Notion's own click
+    // handler on a heading element relocates the DOM selection to an
+    // unrelated leaf below (observed: k from first code line lands the
+    // selection two leaves past the heading instead of in it). For
+    // headings, skip the synthetic click and let focus + setCursorPosition
+    // do the work directly. The block-type predicate matches Notion's
+    // semantic heading tags (H1–H4 plus the page-title H1).
+    const tag = targetElement.tagName;
+    const isHeading =
+      tag === "H1" || tag === "H2" || tag === "H3" || tag === "H4";
+    if (!isHeading) {
+      targetElement.click();
+    }
     targetElement.focus({ preventScroll: true });
 
     // Set cursor to desired column, or end of line if line is shorter
