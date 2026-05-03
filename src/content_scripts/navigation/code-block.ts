@@ -133,6 +133,43 @@ export const moveCursorForwardsInCodeBlock = () => {
   vim_info.desired_column = codeBlockVisualColumn(text, newPos);
 };
 
+// Insert a literal "\n" at the current selection inside a code block and
+// leave the cursor positioned immediately after it. Notion code blocks
+// store source as plain text with "\n" separators (the syntax highlighter
+// re-renders on input), so a Text("\n") node inserted via Range +
+// dispatched input event reproduces what pressing Enter in insert mode
+// does. document.execCommand("insertText", "\n") used to be the
+// implementation but the browser silently dropped the "\n" in
+// contenteditables, leaving subsequent typed text concatenated to the
+// current line (BUG-011).
+const insertNewlineInCodeBlock = (element: Element): void => {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const newlineNode = document.createTextNode("\n");
+  range.insertNode(newlineNode);
+
+  // Park the cursor right after the inserted newline so the user types
+  // onto the new logical line.
+  const after = document.createRange();
+  after.setStartAfter(newlineNode);
+  after.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(after);
+
+  // Tell Notion the content changed so its mutation observer / React
+  // state stays in sync with the DOM and the change persists.
+  element.dispatchEvent(
+    new InputEvent("input", {
+      inputType: "insertText",
+      data: "\n",
+      bubbles: true,
+    }),
+  );
+};
+
 // Open line below in code block (o command)
 export const openLineBelowInCodeBlock = () => {
   const { vim_info } = window;
@@ -144,11 +181,10 @@ export const openLineBelowInCodeBlock = () => {
   let lineEnd = text.indexOf("\n", currentPos);
   if (lineEnd === -1) lineEnd = text.length;
 
-  // Move cursor to end of current line
+  // Move cursor to end of current line, then insert a newline so the
+  // user types on a fresh logical line below.
   setCursorPosition(currentElement, lineEnd);
-
-  // Insert a newline character using execCommand (works better in contenteditable)
-  document.execCommand("insertText", false, "\n");
+  insertNewlineInCodeBlock(currentElement);
 
   // Switch to insert mode
   vim_info.mode = "insert";
@@ -166,13 +202,11 @@ export const openLineAboveInCodeBlock = () => {
   let lineStart = text.lastIndexOf("\n", currentPos - 1);
   lineStart = lineStart === -1 ? 0 : lineStart + 1;
 
-  // Move cursor to start of current line
+  // Insert the newline at line start; the cursor lands after the new "\n"
+  // (i.e. the start of what is now the *next* line, the original line),
+  // so step it back one position to the empty line we just created.
   setCursorPosition(currentElement, lineStart);
-
-  // Insert a newline character
-  document.execCommand("insertText", false, "\n");
-
-  // Move cursor back to the newly created empty line
+  insertNewlineInCodeBlock(currentElement);
   setCursorPosition(currentElement, lineStart);
 
   // Switch to insert mode

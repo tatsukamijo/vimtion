@@ -352,8 +352,14 @@ test.describe("Code block navigation", () => {
   // Code block: o/O behavior
   // =========================================================================
 
-  // BUG-011: o in code block fails to insert newline — execCommand("insertText", "\n") doesn't
-  // create a new line in automated tests; text appends to current line without line break
+  // BUG-011: the actual `o` insertion now works (Range + Text("\n") +
+  // dispatched input event), and the test's two content assertions pass
+  // (afterLines.length === beforeLineCount + 1 and "NEW_CODE_LINE" appears
+  // on its own line). What still fails is the strict cursor-invariant
+  // during the cleanup `u`: Notion's undo moves the DOM cursor to the
+  // heading above while vim_info.active_line stays on the code block —
+  // a post-undo cursor-desync issue (BUG-001 family), not BUG-011.
+  // Marker stays until that desync is addressed separately.
   test.fail("o inside code block creates new line below within block", async ({ extensionPage: page }) => {
     await goToBlock(page, "Section 8: Code block");
     await pressKeys(page, "j"); // code block line 0
