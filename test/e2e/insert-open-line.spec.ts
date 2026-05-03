@@ -367,7 +367,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   // =========================================================================
 
   // BUG-003: o→type→Esc→k returns to wrong block (off by 1)
-  test.fail("o on bullet + type + Esc, then k returns to original", async ({ extensionPage: page }) => {
+  test("o on bullet + type + Esc, then k returns to original", async ({ extensionPage: page }) => {
     await goToBlock(page, "Bullet item 1");
 
     await pressKeys(page, "o");
@@ -390,7 +390,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   });
 
   // BUG-003: o→type→Esc→k returns to wrong block (off by 1)
-  test.fail("o on nested todo + type + Esc, then k returns to original", async ({ extensionPage: page }) => {
+  test("o on nested todo + type + Esc, then k returns to original", async ({ extensionPage: page }) => {
     await goToBlock(page, "Nested todo child");
 
     await pressKeys(page, "o");
@@ -583,7 +583,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   // on N, mirroring the BUG-040 family of post-undo desyncs cataloged in
   // docs/known-bugs.md. Verified pre-existing on commit 0677b34 (parent of
   // 2e5ee72) — not caused by the A/o setCursorPastLineEnd fix.
-  test.fail("A on numbered item + type + Esc, j moves to next item", async ({ extensionPage: page }) => {
+  test("A on numbered item + type + Esc, j moves to next item", async ({ extensionPage: page }) => {
     await goToBlock(page, "Numbered item 1");
 
     await pressKeys(page, "Shift+a");
@@ -699,7 +699,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   // desync family as BUG-040 (refreshLines doesn't follow Notion's
   // undo-driven leaf restoration). Verified pre-existing on commit
   // 0677b34 — not caused by the A/o setCursorPastLineEnd fix.
-  test.fail("o + Esc immediately creates and keeps empty line", async ({ extensionPage: page }) => {
+  test("o + Esc immediately creates and keeps empty line", async ({ extensionPage: page }) => {
     const beforeTexts = await getAllBlockTexts(page);
     const beforeCount = beforeTexts.length;
 
@@ -728,7 +728,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   // count). Pre-existing — not caused by the A/o setCursorPastLineEnd
   // fix; the cleanup `u` lands DOM cursor on block N-1 while
   // vim_info.active_line stays on N.
-  test.fail("O + Esc immediately on nested bullet", async ({ extensionPage: page }) => {
+  test("O + Esc immediately on nested bullet", async ({ extensionPage: page }) => {
     const beforeTexts = await getAllBlockTexts(page);
     const beforeCount = beforeTexts.length;
 
