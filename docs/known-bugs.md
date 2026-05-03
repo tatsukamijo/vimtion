@@ -259,10 +259,8 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 
 ## BUG-044: Escape relocates DOM cursor to page-title H1 in normal mode
 
+- **Status**: **NOT REPRODUCIBLE in baseline — withdrawn.**
 - **Detected**: 2026-05-03 (surfaced during BUG-043 investigation)
-- **Reproduction**: Click into any non-title block. Press Escape (or trigger any normal-mode entry path). DOM cursor jumps to the page-title H1 leaf even though vim_info.active_line correctly stays on the original block.
-- **Verified via**: `click("Plain text line 5") → cursor on line 5 ✓; press Escape → cursor on H1 ✗ (vim_info correctly stays on line 5)`.
-- **Root cause hypothesis**: Notion's React click/escape handler relocates the DOM Selection onto the page-title H1 after recent activity. Independent of Vimtion's reducers — vim_info stays correct.
-- **Impact**: Blocks the BUG-043 page-title-filter approach (every test using `goToBlock → Escape` ends up with cursor on H1), and explains background flakiness in tests that rely on cursor location post-Escape.
-- **Likely fix**: Escape handler re-asserts cursor at `vim_info.cursor_position` on `vim_info.active_line`'s element via `setCursorPosition`.
-- **Severity**: Medium-High — explains a class of flakiness; user-facing impact is occasional cursor-moves-to-title surprises after Escape.
+- **Withdrawn**: 2026-05-03 — implementer re-investigated on a clean baseline (no source changes) with a 3-scenario debug spec (clean Escape, H1-touched-then-Escape, accumulated activity then Escape). Cursor stayed on the target leaf in all three; vim_info and DOM agreed throughout.
+- **Misattribution origin**: The Escape→H1 behavior was a coupling artifact of the partial BUG-043 WIP (page-title wrapper filter + bare `vim_info.active_line = 0` in `createSetLines`). With the filter applied, `lines[0]` became the real H1 leaf rather than the inert wrapper, and the partial WIP's init paths primed Notion's focus tracking onto H1. Neither happens without the partial WIP.
+- **Implication for BUG-043**: page-title-filter approach is viable on its own; no Escape reconciliation needed.
