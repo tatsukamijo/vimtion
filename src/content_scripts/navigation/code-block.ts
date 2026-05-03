@@ -3,6 +3,8 @@
  */
 
 import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import { setActiveLine } from "../core/line-management";
+import { updateInfoContainer } from "../ui/info-container";
 
 // Move cursor down within a code block (handles multi-line code blocks)
 export const moveCursorDownInCodeBlock = () => {
@@ -18,8 +20,12 @@ export const moveCursorDownInCodeBlock = () => {
   // Find current line end (next newline)
   let lineEnd = text.indexOf("\n", currentPos);
   if (lineEnd === -1) {
-    // Already on last line of code block, move to next block
-    vim_info.active_line = vim_info.active_line + 1;
+    // Already on last line of code block — exit downward into the next block.
+    // setActiveLine handles cursor placement (click/focus or in-block offset)
+    // and updateInfoContainer refreshes the status bar + block cursor so the
+    // DOM cursor and vim_info stay in sync.
+    setActiveLine(vim_info.active_line + 1);
+    updateInfoContainer();
     return;
   }
 
@@ -52,8 +58,12 @@ export const moveCursorUpInCodeBlock = () => {
   let lineStart = text.lastIndexOf("\n", currentPos - 1);
 
   if (lineStart === -1) {
-    // Already on first line of code block, move to previous block
-    vim_info.active_line = vim_info.active_line - 1;
+    // Already on first line of code block — exit upward into the previous
+    // block. Same rationale as the downward exit: setActiveLine moves the
+    // DOM cursor and updateInfoContainer keeps the status bar / block cursor
+    // consistent with vim_info.active_line.
+    setActiveLine(vim_info.active_line - 1);
+    updateInfoContainer();
     return;
   }
 
