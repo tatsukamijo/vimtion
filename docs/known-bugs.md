@@ -286,6 +286,24 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Suspected root cause**: Likely interacts with the same identity/block_id recovery paths that BUG-001 / BUG-040 exercise, but specifically the rapid-j burst that crosses from the post-conversion region into a table block. Tables wrap their contenteditable cells differently from regular blocks; the recovery's wrapper-skip may not match table-cell shape.
 - **Severity**: Low–Medium — rare in practice (requires sequential markdown conversions then immediate rapid j into a table), but indicates a gap in our recovery paths for table-cell DOM shape.
 
+## BUG-047: `x` (delete-character) inside code block is broken — block deletion in headed, letter insertion in headless
+
+- **Detected**: 2026-05-04 (manual report from user during BUG-040 fingerprint A verification)
+- **Status**: **OPEN.** No test marker yet; reproduction was via a throwaway script.
+- **Reproduction (headed/manual)**: Inside a code block in normal mode, position cursor anywhere, press `x`. The **entire code block is deleted** instead of one character.
+- **Reproduction (headless/automated)**: Same flow. The `x` keystroke is **inserted as the literal character 'x'** at the cursor position; the code block grows by one character. (Verified in throwaway repro spec: `"function hello() {"` → `"function hello() {x"`, length 61 → 62.)
+- **Root cause hypothesis**: `deleteCharacter()` in `src/content_scripts/vim.ts:350` uses `document.execCommand("cut")` after selecting one char in the current element's text node. For a code-block leaf:
+  - **Headed (Notion live)**: Notion's own `cut` handler treats the code-block contenteditable as a unit and removes the whole block (same way Cmd+X on a code block does).
+  - **Headless (Playwright)**: `execCommand("cut")` returns false silently (clipboard access denied / event not fully synthesized), the selection is left dangling, and the original `x` keydown bubbles through to Notion's text-input pipeline, which inserts the letter at the caret. Either vim's `preventDefault` doesn't fire, or Notion's `beforeinput` listener bypasses it.
+- **Why both paths break**: `deleteCharacter` was written for plain text leaves, where one-char selection + `cut` produces the right behavior. Code blocks need a code-block-specific path that uses `Range`-and-`Text`-mutation directly (analogous to `openLineBelowInCodeBlock` in `src/content_scripts/navigation/code-block.ts`), bypassing both Notion's clipboard handler and the platform clipboard altogether.
+- **Severity**: **High** in headed (data loss — the user's whole code block is destroyed by a single `x`). High in headless too, but as a different fingerprint. Affects every code-block user.
+- **Affects**: `x` (and likely `X` via `deleteCharacterBefore`, same pattern at `vim.ts:376`). Probably also `dd` / `D` / motion-delete inside code blocks — needs verification.
+- **Fix sketch**: Add a code-block branch in `deleteCharacter` / `deleteCharacterBefore` that:
+  1. Computes the target offset within the code-block textContent.
+  2. Uses `Range` + direct text-node manipulation to remove the character in place.
+  3. Dispatches an `input` event (`bubbles: true, inputType: "deleteContentForward"`) so Notion's renderer / undo stack stays consistent.
+  4. Bypass `execCommand("cut")` — clipboard write is not part of Vim's `x` semantics anyway (`x` puts the char in the unnamed register, not the system clipboard).
+
 ## BUG-046: Cross-spec cumulative flake under `npm test` full-suite run
 
 - **Detected**: 2026-05-03 (surfaced during BUG-040 PR #12 final verification on `c0b111c`)
