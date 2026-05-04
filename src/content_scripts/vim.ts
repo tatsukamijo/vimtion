@@ -1808,6 +1808,18 @@ const undo = () => {
   // Check if we need to undo multiple operations (from grouped deletions)
   const count = vim_info.undo_count > 0 ? vim_info.undo_count : 1;
 
+  // Open a short window in which refreshLines's tier-0 code-block anchor
+  // is allowed to fire. Notion's undo for code-block inserts moves the DOM
+  // cursor up to the heading above the block while vim_info is still
+  // tracking the code-block leaf. The protection re-anchors the cursor
+  // inside the block. Scoping it to the post-undo window keeps it away
+  // from regular navigation paths (clicks, motion keys), which would
+  // otherwise be disturbed by the same logic. 500ms covers Notion's typical
+  // undo-settle latency.
+  (
+    window as Window & { __vimtionUndoSettleUntil?: number }
+  ).__vimtionUndoSettleUntil = Date.now() + 500;
+
   // Perform undo operations
   performUndoOperations(count);
 

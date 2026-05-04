@@ -184,7 +184,17 @@ export const createRefreshLines = (handlers: EventHandlers) => {
         elem.closest("[data-block-id]")?.getAttribute("data-block-id") ?? null,
     }));
 
-    // Recover active line. Three tiers, in priority order:
+    // Recover active line. Tiers, in priority order:
+    //
+    //   0. Code-block anchor (undo-scoped): when undo() opened the
+    //      __vimtionUndoSettleUntil window AND previousActiveElement was
+    //      inside a code block (still attached) AND the post-mutation
+    //      DOM selection has wandered outside any code block, restore
+    //      active_line to the code-block leaf and re-anchor the DOM
+    //      cursor inside it. Catches the post-undo case where Notion's
+    //      undo for code-block inserts moves the DOM cursor up to the
+    //      heading above the block. Scoped to the post-undo window so
+    //      click-driven navigation OUT of a code block is not fought.
     //
     //   1. Selection-leaf-as-truth: the DOM selection's leaf is in the
     //      rebuilt array AND differs from previousActiveElement. This covers
@@ -203,13 +213,16 @@ export const createRefreshLines = (handlers: EventHandlers) => {
     //      survives on a replacement node (markdown-shortcut swap territory,
     //      e.g. paragraph→heading conversion).
     //
-    // The (1) → (2) → (3) ordering matters. A previous narrow form of (1)
-    // gated on "selLeaf is brand new" to keep rapid j/k off this path, but
-    // that gate also blocked the post-undo cursor-jump cases where the new
-    // leaf is pre-existing. Tier 1 is now safe to broaden because rapid j/k
-    // ends with setCursorPosition leaving selLeaf === lines[active_line]
-    // .element === previousActiveElement, so the `selLeaf !==
-    // previousActiveElement` guard alone is enough to keep that path off.
+    // The (0) → (1) → (2) → (3) ordering matters. Tier 0 must precede tier 1
+    // because tier 1 would happily follow Notion's stray selection out of
+    // the code block and produce the post-undo desync. A
+    // previous narrow form of (1) gated on "selLeaf is brand new" to keep
+    // rapid j/k off this path, but that gate also blocked the post-undo
+    // cursor-jump cases where the new leaf is pre-existing. Tier 1 is now
+    // safe to broaden because rapid j/k ends with setCursorPosition leaving
+    // selLeaf === lines[active_line].element === previousActiveElement, so
+    // the `selLeaf !== previousActiveElement` guard alone is enough to
+    // keep that path off.
     const selection = window.getSelection();
     const selAnchor = selection?.anchorNode ?? null;
     const selAnchorEl =
@@ -219,7 +232,31 @@ export const createRefreshLines = (handlers: EventHandlers) => {
     const selLeaf = selAnchorEl?.closest('[contenteditable="true"]') ?? null;
 
     let tierOneFired = false;
-    if (selLeaf && selLeaf !== previousActiveElement) {
+
+    // Tier 0: undo-scoped code-block anchor. Only active inside the post-
+    // undo window opened by undo() in vim.ts.
+    const undoSettleUntil =
+      (window as Window & { __vimtionUndoSettleUntil?: number })
+        .__vimtionUndoSettleUntil ?? 0;
+    const inUndoWindow = Date.now() < undoSettleUntil;
+    if (
+      inUndoWindow &&
+      previousActiveElement &&
+      isInsideCodeBlock(previousActiveElement) &&
+      selLeaf &&
+      !isInsideCodeBlock(selLeaf)
+    ) {
+      const prevIndex = vim_info.lines.findIndex(
+        (line) => line.element === previousActiveElement,
+      );
+      if (prevIndex !== -1) {
+        vim_info.active_line = prevIndex;
+        setCursorPosition(previousActiveElement as Element, 0);
+        tierOneFired = true;
+      }
+    }
+
+    if (!tierOneFired && selLeaf && selLeaf !== previousActiveElement) {
       const selIndex = vim_info.lines.findIndex(
         (line) => line.element === selLeaf,
       );

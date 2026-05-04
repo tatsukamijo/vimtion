@@ -49,7 +49,63 @@ export const updateBlockCursor = () => {
     const inCodeBlock = isInsideCodeBlock(currentElement);
 
     if (inCodeBlock) {
-      // For code blocks on empty lines, temporarily insert a zero-width space to get the cursor position
+      // Try a non-mutating measurement first: span an adjacent character's
+      // range. For an interior caret (offset > 0 or offset < length), one
+      // of the neighbour spans gives a real rect we can position from. This
+      // avoids the zws round-trip below \u2014 Notion's PrismJS-based code-block
+      // highlighter cascades childList mutations on every text change, so a
+      // refresh-driven re-entry through this function would loop on any
+      // 0/0 caret position.
+      try {
+        if (
+          range.startContainer &&
+          range.startContainer.nodeType === Node.TEXT_NODE
+        ) {
+          const textNode = range.startContainer as Text;
+          const offset = range.startOffset;
+          const textLen = textNode.textContent?.length ?? 0;
+
+          let neighbourRect: DOMRect | null = null;
+          let useTrailingEdge = false;
+          if (offset > 0) {
+            const r = document.createRange();
+            r.setStart(textNode, offset - 1);
+            r.setEnd(textNode, offset);
+            const rr = r.getBoundingClientRect();
+            if (rr.height > 0) {
+              neighbourRect = rr;
+              useTrailingEdge = true;
+            }
+          }
+          if (!neighbourRect && offset < textLen) {
+            const r = document.createRange();
+            r.setStart(textNode, offset);
+            r.setEnd(textNode, offset + 1);
+            const rr = r.getBoundingClientRect();
+            if (rr.height > 0) {
+              neighbourRect = rr;
+            }
+          }
+
+          if (neighbourRect) {
+            const left = useTrailingEdge
+              ? neighbourRect.right
+              : neighbourRect.left;
+            blockCursor.style.display = "block";
+            blockCursor.style.left = `${left + window.scrollX}px`;
+            blockCursor.style.top = `${neighbourRect.top + window.scrollY}px`;
+            blockCursor.style.height = `${neighbourRect.height}px`;
+            return;
+          }
+        }
+      } catch (e) {
+        // Fall through to zws / elementRect handling
+      }
+
+      // Empty code-block line \u2014 temporarily insert a zero-width space to
+      // get a measurable rect. Reachable only when the leaf has no
+      // characters around the caret, so PrismJS has nothing to recompute
+      // and the mutation cascade that would loop here doesn't fire.
       try {
         if (
           range.startContainer &&
