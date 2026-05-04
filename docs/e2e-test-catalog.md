@@ -6,17 +6,19 @@ All Playwright E2E tests for Vimtion. Update this file when adding, removing, or
 
 ---
 
-## mode-transitions.spec.ts (7 tests)
+## mode-transitions.spec.ts (9 tests)
 
 | # | Test | Status |
 |---|------|--------|
 | 1 | Normal → Insert (i) | Pass |
 | 2 | Insert → Normal (Escape) | Pass |
 | 3 | Insert → Normal (jk escape sequence) | Pass |
-| 4 | Normal → Visual (v) | Pass |
-| 5 | Visual → Normal (Escape) | Pass |
-| 6 | Normal → Visual Line (V) | Pass |
-| 7 | Visual Line → Normal (Escape) | Pass |
+| 4 | Insert → Normal (jk escape with relaxed 150ms gap) | Pass |
+| 5 | Insert mode: lone `j` commits as text after timeout | Pass |
+| 6 | Normal → Visual (v) | Pass |
+| 7 | Visual → Normal (Escape) | Pass |
+| 8 | Normal → Visual Line (V) | Pass |
+| 9 | Visual Line → Normal (Escape) | Pass |
 
 ## navigation.spec.ts (49 tests, serial)
 
@@ -643,7 +645,7 @@ Block types not already in operators-block-types.spec.ts.
 
 | # | Test | Status | Notes |
 |---|------|--------|-------|
-| 1 | BUG-014: g pending state leaks across V→Esc into normal mode | Fail (expected) | Trailing `g` after V/Esc triggers gg-jump-to-top |
+| 1 | BUG-014: g pending state leaks across V→Esc into normal mode | Pass | Visual reducers' Escape path now clears `pending_operator` before transitioning to normal |
 
 ---
 
