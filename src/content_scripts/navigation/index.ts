@@ -27,6 +27,7 @@ export {
   moveCursorForwardsInCodeBlock,
   openLineBelowInCodeBlock,
   openLineAboveInCodeBlock,
+  deleteCharacterInCodeBlock,
 } from "./code-block";
 
 export {

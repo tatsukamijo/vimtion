@@ -800,4 +800,106 @@ test.describe("Code block navigation", () => {
     // absolute textContent offset.
     expect(afterVisualCol, "BUG-035: visual column preserved across code-block j after f").toBe(2);
   });
+
+  // =========================================================================
+  // BUG-047: `x` (delete-character) in normal mode inside a code block.
+  // Headed Notion: `cut` handler treats the code-block leaf as a unit and
+  // removes the whole block (data loss). Headless: execCommand("cut") fails
+  // silently and the original keydown bubbles through, inserting the literal
+  // 'x' at the caret. The fix replaces execCommand with a Range-based
+  // mutation + dispatched input event for code-block leaves.
+  // Source: src/content_scripts/vim.ts deleteCharacter
+  // See docs/known-bugs.md, BUG-047 entry.
+  // =========================================================================
+
+  test("BUG-047: x at line-end position in code block does not destroy block or insert 'x'", async ({ extensionPage: page }) => {
+    await goToBlock(page, "Plain text line 1"); // reset
+    await goToBlock(page, "Section 8: Code block");
+
+    // Enter the code block. Code block content:
+    //   "function hello() {\n  console.log('world');\n  return true;\n}"
+    // Line 0: "function hello() {" (18 chars; offset 18 is the '\n').
+    await pressKeys(page, "j"); // enter code block
+    await page.waitForTimeout(150);
+    await pressKeys(page, "0"); // normalize to line 0 col 0, desired_column=0
+    await page.waitForTimeout(80);
+
+    // Walk forward 18 characters to land on offset 18 (= the '\n'
+    // separator between line 0 and line 1). This is the position the
+    // BUG-047 throwaway repro identified — `x` here selects '\n' for
+    // execCommand("cut"), which Notion's cut handler in headed treats as
+    // "cut the whole code block" (data loss), and which in headless fails
+    // silently so the original `x` keystroke bubbles through and is
+    // inserted as the literal letter (length 61 → 62).
+    for (let i = 0; i < 18; i++) {
+      await pressKeys(page, "l");
+      await page.waitForTimeout(25);
+    }
+
+    const before = await getCodeBlockInfo(page);
+    const beforeRealLines = realLineCount(before.text);
+    const beforeTotalLength = before.text.length;
+    console.log("BUG-047 before x: lines =", beforeRealLines, "totalLength =", beforeTotalLength, "offset =", before.offset);
+
+    // x at the '\n' position. Correct semantics in vim: `x` should be a
+    // no-op at end of line (or delete the '\n' to join lines, depending on
+    // the implementation choice). Either way, it must NOT delete the whole
+    // block and must NOT insert the literal letter 'x' into the block.
+    await pressKeys(page, "x");
+    await page.waitForTimeout(200);
+
+    const after = await getCodeBlockInfo(page);
+    const afterRealLines = realLineCount(after.text);
+    const afterTotalLength = after.text.length;
+    console.log("BUG-047 after x: lines =", afterRealLines, "totalLength =", afterTotalLength);
+
+    // Restore so subsequent tests get a clean page even if assertions throw.
+    await pressKeys(page, "u");
+    await page.waitForTimeout(300);
+
+    // BUG-047 (headed): block must not be destroyed.
+    expect(afterRealLines, "BUG-047: x must not destroy the code block").toBeGreaterThan(0);
+    expect(after.text, "BUG-047: code block must still contain the function signature").toContain("function hello");
+
+    // BUG-047 (headless): the keystroke must not be inserted as the literal
+    // 'x'. textContent length must not have grown.
+    expect(afterTotalLength, "BUG-047: x must not insert literal 'x' (length must not grow)").toBeLessThanOrEqual(beforeTotalLength);
+  });
+
+  test("BUG-047: x in middle of code-block line deletes exactly one character", async ({ extensionPage: page }) => {
+    await goToBlock(page, "Plain text line 1"); // reset
+    await goToBlock(page, "Section 8: Code block");
+
+    // Enter line 0 ("function hello() {", 18 chars).
+    await pressKeys(page, "j");
+    await page.waitForTimeout(150);
+    await pressKeys(page, "0");
+    await page.waitForTimeout(80);
+
+    // Walk to col 9 — the 'h' of "hello".
+    for (let i = 0; i < 9; i++) {
+      await pressKeys(page, "l");
+      await page.waitForTimeout(25);
+    }
+
+    const before = await getCodeBlockInfo(page);
+    const beforeFirstLine = before.text.split("\n")[0];
+    console.log("BUG-047 mid pre-x:", JSON.stringify(beforeFirstLine), "offset =", before.offset);
+    expect(beforeFirstLine).toBe("function hello() {");
+
+    await pressKeys(page, "x");
+    await page.waitForTimeout(200);
+
+    const after = await getCodeBlockInfo(page);
+    const afterFirstLine = after.text.split("\n")[0];
+    console.log("BUG-047 mid post-x:", JSON.stringify(afterFirstLine));
+
+    // Restore the deleted character before asserting so subsequent tests
+    // get a clean page even if the assertion throws.
+    await pressKeys(page, "u");
+    await page.waitForTimeout(300);
+
+    // x at the 'h' should remove exactly the 'h', leaving "function ello() {".
+    expect(afterFirstLine, "BUG-047: x in middle of code-block line deletes exactly one character").toBe("function ello() {");
+  });
 });
