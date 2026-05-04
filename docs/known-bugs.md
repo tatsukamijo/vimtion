@@ -224,20 +224,22 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 
 ## BUG-040: Post-undo cursor desync after o / O / A insert (broader than code blocks)
 
-- **Status**: **RESOLVED — PARTIAL**: 3 of 4 fingerprints fixed by `c0b111c`. Code-block-specific case (`o` inside code block + `u`) remains: Notion's undo moves DOM cursor to the heading above the code block while vim_info stays in code block — tier-1 broadening doesn't capture this. Test marker preserved at `code-block-nav.spec.ts:362`. Future work: needs code-block-specific reconciliation path.
+- **Status**: **RESOLVED** — 3 of 4 fingerprints fixed by `c0b111c` (2026-05-03), final code-block fingerprint A fixed 2026-05-04 by an undo-scoped tier-0 in `core/line-management.ts:createRefreshLines` plus a non-mutating neighbour-rect measurement in `cursor/block-cursor.ts`.
 - **Detected**: 2026-05-03
 - **Resolved (partial)**: 2026-05-03
+- **Resolved (full)**: 2026-05-04
 - **Source**: Surfaced during BUG-011 fix work (see commit `6614210`); scope broadened during e07b3e5 verification.
 - **Reproduction patterns** (all fingerprint-identical):
-  - Inside a code block: `o` → type → `u`. DOM cursor lands on the heading above; `vim_info.active_line` still points at the code-block leaf. **Still failing strict** (`code-block-nav.spec.ts:362`); marker preserved.
+  - Inside a code block: `o` → type → `u`. DOM cursor lands on the heading above; `vim_info.active_line` still points at the code-block leaf. **Fixed** (2026-05-04, `code-block-nav.spec.ts:354`).
   - On a numbered/regular/nested bullet item: `A` → type → `Esc` → `j` → `u`. `vim_info.active_line` advances; DOM cursor stays one block back. **Fixed** (`insert-open-line.spec.ts:586`).
   - On any insert variant: `o` → `Esc` (immediately, empty new line) → `u`. `vim_info.lines.length` (95) outpaces actual DOM editable count (94) — refreshLines missed the undo-driven leaf removal. **Fixed** (`insert-open-line.spec.ts:702`).
   - On a nested bullet: `O` → `Esc` immediately → `u`. Same fingerprint. **Fixed** (`insert-open-line.spec.ts:731`).
-- **Root cause**: `document.execCommand("undo")` rewinds Notion's DOM mutations (including leaf insertions/restorations), but the previous refreshLines/active_line reconciliation didn't follow undo-driven cursor jumps to pre-existing leaves — `vim_info` kept the post-insert state while DOM rolled back.
-- **Fix**: `c0b111c` broadens tier-1 (selection-leaf) recovery in `core/line-management.ts:createRefreshLines` to catch undo cursor-jumps to pre-existing leaves, and adds a characterData MutationObserver + `selectionchange` listener for the no-mutation cases. Three-tier recovery (selection-leaf / identity / block_id) preserved.
+- **Root cause**: `document.execCommand("undo")` rewinds Notion's DOM mutations (including leaf insertions/restorations), but the previous refreshLines/active_line reconciliation didn't follow undo-driven cursor jumps to pre-existing leaves — `vim_info` kept the post-insert state while DOM rolled back. For the code-block fingerprint A specifically, Notion's undo additionally relocates the DOM cursor up to the heading above the code block, ~200ms after the keypress; the strict cursor-invariant check fires at ~50ms post-keypress, catching the transient mismatch window.
+- **Fix**:
+  - `c0b111c` (2026-05-03): broadens tier-1 (selection-leaf) recovery in `core/line-management.ts:createRefreshLines` to catch undo cursor-jumps to pre-existing leaves; adds a characterData MutationObserver + `selectionchange` listener for the no-mutation cases. Closes 3 of 4 fingerprints.
+  - 2026-05-04: adds a tier-0 code-block anchor in `createRefreshLines`, scoped to the post-undo settle window opened by `undo()` in `vim.ts` via `__vimtionUndoSettleUntil` (500ms). When previousActiveElement was inside a code block AND the post-mutation DOM selection has wandered outside any code block, restore active_line to the code-block leaf and re-anchor the DOM cursor inside it. Scoping to the undo window keeps click-driven navigation OUT of a code block from being fought. Pairs with a non-mutating neighbour-rect cursor measurement in `cursor/block-cursor.ts` that replaces the zws round-trip on interior code-block carets — the zws path used to cascade through Notion's PrismJS tokenizer and form an infinite loop the moment tier-0 forced the caret onto a code-block leaf.
 - **Verified pre-existing**: Reproduced on `0677b34` (parent of A/o `setCursorPastLineEnd` fix `2e5ee72`), so this was NOT a regression from any 2026-05-03 sprint commit.
-- **Remaining work**: The code-block `o` + `u` fingerprint (`code-block-nav.spec.ts:362`) needs separate investigation — Notion's undo for code-block inserts moves DOM cursor to the heading above the code block, an interaction the current selection-leaf recovery doesn't capture. Marker stays until that case is addressed.
-- **Severity**: Was Medium-High — broader than initially scoped; affects A/o/O across most block types after undo. Three of four fingerprints now resolved.
+- **Severity**: Was Medium-High — broader than initially scoped; affects A/o/O across most block types after undo. All four fingerprints now resolved.
 
 ## BUG-041: ``` markdown shortcut → code block conversion leaves cursor desynced
 
@@ -283,6 +285,24 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Reproduction**: After `convertOnSpace` runs the 6-shortcut conversion chain (Rounds 1–6 in the same `scenario-markdown-chaos` test), press `j` rapidly 5 times to walk into the table region below. `vim_info.active_line` lands one block past where the DOM cursor is — the walked-block-class sequence is off by one.
 - **Suspected root cause**: Likely interacts with the same identity/block_id recovery paths that BUG-001 / BUG-040 exercise, but specifically the rapid-j burst that crosses from the post-conversion region into a table block. Tables wrap their contenteditable cells differently from regular blocks; the recovery's wrapper-skip may not match table-cell shape.
 - **Severity**: Low–Medium — rare in practice (requires sequential markdown conversions then immediate rapid j into a table), but indicates a gap in our recovery paths for table-cell DOM shape.
+
+## BUG-047: `x` (delete-character) inside code block is broken — block deletion in headed, letter insertion in headless
+
+- **Detected**: 2026-05-04 (manual report from user during BUG-040 fingerprint A verification)
+- **Status**: **OPEN.** No test marker yet; reproduction was via a throwaway script.
+- **Reproduction (headed/manual)**: Inside a code block in normal mode, position cursor anywhere, press `x`. The **entire code block is deleted** instead of one character.
+- **Reproduction (headless/automated)**: Same flow. The `x` keystroke is **inserted as the literal character 'x'** at the cursor position; the code block grows by one character. (Verified in throwaway repro spec: `"function hello() {"` → `"function hello() {x"`, length 61 → 62.)
+- **Root cause hypothesis**: `deleteCharacter()` in `src/content_scripts/vim.ts:350` uses `document.execCommand("cut")` after selecting one char in the current element's text node. For a code-block leaf:
+  - **Headed (Notion live)**: Notion's own `cut` handler treats the code-block contenteditable as a unit and removes the whole block (same way Cmd+X on a code block does).
+  - **Headless (Playwright)**: `execCommand("cut")` returns false silently (clipboard access denied / event not fully synthesized), the selection is left dangling, and the original `x` keydown bubbles through to Notion's text-input pipeline, which inserts the letter at the caret. Either vim's `preventDefault` doesn't fire, or Notion's `beforeinput` listener bypasses it.
+- **Why both paths break**: `deleteCharacter` was written for plain text leaves, where one-char selection + `cut` produces the right behavior. Code blocks need a code-block-specific path that uses `Range`-and-`Text`-mutation directly (analogous to `openLineBelowInCodeBlock` in `src/content_scripts/navigation/code-block.ts`), bypassing both Notion's clipboard handler and the platform clipboard altogether.
+- **Severity**: **High** in headed (data loss — the user's whole code block is destroyed by a single `x`). High in headless too, but as a different fingerprint. Affects every code-block user.
+- **Affects**: `x` (and likely `X` via `deleteCharacterBefore`, same pattern at `vim.ts:376`). Probably also `dd` / `D` / motion-delete inside code blocks — needs verification.
+- **Fix sketch**: Add a code-block branch in `deleteCharacter` / `deleteCharacterBefore` that:
+  1. Computes the target offset within the code-block textContent.
+  2. Uses `Range` + direct text-node manipulation to remove the character in place.
+  3. Dispatches an `input` event (`bubbles: true, inputType: "deleteContentForward"`) so Notion's renderer / undo stack stays consistent.
+  4. Bypass `execCommand("cut")` — clipboard write is not part of Vim's `x` semantics anyway (`x` puts the char in the unnamed register, not the system clipboard).
 
 ## BUG-046: Cross-spec cumulative flake under `npm test` full-suite run
 
