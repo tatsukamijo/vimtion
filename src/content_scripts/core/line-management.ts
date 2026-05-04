@@ -36,7 +36,7 @@ type EventHandlers = {
  * transiently-stranded H1's. So we keep wrappers in `lines` but skip
  * them at the navigation boundary here.
  */
-const isWrapperLine = (idx: number): boolean => {
+export const isWrapperLine = (idx: number): boolean => {
   const el = window.vim_info.lines[idx]?.element;
   if (!el) return false;
   return window.vim_info.lines.some(

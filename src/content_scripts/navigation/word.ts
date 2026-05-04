@@ -3,6 +3,7 @@
  */
 
 import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import { isWrapperLine } from "../core";
 
 export const jumpToNextWord = () => {
   const { vim_info } = window;
@@ -41,9 +42,30 @@ export const jumpToPreviousWord = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const text = currentElement.textContent || "";
 
-  // Vim semantics in Notion (block = line): b at col 0 is a no-op (no wrap to
-  // previous block). Matches the h no-wrap policy.
-  if (currentCursorPosition === 0) return;
+  // Vim: b at col 0 wraps to the start of the last word on the previous
+  // line (block, in Notion). Mirrors `w`'s wrap-forward at end-of-line —
+  // without this, `b` is asymmetric with `w` and gets stuck at the top
+  // of every block. The earlier "match h's no-wrap policy" comment was
+  // wrong in spirit: `b` is a word motion, not a column motion.
+  if (currentCursorPosition === 0) {
+    // Walk back past wrapper lines (the page-title contenteditable wraps
+    // the H1 leaf and surfaces in lines[] for keystroke reasons; it has
+    // no navigable text).
+    let prevIdx = vim_info.active_line - 1;
+    while (prevIdx >= 0 && isWrapperLine(prevIdx)) prevIdx--;
+    if (prevIdx < 0) return;
+    vim_info.active_line = prevIdx;
+    const prevElement = vim_info.lines[prevIdx].element;
+    const prevText = prevElement.textContent || "";
+    // Find the start of the last word: walk back over trailing non-word
+    // characters, then back over the word itself.
+    let p = prevText.length;
+    while (p > 0 && !/\w/.test(prevText[p - 1])) p--;
+    while (p > 0 && /\w/.test(prevText[p - 1])) p--;
+    setCursorPosition(prevElement, p);
+    vim_info.desired_column = p;
+    return;
+  }
 
   let pos = currentCursorPosition - 1;
 

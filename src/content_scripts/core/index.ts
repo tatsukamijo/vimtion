@@ -11,6 +11,7 @@ export {
 
 export {
   setActiveLine,
+  isWrapperLine,
   createRefreshLines,
   createSetLines,
 } from "./line-management";

@@ -282,15 +282,42 @@ test.describe.serial("Navigation", () => {
     expect((await getCursorPosition(page)).col).toBe(4);
   });
 
-  // BUG-004 fixed (jumpToPreviousWord no-ops at col 0).
-  test("b at column 0 stays at 0", async ({ extensionPage: page }) => {
-    await goToBlock(page, "The quick brown fox");
+  // `b` at col 0 wraps to the start of the last word on the previous
+  // block, mirroring `w`'s wrap-forward at end-of-line. Without the
+  // wrap, `b` is asymmetric with `w` and gets stuck at the top of every
+  // block.
+  test("b at column 0 wraps to previous block's last word", async ({ extensionPage: page }) => {
+    await goToBlock(page, "Plain text line 2");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
 
     await pressKeys(page, "b");
+    await page.waitForTimeout(150);
+
+    // The previous block is "Plain text line 1" — `b` from col 0 of
+    // line 2 should land on the start of "1" (the last word). Assert
+    // active block changed AND we're not at col 0 of the original block.
+    const text = await getActualCursorBlockText(page);
+    expect(text, "b at col 0 should move to the previous block").toContain(
+      "Plain text line 1",
+    );
+  });
+
+  test("b at column 0 of first block stays put", async ({ extensionPage: page }) => {
+    // The first navigable block in the test page (vim_info.lines[0] is the
+    // page title wrapper which b cannot reach via word motion). `b` at
+    // col 0 of the topmost block must be a no-op, not crash or wrap.
+    await pressKeys(page, "g", "g");
+    await page.waitForTimeout(150);
+    const beforeText = await getActualCursorBlockText(page);
+    await pressKeys(page, "0");
+    await page.waitForTimeout(80);
+
+    await pressKeys(page, "b");
     await page.waitForTimeout(100);
 
+    const afterText = await getActualCursorBlockText(page);
+    expect(afterText, "b at top-of-doc must not wrap into a non-existent block").toBe(beforeText);
     expect((await getCursorPosition(page)).col).toBe(0);
   });
 
