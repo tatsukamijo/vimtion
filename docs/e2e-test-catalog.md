@@ -485,7 +485,7 @@ Block types not already in operators-block-types.spec.ts.
 |---|------|-------------|--------|
 | 149-160 | i inserts text on {type} | All 12 types | Pass |
 
-## code-block-nav.spec.ts (21 tests, serial)
+## code-block-nav.spec.ts (23 tests, serial)
 
 ### j/k entering and within code block
 
@@ -567,6 +567,13 @@ Block types not already in operators-block-types.spec.ts.
 |---|------|--------|-------|
 | 20 | BUG-036: h in code block preserves visual column for subsequent j/k | Fail (expected) | h/l set desired_column to absolute textContent offset |
 | 21 | BUG-035: f in code block preserves visual column for subsequent j | Fail (expected) | f/F/t/T set desired_column to absolute textContent offset |
+
+### x in code block (BUG-047)
+
+| # | Test | Status | Notes |
+|---|------|--------|-------|
+| 22 | BUG-047: x at line-end position in code block does not destroy block or insert 'x' | Pass | Range-based delete + dispatched input event bypasses execCommand("cut") |
+| 23 | BUG-047: x in middle of code-block line deletes exactly one character | Pass | Positive case: same code path produces correct one-char delete |
 
 ## undo-redo.spec.ts (17 tests, serial)
 

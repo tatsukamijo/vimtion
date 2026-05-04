@@ -85,6 +85,7 @@ import {
   moveCursorForwardsInCodeBlock,
   openLineBelowInCodeBlock,
   openLineAboveInCodeBlock,
+  deleteCharacterInCodeBlock,
   findScrollableContainer,
   scrollAndMoveCursor,
   createJumpToTop,
@@ -355,6 +356,16 @@ const deleteCharacter = () => {
 
   // Don't delete if at end of line
   if (currentCursorPosition >= text.length) return;
+
+  // Code blocks need a clipboard-free path: execCommand("cut") on a
+  // code-block leaf is intercepted by Notion as "cut the whole block"
+  // (data loss in headed) and silently no-ops in headless so the original
+  // `x` keystroke bubbles through and is inserted as the literal letter.
+  if (isInsideCodeBlock(currentElement)) {
+    deleteCharacterInCodeBlock(currentElement, currentCursorPosition);
+    vim_info.desired_column = currentCursorPosition;
+    return;
+  }
 
   // Select the character at cursor position
   setCursorPosition(currentElement, currentCursorPosition);

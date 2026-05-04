@@ -170,6 +170,62 @@ const insertNewlineInCodeBlock = (element: Element): void => {
   );
 };
 
+// Delete a single character at `offset` inside a Notion code block leaf.
+// Replaces the execCommand("cut") path used for plain text leaves, which
+// breaks inside code blocks two ways:
+//   - headed Notion: the `cut` handler treats the code-block contenteditable
+//     as a unit and removes the whole block (data loss);
+//   - headless: execCommand("cut") fails silently and the original `x`
+//     keydown bubbles through, inserting the literal letter at the caret.
+// Vim's `x` doesn't touch the system clipboard anyway, so building a Range
+// over the target character and calling deleteContents() + dispatching an
+// `input` event is both correct and clipboard-free.
+export const deleteCharacterInCodeBlock = (
+  element: Element,
+  offset: number,
+): boolean => {
+  const text = element.textContent || "";
+  if (offset >= text.length) return false;
+  // Vim: `x` does not cross line boundaries. Inside a code block the
+  // visual line break is a literal "\n" inside textContent, so refuse
+  // to delete it — that would join lines, which is not `x` semantics.
+  if (text[offset] === "\n") return false;
+
+  // Capture the (node, offset) pair for both endpoints by walking the
+  // child-node tree via setCursorPosition. A code-block leaf holds many
+  // syntax-highlighted spans, so setEnd(startContainer, startOffset + 1)
+  // is unsafe at token boundaries — the next character may live in a
+  // sibling text node.
+  setCursorPosition(element, offset);
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return false;
+  const startRange = selection.getRangeAt(0);
+  const startContainer = startRange.startContainer;
+  const startOffset = startRange.startOffset;
+
+  setCursorPosition(element, offset + 1);
+  if (selection.rangeCount === 0) return false;
+  const endRange = selection.getRangeAt(0);
+  const endContainer = endRange.startContainer;
+  const endOffset = endRange.startOffset;
+
+  const range = document.createRange();
+  range.setStart(startContainer, startOffset);
+  range.setEnd(endContainer, endOffset);
+  range.deleteContents();
+
+  element.dispatchEvent(
+    new InputEvent("input", {
+      inputType: "deleteContentForward",
+      bubbles: true,
+    }),
+  );
+
+  // After a delete-forward the cursor stays at the same offset.
+  setCursorPosition(element, offset);
+  return true;
+};
+
 // Open line below in code block (o command)
 export const openLineBelowInCodeBlock = () => {
   const { vim_info } = window;
