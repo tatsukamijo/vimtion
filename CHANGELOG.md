@@ -5,6 +5,16 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.5] - 2026-05-05
+
+### Fixed
+- **Japanese / IME input in non-insert modes**: vim motions (`h`/`j`/`k`/`l`/etc.) and IME-composed text no longer leak into the document while a Japanese (or any) IME is composing. Auto-repeated keys during long-press are also covered by a short cooldown so held-key bursts can't slip past the guard.
+- **`Shift+V` then repeated `j` stalled at "2 lines selected"**: visual-line `j` now extends the selection one line per press instead of being silently reset by `refreshLines`'s leaf-identity recovery on every selection update. `Shift+V`+`k` was already working but is fixed for symmetry.
+- **Visual-line viewport scrolling**: `Shift+V`+`j`/`k` now scrolls the page when the active line falls outside the viewport. Previously the selection extended off-screen with the viewport stuck.
+- **`x` inside a code block**: no longer destroys the entire block (in headed Chrome) or inserts the literal letter `x` (in headless / automated environments). Uses a Range-based delete that bypasses Notion's clipboard handler.
+- **`jk` insert-mode escape no longer typing-speed dependent**: the old "insert `j` then undo on `k`" model required `k` within ~200 ms or the user saw `j` linger as text. The new model suppresses `j` until the next key arrives, so `jk` is recognised at any reasonable typing speed; lone `j` commits as text after the timer.
+- **Code-block undo desync (BUG-040 fingerprint A)**: undoing an insert inside a code block while the heading above is focused no longer leaves `vim_info` and the DOM cursor on different blocks. An undo-scoped tier-0 anchor reels the cursor back into the block.
+
 ## [1.5.4] - 2026-05-03
 
 ### Fixed
