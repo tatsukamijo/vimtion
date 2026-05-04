@@ -21,11 +21,7 @@ import {
   setAvailableLinks,
   setSelectedLinkIndex,
   resetLinkSelection,
-  getLastInsertKey,
-  getLastInsertKeyTime,
   JK_TIMEOUT_MS,
-  setLastInsertKey,
-  setLastInsertKeyTime,
   initVimInfo,
 } from "./state";
 
@@ -3281,11 +3277,7 @@ const yankVisualLineSelection =
 // Create reducers using factories
 const insertReducer = createInsertReducer({
   updateInfoContainer,
-  getLastInsertKey,
-  getLastInsertKeyTime,
   JK_TIMEOUT_MS,
-  setLastInsertKey,
-  setLastInsertKeyTime,
 });
 const linkHintReducer = createLinkHintReducer({ updateInfoContainer });
 

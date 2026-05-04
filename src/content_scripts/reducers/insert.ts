@@ -5,106 +5,89 @@
  * Insert mode delegates most editing to Notion's native editing but implements:
  * - Escape key to exit to normal mode
  * - "jk" sequence to exit to normal mode (Vim-style escape alternative)
+ *
+ * The jk-escape model is "commit-on-second-key": pressing `j` is suppressed
+ * (preventDefault) and a timer is started; if `k` arrives before the timer
+ * fires, we cancel the timer and switch to normal mode without ever
+ * committing the `j` character. Any other key cancels the timer, inserts
+ * the suppressed `j`, then lets the new key proceed normally. This removes
+ * the typing-speed pressure of the previous insert-then-undo-on-k model
+ * (which required `k` within ~200ms or the user saw `j` linger as text).
  */
-
-import { getCursorIndexInElement } from "../cursor";
 
 export interface InsertReducerDeps {
   updateInfoContainer: () => void;
-  getLastInsertKey: () => string | null;
-  getLastInsertKeyTime: () => number;
   JK_TIMEOUT_MS: number;
-  setLastInsertKey: (key: string | null) => void;
-  setLastInsertKeyTime: (time: number) => void;
 }
 
-/**
- * Creates the insert mode reducer function.
- *
- * @param deps - Dependencies for the reducer
- * @returns Reducer function that handles insert mode keyboard events
- */
 export const createInsertReducer = (deps: InsertReducerDeps) => {
-  const {
-    updateInfoContainer,
-    getLastInsertKey,
-    getLastInsertKeyTime,
-    JK_TIMEOUT_MS,
-    setLastInsertKey,
-    setLastInsertKeyTime,
-  } = deps;
+  const { updateInfoContainer, JK_TIMEOUT_MS } = deps;
+
+  // Closure-local pending-j state. When non-null, a suppressed `j`
+  // keystroke is awaiting either a follow-up `k` (→ exit to normal) or
+  // the timer firing (→ commit `j` as a literal character). Any other
+  // key path cancels the timer and commits `j` first.
+  let pendingJTimer: number | null = null;
+
+  // Insert the suppressed `j` at the current caret. Skipped if the user
+  // has already left insert mode (e.g. clicked elsewhere) so the orphan
+  // doesn't land in an unrelated block.
+  const commitPendingJ = (): void => {
+    if (pendingJTimer === null) return;
+    clearTimeout(pendingJTimer);
+    pendingJTimer = null;
+    if (window.vim_info.mode === "insert") {
+      document.execCommand("insertText", false, "j");
+    }
+  };
+
+  // Drop the suppressed `j` without committing — used when `k` arrives
+  // (jk-escape) or Escape is pressed (user is exiting anyway).
+  const cancelPendingJ = (): void => {
+    if (pendingJTimer === null) return;
+    clearTimeout(pendingJTimer);
+    pendingJTimer = null;
+  };
 
   return (e: KeyboardEvent) => {
-    const now = Date.now();
-
     switch (e.key) {
       case "Escape":
         e.preventDefault();
         e.stopPropagation();
+        cancelPendingJ();
         window.vim_info.mode = "normal";
         updateInfoContainer();
-        setLastInsertKey(null);
         break;
       case "j":
-        // Track 'j' press
-        setLastInsertKey("j");
-        setLastInsertKeyTime(now);
+        // If a previous `j` is still pending (user typed `jj`), commit
+        // the first one before suppressing the second.
+        if (pendingJTimer !== null) commitPendingJ();
+        e.preventDefault();
+        e.stopPropagation();
+        pendingJTimer = window.setTimeout(() => {
+          pendingJTimer = null;
+          if (window.vim_info.mode === "insert") {
+            document.execCommand("insertText", false, "j");
+          }
+        }, JK_TIMEOUT_MS);
         break;
       case "k":
-        // Check if 'k' follows 'j' within timeout
-        if (getLastInsertKey() === "j" && now - getLastInsertKeyTime() < JK_TIMEOUT_MS) {
+        if (pendingJTimer !== null) {
+          // jk-escape: cancel the suppressed `j` and exit to normal
+          // without committing either character.
           e.preventDefault();
           e.stopPropagation();
-
-          // Delete the 'j' character that was just typed
-          const currentElement =
-            window.vim_info.lines[window.vim_info.active_line]?.element;
-          if (currentElement) {
-            const selection = window.getSelection();
-            const range = document.createRange();
-
-            // Get current cursor position
-            const cursorPos = getCursorIndexInElement(currentElement);
-
-            // Create a range that selects the 'j' character (one character back)
-            const walker = document.createTreeWalker(
-              currentElement,
-              NodeFilter.SHOW_TEXT,
-              null,
-            );
-
-            let currentNode: Text | null = null;
-            let currentOffset = 0;
-
-            while ((currentNode = walker.nextNode() as Text | null)) {
-              const nodeLength = currentNode.length;
-              const nodeEnd = currentOffset + nodeLength;
-
-              // Check if the position for 'j' (cursorPos - 1) falls within this node
-              if (cursorPos - 1 >= currentOffset && cursorPos - 1 < nodeEnd) {
-                const offsetInNode = cursorPos - 1 - currentOffset;
-                range.setStart(currentNode, offsetInNode);
-                range.setEnd(currentNode, offsetInNode + 1);
-                range.deleteContents();
-                break;
-              }
-
-              currentOffset = nodeEnd;
-            }
-          }
-
-          // Switch to normal mode
+          cancelPendingJ();
           window.vim_info.mode = "normal";
           updateInfoContainer();
-          setLastInsertKey(null);
-        } else {
-          setLastInsertKey("k");
-          setLastInsertKeyTime(now);
         }
+        // Otherwise let `k` insert normally.
         break;
       default:
-        // Reset tracking on any other key
-        setLastInsertKey(null);
+        // Any other key while `j` is pending: commit `j` first so the
+        // sequence shows up in document order, then let the new key
+        // proceed through Notion's normal input pipeline.
+        if (pendingJTimer !== null) commitPendingJ();
         break;
     }
     return;

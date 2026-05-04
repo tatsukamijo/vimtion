@@ -35,26 +35,13 @@ export function resetLinkSelection() {
   selectedLinkIndex = 0;
 }
 
-// Track last key press for jk escape sequence
-export let lastInsertKey: string | null = null;
-export let lastInsertKeyTime = 0;
-export const JK_TIMEOUT_MS = 200; // Time window for jk sequence
-
-export function getLastInsertKey(): string | null {
-  return lastInsertKey;
-}
-
-export function getLastInsertKeyTime(): number {
-  return lastInsertKeyTime;
-}
-
-export function setLastInsertKey(key: string | null) {
-  lastInsertKey = key;
-}
-
-export function setLastInsertKeyTime(time: number) {
-  lastInsertKeyTime = time;
-}
+// Window during which a suppressed `j` waits for a follow-up `k` before
+// being committed as a literal character. The previous insert-then-undo
+// model required 'k' to land within this window to look seamless; the
+// commit-on-second-key model makes the window the *commit delay* for an
+// orphan `j`, which can be more generous without compromising responsive
+// typing of normal text.
+export const JK_TIMEOUT_MS = 250;
 
 // Flag to suppress beforeunload warning
 let suppressBeforeUnloadWarning = false;
