@@ -567,8 +567,8 @@ Block types not already in operators-block-types.spec.ts.
 
 | # | Test | Status | Notes |
 |---|------|--------|-------|
-| 20 | BUG-036: h in code block preserves visual column for subsequent j/k | Fail (expected) | h/l set desired_column to absolute textContent offset |
-| 21 | BUG-035: f in code block preserves visual column for subsequent j | Fail (expected) | f/F/t/T set desired_column to absolute textContent offset |
+| 20 | BUG-036: h in code block preserves visual column for subsequent j/k | Pass | Code-block h/l now write `desired_column` via `codeBlockVisualColumn` |
+| 21 | BUG-035: f in code block preserves visual column for subsequent j | Pass | Code-block f/F/t/T now write `desired_column` via `visualColumn` helper |
 
 ### x in code block (BUG-047)
 

@@ -191,24 +191,22 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 ## BUG-035: `f` / `F` / `t` / `T` in multi-line code block set `desired_column` to absolute textContent offset
 
 - **Detected**: 2026-05-03
+- **Status**: **RESOLVED.** All four character-find functions in `src/content_scripts/navigation/char-find.ts` now compute `desired_column` via a `visualColumn(text, offset)` helper that measures the column from the most recent `\n`, so the value is the per-line column rather than the absolute textContent offset. `code-block-nav.spec.ts:755` (BUG-035) passes.
 - **Source**: Latent bug found by code reading (see `docs/test-overhaul/bug-investigation.md`).
 - **Test**: `code-block-nav.spec.ts` → "BUG-035: f in code block preserves visual column for subsequent j"
-- **Reproduction**: In a multi-line code block, position cursor on a non-first line, press `f{char}` (or `F` / `t` / `T`) to find a character on that line. Then press `j` to move down. The cursor lands at `min(absolute_offset, next_line_length)` instead of the visual column from the search target — typically end-of-line on shorter lines.
-- **Root cause**: `src/content_scripts/navigation/char-find.ts:21-22, :39-40, :58-59, :77-78`. All four character-find functions set `vim_info.desired_column = foundIndex` (or `foundIndex - 1` / `+ 1`) where `foundIndex` is the position from `text.indexOf(char, currentPos)` against the FULL code-block textContent (which includes `\n`). For non-code-blocks this is fine (single-line text), but for code blocks the absolute offset is not a visual column. Subsequent `j` / `k` then misuse this number as the target column on the next line.
-- **Expected**: After `f{c}` lands the cursor at visual column N of a code-block line, `j` moves to visual column min(N, next_line_length).
-- **Actual**: Cursor lands at min(absolute_offset, next_line_length) → typically end-of-line.
-- **Severity**: High — corrupts column-memory after any character-search inside a code block.
+- **Reproduction (pre-fix)**: In a multi-line code block, position cursor on a non-first line, press `f{char}` (or `F` / `t` / `T`) to find a character on that line. Then press `j` to move down. The cursor landed at `min(absolute_offset, next_line_length)` instead of the visual column from the search target — typically end-of-line on shorter lines.
+- **Root cause**: All four character-find functions set `vim_info.desired_column = foundIndex` (or `foundIndex - 1` / `+ 1`) where `foundIndex` is the position from `text.indexOf(char, currentPos)` against the FULL code-block textContent (which includes `\n`). For non-code-blocks this was fine (single-line text), but for code blocks the absolute offset is not a visual column. Subsequent `j` / `k` then misused this number as the target column on the next line.
+- **Severity**: Was High — corrupted column-memory after any character-search inside a code block.
 
 ## BUG-036: `h` / `l` in multi-line code block set `desired_column` to absolute textContent offset
 
 - **Detected**: 2026-05-03
+- **Status**: **RESOLVED.** `moveCursorBackwardsInCodeBlock` and `moveCursorForwardsInCodeBlock` in `src/content_scripts/navigation/code-block.ts` now compute `desired_column` via `codeBlockVisualColumn(text, newPos)`, which measures the column from the start of the current logical line. `code-block-nav.spec.ts:678` (BUG-036) passes.
 - **Source**: Latent bug found by code reading (see `docs/test-overhaul/bug-investigation.md`).
 - **Test**: `code-block-nav.spec.ts` → "BUG-036: h in code block preserves visual column for subsequent j/k"
-- **Reproduction**: In a multi-line code block, position cursor on a non-first line at column N (e.g. `j j l l l l l` → line 2 col 5). Press `h` (or `l`) to move horizontally. Press `j` — cursor lands at end of next line instead of visual column N±1.
-- **Root cause**: `src/content_scripts/navigation/code-block.ts:87` (`moveCursorBackwardsInCodeBlock`) and `:106` (`moveCursorForwardsInCodeBlock`). Both do `vim_info.desired_column = newPos` where `newPos = currentPos ± 1` — an absolute offset within the code-block textContent (containing `\n`). The exit-block `j` / `k` paths and `moveCursorDownInCodeBlock` then use `desired_column` as a per-line column, mis-clamping to `min(absolute_offset, line_length)`.
-- **Expected**: `h` / `l` in a code block update `desired_column` to the visual column on the current line.
-- **Actual**: `desired_column` polluted with absolute offset; vertical motion column-memory broken.
-- **Severity**: High — every `h` / `l` keystroke inside a code block corrupts subsequent `j` / `k` column landing.
+- **Reproduction (pre-fix)**: In a multi-line code block, position cursor on a non-first line at column N (e.g. `j j l l l l l` → line 2 col 5). Press `h` (or `l`) to move horizontally. Press `j` — cursor landed at end of next line instead of visual column N±1.
+- **Root cause**: Both code-block horizontal-move functions did `vim_info.desired_column = newPos` where `newPos = currentPos ± 1` — an absolute offset within the code-block textContent (containing `\n`). The exit-block `j` / `k` paths and `moveCursorDownInCodeBlock` then used `desired_column` as a per-line column, mis-clamping to `min(absolute_offset, line_length)`.
+- **Severity**: Was High — every `h` / `l` keystroke inside a code block corrupted subsequent `j` / `k` column landing.
 
 ## BUG-029: `j` exiting code block bumps `active_line` but leaves DOM cursor inside
 
