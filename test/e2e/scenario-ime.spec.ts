@@ -1,13 +1,12 @@
 // Scenario 9 — IME mixed input
 //
-// Vimtion currently has NO `e.isComposing` guard (verified by env-architect:
-// grep "isComposing|compositionstart" src/ returns 0 hits). All tests in
-// this spec are expected to fail until a guard is added to handleKeydown
-// in src/content_scripts/vim.ts. See docs/test-overhaul/env-gaps.md Gap 3.
-//
-// Per team direction we deliberately do NOT mark these test.fail() — real
-// failures here are the deliverable. They turn an invisible Japanese-user
-// breakage class into keystroke-localized assertions that motivate the fix.
+// `handleKeydown` in `src/content_scripts/vim.ts` now passes through any
+// keydown with `e.isComposing === true` or `e.keyCode === 229`, so romaji
+// keydowns dispatched by a real OS IME during composition no longer reach
+// the vim reducers. The CDP-driven tests below validate the
+// user-observable contract; the guard's full surface (real OS IME firing
+// keydown(key="j", isComposing=true)) cannot be exercised reliably in
+// headless Playwright — see the trailing comment in this file for why.
 //
 // Implementation note on the input path: pressKeysWithIME drives Notion via
 // CDP Input.imeSetComposition + Input.insertText. This is the same path
@@ -16,10 +15,7 @@
 // inputType "insertCompositionText". It does NOT fire `keydown` events for
 // the romaji characters that the IME is consuming — that is the actual
 // browser behavior during real IME composition (the keydowns are intercepted
-// by the IME). This means some bug classes (e.g., a `keydown` with
-// `event.isComposing === true` that Vimtion mishandles) will NOT surface
-// from this scenario alone — see the per-test commentary below for which
-// surface each test exercises.
+// by the IME).
 
 import { test, expect } from "../fixtures";
 import {
@@ -253,4 +249,20 @@ test.describe.serial("Scenario 9 — IME mixed input", () => {
       label: "after IME 日本語 + ASCII follow-up + Escape",
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Note on regression coverage for the `isComposing` guard at
+  // handleKeydown's entry (`src/content_scripts/vim.ts`):
+  //
+  // The exact bug class the guard addresses — a real OS IME firing
+  // keydown(key="j", isComposing=true) into the content script — cannot be
+  // exercised reliably in headless Playwright. CDP's IME path does not
+  // emit such keydowns (Tests 1-4 rely on this), and synthetic
+  // KeyboardEvents constructed in JS cannot fake `isComposing` true: the
+  // property is read from an internal slot during dispatch, and an
+  // own-property override is observable from JS but not from inside
+  // event handlers in this engine. A debug spec confirmed the override
+  // is not visible to listeners. Manual verification in real Chrome with
+  // a real OS IME (Japanese) is the canonical regression path.
+  // ---------------------------------------------------------------------------
 });

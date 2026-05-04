@@ -24,6 +24,7 @@ export const syncVimInfoToDOM = (): void => {
     lines_length: vim_info.lines.length,
     pending_operator: vim_info.pending_operator,
   });
+
 };
 
 /**
