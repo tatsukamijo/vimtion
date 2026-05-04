@@ -643,7 +643,7 @@ Block types not already in operators-block-types.spec.ts.
 
 | # | Test | Status | Notes |
 |---|------|--------|-------|
-| 1 | BUG-014: g pending state leaks across V→Esc into normal mode | Fail (expected) | Trailing `g` after V/Esc triggers gg-jump-to-top |
+| 1 | BUG-014: g pending state leaks across V→Esc into normal mode | Pass | Visual reducers' Escape path now clears `pending_operator` before transitioning to normal |
 
 ---
 

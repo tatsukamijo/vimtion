@@ -180,13 +180,13 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 ## BUG-014: `pending_operator = "g"` leaks across V→Esc into normal mode
 
 - **Detected**: 2026-05-03
+- **Status**: **RESOLVED.** Fix landed earlier (visualLineReducer `case "Escape"` now clears `pending_operator`) and the visualReducer Escape path got the same reset for symmetry. Test `visual-line.spec.ts` → "BUG-014: g pending state leaks across V→Esc into normal mode" passes on `main`.
 - **Source**: Latent bug found by code reading (see `docs/test-overhaul/bug-investigation.md`).
 - **Test**: `visual-line.spec.ts` → "BUG-014: g pending state leaks across V→Esc into normal mode"
-- **Reproduction**: From any block where `active_line > 1`, press `V` (visual-line), `g` (sets `pending_operator = "g"`), `Escape` (returns to normal but does NOT clear `pending_operator`), then `g`. The final `g` is interpreted as the second `g` of `gg` and jumps to the first line.
-- **Root cause**: `src/content_scripts/vim.ts:928-940` (visualLineReducer `case "g"`) sets `pending_operator = "g"` to wait for a second `g`. But `case "Escape"` at `vim.ts:904-921` does not clear `pending_operator` before returning to normal. The same leak likely affects any motion key in visual-line mode that doesn't reset the pending state.
-- **Expected**: Trailing `g` after V/Esc should be ignored (no pending operator from previous mode).
-- **Actual**: Cursor jumps to line 1 (gg-jump-to-top behavior).
-- **Severity**: Medium — surfaces only when user uses `g` in visual-line mode then aborts, but is silently incorrect.
+- **Reproduction (pre-fix)**: From any block where `active_line > 1`, press `V` (visual-line), `g` (sets `pending_operator = "g"`), `Escape` (returns to normal but does NOT clear `pending_operator`), then `g`. The final `g` was interpreted as the second `g` of `gg` and jumped to the first line.
+- **Root cause**: `visualLineReducer` `case "g"` set `pending_operator = "g"` to wait for a second `g`. The `case "Escape"` did not clear `pending_operator` before returning to normal. Same leak affected any motion key in visual-line mode that didn't reset the pending state.
+- **Fix**: `visualLineReducer` `case "Escape"` now sets `pending_operator = null` before transitioning to normal. The same line was added to the visualReducer Escape path so half-typed `g` (toward `gg`) and any operator carried in from normal mode (`d` / `c` / `y`) cannot leak across the visual→normal boundary.
+- **Severity**: Was Medium — surfaced only when user used `g` in visual-line mode then aborted, but was silently incorrect.
 
 ## BUG-035: `f` / `F` / `t` / `T` in multi-line code block set `desired_column` to absolute textContent offset
 
