@@ -519,8 +519,118 @@ const handleClick = (e: MouseEvent) => {
   }, 0);
 };
 
+// Module-level flag tracking whether an IME composition is in progress.
+// Updated by document-level compositionstart / compositionend listeners
+// registered at module init. We maintain this flag instead of relying on
+// `KeyboardEvent.isComposing` because that property is unreliable across
+// browsers and IMEs:
+//   - per spec it is FALSE for the keydown that *starts* a composition
+//     (composition only becomes "active" between compositionstart and
+//     compositionend, and the starting keydown fires *before*
+//     compositionstart);
+//   - on macOS Japanese IME some Chrome versions also surface
+//     intermediate keydowns with isComposing false and the actual key
+//     value (e.g. "j") rather than `keyCode === 229`.
+// Either gap leaks romaji into the vim reducers and the user sees the
+// cursor jump or the mode flip while typing Japanese. A flag set
+// synchronously on `compositionstart` (capture phase, before vim's
+// per-leaf keydown listener fires for the next keystroke) closes both.
+// Module-level flag tracking whether an IME composition is in progress.
+// Updated by document-level compositionstart / compositionend listeners
+// registered at module init. We maintain this flag instead of relying on
+// `KeyboardEvent.isComposing` because that property is unreliable across
+// browsers and IMEs:
+//   - per spec it is FALSE for the keydown that *starts* a composition
+//     (composition only becomes "active" between compositionstart and
+//     compositionend, and the starting keydown fires *before*
+//     compositionstart);
+//   - on macOS Japanese IME some Chrome versions also surface
+//     intermediate keydowns with isComposing false and the actual key
+//     value (e.g. "j") rather than `keyCode === 229`.
+// Either gap leaks romaji into the vim reducers and the user sees the
+// cursor jump or the mode flip while typing Japanese. A flag set
+// synchronously on `compositionstart` (capture phase, before vim's
+// per-leaf keydown listener fires for the next keystroke) closes both.
+let imeComposing = false;
+// Timestamp of the most recent keydown we suppressed because of IME.
+// Auto-repeated keydowns from a held key (h/j/k/l with IME on) arrive at
+// ~30ms intervals; once we abort the OS-level composition the FIRST one
+// triggers, the subsequent auto-repeats arrive WITHOUT keyCode === 229
+// or isComposing flags — they look like plain `j` keydowns and would
+// slip past the IME guard. Holding the suppression for a short window
+// after the last IME signal absorbs the entire repeat burst, while
+// still releasing fast enough that an intentional motion press after
+// the user toggles IME off (a few hundred ms later in practice) goes
+// through normally.
+let lastImeBlockedAt = 0;
+const IME_COOLDOWN_MS = 250;
+
+document.addEventListener(
+  "compositionstart",
+  () => {
+    imeComposing = true;
+  },
+  true,
+);
+document.addEventListener(
+  "compositionend",
+  () => {
+    imeComposing = false;
+  },
+  true,
+);
+
 const handleKeydown = (e: KeyboardEvent) => {
   const { vim_info } = window;
+
+  // Pass through every keydown that originates inside an active IME
+  // composition. `e.isComposing` and `keyCode === 229` are belt-and-
+  // suspenders — they catch the cases where the composition flag has
+  // not yet flipped (the very first keydown that triggers
+  // compositionstart). The flag covers the rest of the composition
+  // window where neither signal is reliable.
+  //
+  // In insert mode we let the event through (return without
+  // preventDefault) so Notion's IME pipeline composes kana normally.
+  // In any other mode we additionally preventDefault AND blur the
+  // active element to physically break the IME's composition target —
+  // preventDefault on keydown alone is too late to stop macOS Japanese
+  // IME from rendering the underlined composition preview into the
+  // contenteditable. We refocus the same element on the next tick so
+  // vim's per-leaf keydown listener keeps receiving subsequent keys.
+  const now = Date.now();
+  const inCooldown = now - lastImeBlockedAt < IME_COOLDOWN_MS;
+  if (imeComposing || e.isComposing || e.keyCode === 229 || inCooldown) {
+    if (vim_info.mode !== "insert") {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      lastImeBlockedAt = now;
+      // Abort any IME composition the OS just started by dropping the
+      // Selection range. With no caret the IME has nowhere to commit
+      // composed text, and the underlined preview is not rendered. We
+      // restore the same range on the next tick so vim's cursor /
+      // active_line stay where they were and Notion's
+      // selectionchange-driven internals don't observe a new caret
+      // position. Avoids blur/refocus, which moved the viewport and
+      // tripped reconcileFromSelection.
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const savedRange = sel.getRangeAt(0).cloneRange();
+        sel.removeAllRanges();
+        setTimeout(() => {
+          // Re-check: only restore if the user has not navigated /
+          // moved away in the intervening tick. Otherwise vim's own
+          // setCursorPosition has already established a new range.
+          const currentSel = window.getSelection();
+          if (currentSel && currentSel.rangeCount === 0) {
+            currentSel.addRange(savedRange);
+          }
+        }, 0);
+      }
+    }
+    return;
+  }
 
   if (vim_info.mode === "normal") {
     // Let normalReducer decide if this key should be handled
