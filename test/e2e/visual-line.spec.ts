@@ -71,4 +71,49 @@ test.describe.serial("Visual-line mode — pending operator state", () => {
     expect(state.activeLine, "BUG-014: active_line must NOT be 1 after V g Esc g").not.toBe(1);
     expect(state.mode, "should be back in normal mode after Escape").toBe("normal");
   });
+
+  // =========================================================================
+  // V + j repeated must extend the selection one line per press, not stall.
+  // =========================================================================
+  // Repro: in visual-line mode, every `j` advances `active_line` by one and
+  // calls `updateVisualLineSelection`, which sets a multi-leaf DOM Range
+  // anchored at the start leaf and focused at the new active leaf. The
+  // resulting `selectionchange` used to fire `reconcileFromSelection`, which
+  // read the selection's anchorNode (still the start leaf) and reset
+  // `active_line` back to it — so each `j` was immediately undone and the
+  // selection was stuck at "start..start+1". `V + k` worked by accident
+  // because there the anchor IS the new active leaf.
+  test("V + j repeated extends selection by one line each press", async ({ extensionPage: page }) => {
+    await goToBlock(page, "Plain text line 1");
+    const startState = await getVimState(page);
+
+    await pressKeys(page, "V");
+    await waitForMode(page, "visual-line");
+    await page.waitForTimeout(50);
+
+    for (let i = 0; i < 4; i++) {
+      await pressKeys(page, "j");
+      await page.waitForTimeout(80);
+    }
+
+    const after = await getVimState(page);
+    console.log(
+      "V+j x4: startActiveLine =",
+      startState.activeLine,
+      "endActiveLine =",
+      after.activeLine,
+    );
+
+    // Four `j` presses must move the active line down by 4. With the
+    // reconcile bug, active_line would stall at startActiveLine + 1.
+    expect(
+      after.activeLine - startState.activeLine,
+      "V+j×4 must advance active_line by 4, not get stuck at +1",
+    ).toBe(4);
+    expect(after.mode).toBe("visual-line");
+
+    // Restore for any followup tests.
+    await page.keyboard.press("Escape");
+    await waitForMode(page, "normal");
+  });
 });

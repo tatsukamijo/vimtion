@@ -1072,6 +1072,7 @@ const visualLineMoveCursorDown = () => {
   }
 
   updateVisualLineSelection();
+  scrollActiveLineIntoView();
   updateInfoContainer();
 };
 
@@ -1144,7 +1145,24 @@ const visualLineMoveCursorUp = () => {
   }
 
   updateVisualLineSelection();
+  scrollActiveLineIntoView();
   updateInfoContainer();
+};
+
+// Scroll the active line into view if it has fallen outside the viewport.
+// Visual-line mode does not call `setActiveLine` (which goes through
+// Notion's click handler and gets free auto-scroll); the selection-only
+// path leaves the viewport behind when the new active leaf is offscreen,
+// so we explicitly nudge it. `block: "nearest"` keeps an already-visible
+// line where it is and only scrolls when needed; `behavior: "instant"`
+// avoids smooth-scroll lag during j/k repeats.
+const scrollActiveLineIntoView = (): void => {
+  const { vim_info } = window;
+  const el = vim_info.lines[vim_info.active_line]?.element as
+    | HTMLElement
+    | undefined;
+  if (!el || typeof el.scrollIntoView !== "function") return;
+  el.scrollIntoView({ block: "nearest", behavior: "instant" as ScrollBehavior });
 };
 
 const visualLineJumpToPreviousParagraph = (): void => {

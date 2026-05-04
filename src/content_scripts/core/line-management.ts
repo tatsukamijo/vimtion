@@ -233,6 +233,22 @@ export const createRefreshLines = (handlers: EventHandlers) => {
 
     let tierOneFired = false;
 
+    // Visual / visual-line mode: skip all selection- and element-identity-
+    // based recovery. The DOM selection in these modes intentionally spans
+    // multiple leaves (anchor on the start leaf, focus on the current
+    // active leaf), so tier-1's "selection-leaf-as-truth" would always
+    // resolve to the start leaf and overwrite the reducer's active_line
+    // every time refreshLines fires — visible as V+j stalling at "2 lines
+    // selected" because each j advance is undone on the next observer
+    // tick. The visual reducers are the source of truth here.
+    if (
+      vim_info.mode === "visual" ||
+      vim_info.mode === "visual-line"
+    ) {
+      updateInfoContainer();
+      return;
+    }
+
     // Tier 0: undo-scoped code-block anchor. Only active inside the post-
     // undo window opened by undo() in vim.ts.
     const undoSettleUntil =
@@ -338,6 +354,20 @@ export const createSetLines = (
     // the status bar, block-cursor overlay, and dataset bridge agree with
     // vim_info.
     const reconcileFromSelection = (): boolean => {
+      // Visual / visual-line mode reducers manage `active_line` explicitly
+      // and intentionally extend the DOM Selection across multiple leaves.
+      // Reconciling from the selection's anchor here would reset
+      // active_line back to the first leaf of the selection on every
+      // selectionchange — observable as V+j stalling at "2 lines selected"
+      // because each j advance is immediately undone (anchor stays on the
+      // start leaf while focus moves down). V+k coincidentally works
+      // because there the anchor is the new active line.
+      if (
+        vim_info.mode === "visual" ||
+        vim_info.mode === "visual-line"
+      ) {
+        return false;
+      }
       const sel = window.getSelection();
       const anchor = sel?.anchorNode ?? null;
       if (!anchor) return false;
