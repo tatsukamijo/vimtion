@@ -5,6 +5,11 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-05-30
+
+### Added
+- **`z` reposition commands**: `zz` centers the current line in the viewport, `zt` scrolls it to the top, and `zb` to the bottom. The first-non-blank variants `z.`, `z<CR>`, and `z-` reposition and then move the cursor to the line's first non-whitespace character. `z` followed by Escape or an unmapped key is a no-op back to normal mode.
+
 ## [1.5.6] - 2026-05-30
 
 ### Fixed
