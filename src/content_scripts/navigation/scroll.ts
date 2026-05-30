@@ -39,6 +39,22 @@ export const findScrollableContainer = (): HTMLElement => {
   return document.documentElement;
 };
 
+// Reposition the viewport so the active line sits at a vertical anchor —
+// implements Vim's `z` reposition family: "center" → zz, "start" → zt,
+// "end" → zb. Uses scrollIntoView (the same mechanism the visual-line
+// auto-nudge relies on) so it walks up to Notion's real scroll container.
+// `behavior: "instant"` matches Vim's immediate reposition with no smooth lag.
+export const scrollActiveLineTo = (
+  block: "center" | "start" | "end",
+): void => {
+  const { vim_info } = window;
+  const el = vim_info.lines[vim_info.active_line]?.element as
+    | HTMLElement
+    | undefined;
+  if (!el || typeof el.scrollIntoView !== "function") return;
+  el.scrollIntoView({ block, behavior: "instant" as ScrollBehavior });
+};
+
 // Scroll by a fraction of the viewport height
 // Cursor position will be automatically updated by scroll event listener
 export const scrollAndMoveCursor = (pageAmount: number) => {

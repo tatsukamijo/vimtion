@@ -7,6 +7,7 @@ export {
   moveCursorForwards,
   jumpToLineStart,
   jumpToLineEnd,
+  jumpToFirstNonBlank,
 } from "./basic";
 
 export {
@@ -33,6 +34,7 @@ export {
 export {
   findScrollableContainer,
   scrollAndMoveCursor,
+  scrollActiveLineTo,
   createJumpToTop,
   createJumpToBottom,
 } from "./scroll";

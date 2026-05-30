@@ -67,6 +67,7 @@ import {
   moveCursorForwards,
   jumpToLineStart,
   jumpToLineEnd,
+  jumpToFirstNonBlank,
   jumpToNextWord,
   jumpToPreviousWord,
   jumpToEndOfWord,
@@ -84,6 +85,7 @@ import {
   deleteCharacterInCodeBlock,
   findScrollableContainer,
   scrollAndMoveCursor,
+  scrollActiveLineTo,
   createJumpToTop,
   createJumpToBottom,
   findCharForward,
@@ -2091,6 +2093,35 @@ const handlePendingOperator = (key: string): boolean => {
       default:
         return true;
     }
+  } else if (operator === "z") {
+    // Handle z reposition commands. The plain forms (zz/zt/zb) only move the
+    // viewport; the dotted/dash/Enter forms additionally drop the cursor onto
+    // the first non-blank character of the line, matching Vim.
+    switch (key) {
+      case "z":
+        scrollActiveLineTo("center");
+        return true;
+      case "t":
+        scrollActiveLineTo("start");
+        return true;
+      case "b":
+        scrollActiveLineTo("end");
+        return true;
+      case ".":
+        scrollActiveLineTo("center");
+        jumpToFirstNonBlank();
+        return true;
+      case "Enter":
+        scrollActiveLineTo("start");
+        jumpToFirstNonBlank();
+        return true;
+      case "-":
+        scrollActiveLineTo("end");
+        jumpToFirstNonBlank();
+        return true;
+      default:
+        return true;
+    }
   } else if (operator === "y") {
     // Handle yank operations
     switch (key) {
@@ -3181,6 +3212,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "g":
       window.vim_info.pending_operator = "g";
+      return true;
+    case "z":
+      // Wait for the second key of a z reposition command (zz/zt/zb/z./z<CR>/z-)
+      window.vim_info.pending_operator = "z";
       return true;
     case "G":
       // Jump to last line

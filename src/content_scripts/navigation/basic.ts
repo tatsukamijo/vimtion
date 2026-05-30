@@ -52,3 +52,17 @@ export const jumpToLineEnd = () => {
   setCursorPosition(currentElement, newPos);
   vim_info.desired_column = newPos;
 };
+
+// Move the cursor to the first non-whitespace character of the active line
+// (Vim's `^`). Used by the cursor-moving `z` reposition variants
+// (z. / z<CR> / z-). Falls back to column 0 when the line is blank.
+export const jumpToFirstNonBlank = () => {
+  const { vim_info } = window;
+  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const text = currentElement.textContent || "";
+  const match = text.match(/\S/);
+  const newPos = match ? (match.index ?? 0) : 0;
+
+  setCursorPosition(currentElement, newPos);
+  vim_info.desired_column = newPos;
+};
