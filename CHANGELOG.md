@@ -5,6 +5,14 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.6] - 2026-05-30
+
+### Fixed
+- **Notion `notion.com` domain migration**: Notion moved its app from `notion.so` to `notion.com` (`app.notion.com`). The content script now also matches `*://*.notion.com/*`, so Vimtion loads on the new domain instead of silently not running. The Vimium-exclusion URL hint in the update notification now points at `notion.com`.
+
+### Changed
+- **Default theme color**: new installs now default to red (`#ff4458`) for the status bar, block cursor, and visual-mode highlight (previously blue `#667eea`). Existing installs are pinned to the old blue on update, and anyone who customized their colors keeps their own choice — so nobody's current colors change.
+
 ## [1.5.5] - 2026-05-05
 
 ### Fixed
