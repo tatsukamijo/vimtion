@@ -76,6 +76,7 @@ export interface VimInfo {
     | "vi"
     | "va"
     | "g"
+    | "z"
     | "f"
     | "F"
     | "t"
