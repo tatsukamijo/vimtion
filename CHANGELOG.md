@@ -5,6 +5,11 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-05-30
+
+### Added
+- **Move blocks in visual-line mode**: in `Shift+V` selection, `Shift+J` moves the selected block(s) down one position and `Shift+K` moves them up, driving Notion's native block-move shortcut. The selection stays active so you can keep nudging, and it stops at the document edges.
+
 ## [1.6.0] - 2026-05-30
 
 ### Added

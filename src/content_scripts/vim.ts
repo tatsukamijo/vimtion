@@ -1125,6 +1125,14 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
     case "y":
       yankVisualLineSelection();
       return true;
+    case "J":
+      // Move the selected block(s) down one position, keeping them selected.
+      moveVisualLineSelection("down");
+      return true;
+    case "K":
+      // Move the selected block(s) up one position, keeping them selected.
+      moveVisualLineSelection("up");
+      return true;
     default:
       return true; // Block other keys in visual-line mode
   }
@@ -1458,6 +1466,78 @@ const changeCodeBlockLines = (firstLine: number, lastLine: number) => {
       element.focus();
       setCursorPosition(element, 0);
     }
+    updateInfoContainer();
+  }, 50);
+};
+
+// Resolve a cached block_id back to its current index after Notion re-renders.
+// Falls back to a clamped index when the block_id is missing or not found.
+const findLineByBlockId = (
+  blockId: string | null,
+  fallback: number,
+): number => {
+  const { vim_info } = window;
+  if (blockId) {
+    const idx = vim_info.lines.findIndex((line) => line.block_id === blockId);
+    if (idx !== -1) return idx;
+  }
+  return Math.max(0, Math.min(fallback, vim_info.lines.length - 1));
+};
+
+// Move the visual-line selection up/down one block by driving Notion's own
+// "move block" shortcut (Cmd/Ctrl+Shift+Arrow), then re-anchoring the selection
+// onto the same blocks at their new positions. The selection stays active so
+// the user can keep nudging with repeated Shift+J / Shift+K (Vim vim-move style).
+const moveVisualLineSelection = (direction: "up" | "down") => {
+  const { vim_info } = window;
+  const startLine = vim_info.visual_start_line;
+  const endLine = vim_info.active_line;
+  const [firstLine, lastLine] =
+    startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
+
+  // Can't move past the document edges.
+  if (direction === "up" && firstLine <= 0) return;
+  if (direction === "down" && lastLine >= vim_info.lines.length - 1) return;
+
+  // Remember the moving blocks so we can re-find them after the re-render.
+  const firstBlockId = vim_info.lines[firstLine].block_id;
+  const lastBlockId = vim_info.lines[lastLine].block_id;
+  const downward = startLine <= endLine; // selection grows downward (active at bottom)
+
+  // Trigger Notion's native block move on the current multi-block selection.
+  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+  const arrowKey = direction === "down" ? "ArrowDown" : "ArrowUp";
+  const moveEvent = new KeyboardEvent("keydown", {
+    key: arrowKey,
+    code: arrowKey,
+    keyCode: direction === "down" ? 40 : 38,
+    which: direction === "down" ? 40 : 38,
+    metaKey: isMac,
+    ctrlKey: !isMac,
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  (document.activeElement ?? document).dispatchEvent(moveEvent);
+
+  // After Notion reorders and re-renders the blocks, re-scan the line cache and
+  // pin the selection back onto the same blocks (now shifted by one slot).
+  const delta = direction === "down" ? 1 : -1;
+  setTimeout(() => {
+    refreshLines();
+    const newFirst = findLineByBlockId(firstBlockId, firstLine + delta);
+    const newLast = findLineByBlockId(lastBlockId, lastLine + delta);
+
+    if (downward) {
+      vim_info.visual_start_line = newFirst;
+      vim_info.active_line = newLast;
+    } else {
+      vim_info.visual_start_line = newLast;
+      vim_info.active_line = newFirst;
+    }
+
+    updateVisualLineSelection();
+    scrollActiveLineIntoView();
     updateInfoContainer();
   }, 50);
 };

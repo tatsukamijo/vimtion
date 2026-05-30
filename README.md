@@ -238,7 +238,7 @@ The following Vim features are not implemented:
 - [ ] **Help page** (`?`): Display Vimium-style help overlay showing all keybindings
 - [ ] **Visual block mode** (`Ctrl+v`): Rectangular/column selection
 - [ ] **Code block CLI mode**: Specify code block language from command
-- [ ] **Line movement**: Alt/Option key for moving lines up/down
+- [x] **Line movement**: `Shift+J` / `Shift+K` in visual-line mode to move selected blocks down/up
 - [ ] **Visual-line performance**: Optimize `Shift+V` for better performance, currently a bit slow
 - [ ] **Table navigation**: Vim-like navigation within Notion tables (similar to page link handling)
 - [ ] **Repeat command** (`.`): Repeat the last command
