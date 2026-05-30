@@ -19,10 +19,10 @@ interface VimtionSettings {
 const DEFAULT_SETTINGS: VimtionSettings = {
   showStatusBar: true,
   statusBarPosition: "bottom-right",
-  statusBarColor: "#667eea",
+  statusBarColor: "#ff4458",
   cursorBlink: true,
-  cursorColor: "#667eea",
-  visualHighlightColor: "#667eea",
+  cursorColor: "#ff4458",
+  visualHighlightColor: "#ff4458",
   showUpdateNotifications: true,
   linkHintsEnabled: true,
   hintCharacters: "asdfghjklqwertyuiopzxcvbnm",

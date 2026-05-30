@@ -19,5 +19,23 @@ chrome.runtime.onInstalled.addListener((details) => {
       vimtion_version: newVersion,
       vimtion_previous_version: oldVersion,
     });
+
+    // The default theme colors changed from blue (#667eea) to red (#ff4458).
+    // Pin existing installs to the old blue default so only fresh installs get
+    // the new color. Only fills in colors the user never explicitly set, so
+    // anyone who already customized keeps their own choice.
+    const LEGACY_DEFAULT_COLOR = "#667eea";
+    const colorKeys = ["statusBarColor", "cursorColor", "visualHighlightColor"];
+    chrome.storage.sync.get(colorKeys, (stored) => {
+      const patch: Record<string, string> = {};
+      colorKeys.forEach((key) => {
+        if (stored[key] === undefined) {
+          patch[key] = LEGACY_DEFAULT_COLOR;
+        }
+      });
+      if (Object.keys(patch).length > 0) {
+        chrome.storage.sync.set(patch);
+      }
+    });
   }
 });
