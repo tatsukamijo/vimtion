@@ -141,7 +141,7 @@ function showVimiumWarning() {
   overlay?.addEventListener("click", dismissWithOverlay);
 
   copyBtn?.addEventListener("click", async () => {
-    const url = "https://www.notion.so/*";
+    const url = "https://www.notion.com/*";
     try {
       await navigator.clipboard.writeText(url);
       // Show visual feedback
@@ -179,7 +179,7 @@ function createVimiumWarningElement(): HTMLElement {
         <strong>Excluded URLs and keys</strong> in Vimium settings to avoid key binding conflicts:
       </div>
       <div class="vimtion-notification-url-container">
-        <code class="vimtion-notification-url">https://www.notion.so/*</code>
+        <code class="vimtion-notification-url">https://www.notion.com/*</code>
         <button class="vimtion-notification-copy" aria-label="Copy URL" title="Copy to clipboard">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>

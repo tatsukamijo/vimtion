@@ -17,7 +17,7 @@
   "options_page": "options/options.html",
   "content_scripts": [
     {
-      "matches": ["*://*.notion.so/*"],
+      "matches": ["*://*.notion.so/*", "*://*.notion.com/*"],
       "js": [
         "content_scripts/vim.js",
         "content_scripts/update-notification.js"
