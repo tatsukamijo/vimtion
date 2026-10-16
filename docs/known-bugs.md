@@ -308,3 +308,197 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Suspected root cause**: The `selectionchange` listener and `characterData`-watching MutationObserver added in `c0b111c` likely accumulate state or fire mid-teardown across spec boundaries, contaminating the next spec's setup. Specifically: `selectionchange` listeners attached across page navigations may not be detached cleanly when Playwright reuses contexts, and the broadened observer fires on mid-teardown text mutations that wouldn't happen in a real session.
 - **Severity**: Low — only triggers under cumulative cross-spec state in CI-like full-suite runs. Real users with single-page sessions are not affected. Net trade was +23 reliable passes for these 2 intermittents (PR #12).
 - **Possible fix directions**: Detach `selectionchange` on page unload; rate-limit or debounce `reconcileFromSelection`; narrow the `characterData` observer to specific subtree roots; or re-architect the reconciliation so it doesn't need either listener.
+
+---
+
+# Live-driver sweep — 2026-10-15
+
+Found with `tools/notion-driver` (`vt`) against real Notion (now served from `app.notion.com` with a rewritten, atomic-CSS DOM). Six agents each covered one command family on fresh fixture pages and diffed the results against `nvim -u NONE`. Each finding was then re-run from scratch in a **headed** browser by a separate verifier that tried to refute it: 67 of 68 survived. Duplicates are merged below and grouped by likely root cause.
+
+Repro notation: `fixture` lines use the `vt fixture` spec (see `tools/notion-driver/README.md`). Line numbers are driver lines: L1 = page title, content starts at L2. Keys are Vim notation, sent with the 30ms default gap unless noted.
+
+## BUG-048: Line/block deletion (`dd`, `Vd`, `Vjd`, `2dd`) deletes nothing on current Notion
+
+- **Detected**: 2026-10-15 (live driver, headed + headless)
+- **Repro**: fixture `alpha one / bravo two / charlie three`; `jjj` (on `bravo two`) then `dd`, or `Vjd`. Nothing is deleted. The mode reads `insert` for about 800ms, then returns to normal. Reproduced on heading, paragraph, todo, quote, callout, toggle, last line, and a top-level bullet with children.
+- **Root cause**: `deleteMultipleLinesAtomically` (`core/dom-utils.ts`) selects blocks with a synthetic `mousedown`/`mousemove`/`mouseup` drag, then dispatches a synthetic `Backspace`. Current Notion does not react to the synthetic drag (no `[data-block-selected]`), and the per-block keyboard fallback also fails.
+- **Severity**: **Critical**. Every line-wise delete is broken. Visual-line delete and the stashed WIP fix `WIP: visual-line delete cursor sync` both sit on top of this.
+
+## BUG-049: `dd` on a nested bullet child deletes the whole parent subtree
+
+- **Repro**: fixture `top / - parent /   - child a /   - child b / tail`; cursor on `child a` → `dd`. Result: `top / tail`. Parent and both children are deleted, and a reload confirms it. `u` restores the blocks but leaves the cursor on `tail`.
+- **Root cause**: Same synthetic drag as BUG-048. On a nested block it selects the top-level ancestor.
+- **Severity**: **High**. Data loss.
+
+## BUG-050: Cursor jumps to the page title after yank / visual-delete / `dw` on an empty line
+
+- **Repro**:
+  - `yy`: fixture `alpha one / beta two / gamma three`; on `gamma three`, `yy` → `--series` shows `@0ms dom=L0`, then `@100ms vim=L1` (the title). `yyp` pastes under the title.
+  - Visual: `wved`, `wviwd`, `Vy`, `vlly`. The cursor ends on L1 (or the caret is detached). The next `x` deletes from the title (`vt fixture` → `t fixture`), and `Vy` then `p` pastes **into** the title.
+  - `dw` on an empty line removes the line correctly, but the cursor goes to the title.
+- **Root cause**: `createYankCurrentLine` (`operators/motion-yank.ts`), `createDeleteVisualSelection` / `createYankVisualSelection` / `createYankVisualLineSelection` (`visual/helpers.ts`), and `createDeleteToNextWord` on an empty line all end with `getSelection().removeAllRanges()` and never restore the caret. Selection reconciliation then resolves the active line to the title. `Vy` also leaves `yank_type` null, so the paste is character-wise.
+- **Severity**: **High**. The very next edit silently modifies the page title.
+
+## BUG-051: Normal-mode caret ends up past the last character (no Vim "step back")
+
+One root idea (normal-mode column must be clamped to `len-1`) behind several triggers:
+- **Esc / `jk` from insert** never moves the caret one left: `AZ<Esc>` leaves col = len, and `x` then does nothing. `wiXY<Esc>` should end on `Y`. This hits almost every edit (`reducers/insert.ts`).
+- **`x` at end of line**: `$xxx` deletes only once. The caret stays at the old len and later `x` presses are no-ops.
+- **`p`** leaves the caret one past the pasted text (`ywp` → col 12, nvim 11; `y$p` at EOL → caret past end). `P` is correct.
+- **`j`/`k` onto a shorter line** (and `}` at end of document, and `j` in code blocks) clamp to `len` instead of `len-1` (`setActiveLine`: `Math.min(desired_column, lineLength)`).
+- **`W`** on the last WORD (never wraps to the next line) and **`w`** on the last word of the document stop at `len`.
+- **Deletions at end of line** (`D`, `d$`) set the caret to `pos` instead of `pos-1`.
+- **Severity**: **Medium–High**. The block cursor renders after the text, and the next keystroke is silently lost.
+
+## BUG-052: `$` is not sticky for later `j`/`k`
+
+- **Repro**: fixture `short / a much longer line here`; on `short`, `$j` lands at col 4 (nvim: end of line, col 22). Going the other way, `$jj` keeps a numeric column instead of "end of line".
+- **Root cause**: `jumpToLineEnd` (`navigation/basic.ts`) stores a numeric `desired_column` with no end-of-line marker.
+- **Severity**: Low.
+
+## BUG-053: `desired_column` is stale after leaving insert mode
+
+- **Repro**: `iabcdef<Esc>j` lands at C0 (nvim: col 5). After `A<CR>two<Esc>k`, `k` lands past the end of the previous line.
+- **Root cause**: The insert-mode Escape handler does not sync `desired_column` from the DOM selection.
+- **Severity**: Medium.
+
+## BUG-054: Code-block operators act on the whole block, not the current code line (data loss, not undoable)
+
+- **Repro**: fixture `top / ```python / x = 1 / y = 2 / z = 3 / ``` / end`.
+  - `cc` on `y = 2` empties the **entire** code block.
+  - `D` / `C` / `d$` / `c$` truncate everything after the cursor across all code lines. `d0` deletes from the block start, and `y$` yanks to the block end.
+  - `u` cannot restore any of it: the edit is DOM-only (`textContent = …`) and reverts on reload if nothing else was typed.
+- **Root cause**: `createChangeCurrentLine` (`operators/motion-change.ts`) and `createDeleteToEndOfLine` (`operators/motion-delete.ts`) write `element.textContent` directly. They have no code-block line scoping and dispatch no input event. This is the BUG-047 follow-up, still open.
+- **Severity**: **High**. Data loss.
+
+## BUG-055: Code-block motions and inserts use the whole block instead of the current code line
+
+- `0` → block offset 0; `$` → the trailing `⏎` after the last line; `f(`/`F`/`t`/`T` search across code lines (`navigation/basic.ts`, `navigation/char-find.ts`).
+- `I` on the 2nd code line inserts at the start of the 1st (`insertAtLineStart`).
+- `h`/`l` cross code-line boundaries and stop on the newline position (`code-block.ts` `moveCursor{Forwards,Backwards}InCodeBlock`).
+- `X` changes only the DOM and drops syntax highlighting; the change reverts on reload (`deleteCharacterBefore` sets `textContent`; BUG-047 follow-up).
+- `yy` in a code block copies the whole block and moves the caret to col 0. `p` then pastes nothing and leaves the block.
+- `O` in a code block inserts the newline but leaves the caret on the original line (related to BUG-011).
+- **Severity**: Medium (X / yy+p: High).
+
+## BUG-056: `A` + `Enter` in a code block splits the block *above* and types there
+
+- **Repro**: fixture `para above / ```python / x = 1 / y = 2 / ``` / after code`; on `x = 1`: `A<CR>`, then type `z = 3` → `z = 3para above`. The code block is unchanged.
+- **Root cause**: `setCursorPastLineEnd` (`vim.ts`) uses the full `textContent.length` of the code leaf, including Notion's trailing `\n` placeholder, so the caret leaves the block.
+- **Severity**: **High**.
+
+## BUG-057: `k` out of the first code line jumps *below* the code block; `j` out loses the column
+
+- **Repro**: fixture `line above / ```python / a = 1 / b = 2 / ``` / line B after / line C after`; on code line 1, col 4, press `k` → the cursor ends on `line B after` col 0 (4 of 5 trials). For `j` out of the block, the column resets to 0 in 30–60% of trials.
+- **Root cause**: When the caret leaves a code block, Notion asynchronously moves the selection to the start of the block after it, about one macrotask after `setActiveLine`, and reconciliation follows it.
+- **Severity**: **High**.
+
+## BUG-058: `j` on the last line of a code block at the end of the page wraps to the block's first line
+
+- **Repro**: fixture `first para / ```python / def f(): /  /     return 1 / ``` ` → on the last code line, `j` jumps to `def f():`. A held `j` cycles, and `G` lands on the first code line.
+- **Root cause**: `moveCursorDownInCodeBlock` → `setActiveLine(active_line+1)` clamps back to the same block and enters it from the top.
+- **Severity**: Medium.
+
+## BUG-059: `x` at column 0 loses the cursor
+
+- **Repro**: fixture `alpha beta gamma delta / second line`; on L2, `xxx` → only the first `x` deletes. After that, `w` jumps to the next line, `h` jumps to the end of the line, and `l` is a no-op. Same on heading, bullet and todo.
+- **Root cause**: After `execCommand('cut')` the selection is anchored on the leaf element (`DIV`, offset 0), not on a text node. `getCursorIndexInElement` (`cursor/position.ts`) only resolves text-node anchors.
+- **Severity**: **High**. The most basic edit is broken.
+
+## BUG-060: `x` / `s` / `dw` / `cw` at a formatted-span or syntax-token boundary type the letter instead of deleting
+
+- **Repro**: make `beta` bold in `alpha beta gamma delta` (`jwviw<D-b><Esc>`); `0w` then `x` → `alpha x**beta**…` (a literal `x` is inserted). `s` inserts `s` and stays in normal mode. `dw`/`cw` at the boundary throw `IndexSizeError`. The same happens on code-block syntax tokens.
+- **Root cause**: `deleteCharacter` / `substituteCharacter` (`vim.ts`) do `r.setEnd(r.startContainer, r.startOffset + 1)`. When the caret sits at the end of the previous text node, that offset is out of range.
+- **Severity**: **High**. Breaks on any page with formatting or code.
+
+## BUG-061: Visual `v` + operator with no motion deletes/yanks the whole block
+
+- **Repro**: fixture `hello world foo bar / second line here`; on L2, `wvd` → the whole block is deleted and the cursor goes to the title (nvim: `hello orld foo bar`). `wvx` does the same, and `wvy` yanks the whole line.
+- **Same mechanism**: `v` after `j` onto a shorter line. Visual motions use the stale `desired_column` instead of the real caret, so the selection collapses, and `vhd` then deletes the whole `abc def` block.
+- **Root cause**: `createStartVisualMode` (`visual/helpers.ts`) never calls `updateVisualSelection()`. `execCommand('cut')` on a collapsed selection cuts the whole block.
+- **Severity**: **High**. Data loss.
+
+## BUG-062: Visual `v` inside a code block operates on the paragraph *above* the block
+
+- **Repro**: fixture `para QQQ above / ```python / alpha = 1 / beta = two / gamma / ``` / after code`; on `beta = two`, `vlld` → `para QQQ above` is deleted and the code block is untouched. `v$y` yanks `para QQQ above`. A bold span inside a `v` selection sometimes yanks the whole line the same way.
+- **Root cause**: `setRangeInElement` (`visual/helpers.ts`) recurses into the element that contains the start and returns without setting the end.
+- **Severity**: **High**. Data loss.
+
+## BUG-063: Visual-line yank in a code block leaves the line selected; the next insert overwrites it
+
+- **Repro**: same fixture as BUG-062; on `beta = two`, `VyiZ<Esc>` → `alpha = 1\nZ\ngamma`.
+- **Root cause**: `removeAllRanges()` after `Vy` does not stick for the code-block range.
+- **Severity**: **High**.
+
+## BUG-064: Visual-mode gaps
+
+- `c` in character-visual does nothing, and typed text then runs as visual motions (MISSING-005, but the README documents `c`).
+- `j`/`k`, `o`, `p` and counts are swallowed in `v`, and with no other motion `vjy` yanks the whole line.
+- `Vgg` / `Vkkk` reach line 0, the page wrapper: the whole page turns pink and `y` yanks the title.
+- Fast `VjJ<Esc>` (Shift+J move, then Esc right away) leaves vim on the moved block and the DOM caret on the old line (the 50ms re-anchor `setTimeout` races Esc).
+- Fast `Vc` + type + `<Esc>`: about 500ms after Esc, the mode flips back to INSERT with the caret at col 0 (the trailing `setTimeout` in `changeVisualLineSelection` unconditionally sets insert).
+- **Severity**: Medium.
+
+## BUG-065: Paste behaviour
+
+- `yy` then `P` pastes **inline** at col 0 instead of opening a line above (`pasteBeforeCursor` checks `endsWith('\n')`; `pasteAfterCursor` uses `yank_type`).
+- `yank_type` stays `'line'` after a later charwise yank, so `yy … yw p` opens a new line.
+- Linewise `p` on a bullet with children pastes after the subtree but puts the cursor on the first child (`setActiveLine(active_line+1)` is hard-coded).
+- `yy`/`p` drops the block type: heading, todo and bullet paste as plain text.
+- `yy` on an empty line, then `p`, pastes nothing.
+- **Severity**: Medium (P inline: High).
+
+## BUG-066: `O` on a callout types into the callout; `O` on the page title renames the page
+
+- **Repro**: fixture `alpha / ! callout here / omega`; on the callout, `ONEW<Esc>` → `NEWcallout here`. On a fresh fixture with the cursor on the title, `ONEW<Esc>` → the title becomes `NEW` and the old title moves into a paragraph.
+- **Root cause**: `openLineAbove` (Enter at pos 0, then ArrowUp) does not leave a callout's inner editable and has no title guard.
+- **Severity**: Medium.
+
+## BUG-067: Word motions and `cw` deviate from Vim
+
+- `w`/`b`/`e` treat punctuation as whitespace: `foo.bar` is one word. `dw` on `foo.bar baz` deletes `foo.bar ` (nvim deletes `foo`), and `w` in code skips `=` (`navigation/word.ts` uses only `\w` / non-`\w`).
+- `cw` behaves like `dw` and eats the trailing space (`cwX` on `one two` → `Xtwo`; nvim: `X two`).
+- `e`/`E` at end of line do not wrap to the next line, and `B` at col 0 does not wrap back (`b` does).
+- **Severity**: Low–Medium.
+
+## BUG-068: Text-object edge cases
+
+- With the cursor on an inner closing bracket, the outer pair is used: `call(foo(bar), baz)` with the cursor on the first `)`, then `di(` → `call() end` (nvim: `call(foo(), baz) end`). Same for `[]` and `{}` (`text-objects/bracket.ts` counts the bracket under the cursor as depth+1).
+- `da"` / `ca'` leave a double space (trailing whitespace is not consumed).
+- `ci(` / `ci"` on a line with no pair still enters insert mode, so the user's next keys are typed into the line (nvim aborts).
+- **Severity**: Medium (`ci(` no-pair: High in practice, because it types text).
+
+## BUG-069: Missing commands silently swallowed — `S`, `Y`, and README-advertised `de`/`db`/`ce`/`cb`/`ye`/`yb`/`dW`/`dB`/`dE`
+
+- README "Operators with Motions" claims they are supported, but the pending-operator switch has no `e`/`b`/`W`/`B`/`E` cases. See MISSING-002/003/004/006. `S` and `Y` are not listed in missing-features.
+- **Severity**: Medium (documentation mismatch).
+
+## BUG-070: `j`/`k` in a Notion table move only every other press
+
+- **Repro**: shared test page, Section 20 table: `kkkkkk` (150ms or 500ms gap) moves 3 cells. A trace shows the reducer moving 91→90, then `reconcileFromSelection` moving it back 90→91.
+- **Related**: BUG-045. **Severity**: **High** for table users.
+
+## BUG-071: Fast key repeat drops `j`/`k` presses (BUG-001 still open)
+
+- **Repro**: 40-paragraph fixture, `vt hold j 30 --interval 16` → L20–21 instead of L31. Results by repeat interval: 25ms → L28, 33ms → L31 (correct). A burst of 5 `j` with zero gap moves 4.
+- **Root cause**: An async `selectionchange` reports the previous leaf after the next `j` has already moved, and `reconcileFromSelection` reverts it.
+- **Severity**: Medium (held-key users).
+
+## BUG-072: `Ctrl-u` does not move the cursor; `Ctrl-d` moves only to the first visible line and resets the column
+
+- **Repro**: 40-paragraph fixture, at L6 col 5, `<C-d>` → L11 col 0 (nvim: +half a window, column kept). `<C-u>` scrolls but the cursor stays at L11.
+- **Root cause**: `navigation/scroll.ts` only scrolls. The cursor moves only through the debounced scroll listener, and only when it goes off-screen.
+- **Severity**: Medium.
+
+## BUG-073: Insert-mode and undo granularity details
+
+- `aTaj<Esc>` drops the trailing `j` (the Escape path calls `cancelPendingJ()` instead of committing it).
+- A change op (`C`, `ciw`), a pause, then typing takes two `u` to undo; `o` + type also takes two `u`.
+- Machine-speed `oxyz<Esc>` (0–5ms gaps) puts the first character into the original line: the synthetic Enter is dispatched in `setTimeout(0)`.
+- **Severity**: Low.
+
+## Harness / environment notes from the sweep
+
+- The "Using Vimium?" warning tells users to exclude `https://www.notion.com/*`, but pages are now on `app.notion.com`.
+- `test/helpers.ts` `navigateToTestPage` short-circuits on `url.includes("notion.so")`, which no longer matches.
+- `npm run build` silently produced no `dist/` until `.parcel-cache` was deleted.
