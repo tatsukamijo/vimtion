@@ -54,7 +54,8 @@ Fixture spec, one block per line: `#`/`##`/`###` headings, `- ` bullet,
 `1. ` numbered, `[ ] `/`[x] ` todo, `> ` quote, `>> ` toggle, `! ` callout,
 `---` divider, a ```` ```lang ```` … ```` ``` ```` code block (Notion API language
 names: `javascript`, `python`, `plain text`, …), an empty line for an empty
-paragraph, anything else for a paragraph. Indent 2 spaces to nest. The last 5
+paragraph, anything else for a paragraph. Inline `**bold**`, `*italic*` and
+`` `code` `` are supported outside code blocks. Indent 2 spaces to nest. The last 5
 fixtures per port are kept; older ones are archived.
 
 ## Reading a snapshot

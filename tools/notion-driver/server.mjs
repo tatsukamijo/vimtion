@@ -252,7 +252,23 @@ async function waitUntilSettled(timeoutMs = 5000) {
  * Indent by 2 spaces per level to nest under the previous list/todo/toggle item.
  */
 function parseFixture(spec) {
-  const rt = (t) => (t ? [{ type: "text", text: { content: t } }] : []);
+  // Inline formatting: **bold**, *italic*, `code` (not inside code blocks).
+  const rt = (t, plain = false) => {
+    if (!t) return [];
+    if (plain) return [{ type: "text", text: { content: t } }];
+    const out = [];
+    const re = /\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(t))) {
+      if (m.index > last) out.push({ type: "text", text: { content: t.slice(last, m.index) } });
+      const annotations = m[1] ? { bold: true } : m[2] ? { italic: true } : { code: true };
+      out.push({ type: "text", text: { content: m[1] || m[2] || m[3] }, annotations });
+      last = m.index + m[0].length;
+    }
+    if (last < t.length) out.push({ type: "text", text: { content: t.slice(last) } });
+    return out;
+  };
   const root = [];
   const stack = [{ indent: -1, children: root }];
   const rawLines = spec.replace(/\r/g, "").split("\n");
@@ -270,7 +286,7 @@ function parseFixture(spec) {
       const lang = line.slice(3).trim() || "plain text";
       const body = [];
       while (++i < rawLines.length && rawLines[i].trim() !== "```") body.push(rawLines[i]);
-      block = { type: "code", code: { rich_text: rt(body.join("\n")), language: lang } };
+      block = { type: "code", code: { rich_text: rt(body.join("\n"), true), language: lang } };
     } else if (line === "---") block = { type: "divider", divider: {} };
     else if ((m = line.match(/^(#{1,3}) (.*)$/))) {
       const t = `heading_${m[1].length}`;
