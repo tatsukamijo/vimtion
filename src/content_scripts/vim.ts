@@ -172,6 +172,7 @@ import {
   isWrapperLine,
   createRefreshLines,
   createSetLines,
+  isDocumentEditable,
 } from "./core";
 import {
   isBusy,
@@ -737,8 +738,10 @@ let popupReturn: {
   mode: Window["vim_info"]["mode"];
 } | null = null;
 
-const isPageEditable = (el: Element | null): boolean =>
-  !!el && !!el.closest('[contenteditable="true"]') && !el.closest('[role="dialog"]');
+const isPageEditable = (el: Element | null): boolean => {
+  const editable = el?.closest('[contenteditable="true"]');
+  return !!editable && isDocumentEditable(editable);
+};
 
 // Last collapsed caret inside the page. Saved at focusin time it would be too
 // late: Cmd+/ first block-selects the line (moving the selection), then
@@ -762,14 +765,23 @@ document.addEventListener(
     const isPopupInput =
       target.tagName === "INPUT" ||
       target.tagName === "TEXTAREA" ||
+      // Comment box, rename / cell editors: editables that are not lines.
+      (target as HTMLElement).isContentEditable ||
       !!target.closest('[role="dialog"], [role="menu"], [role="listbox"]');
     if (!isPopupInput || popupReturn) return;
     const { vim_info } = window;
-    const line = vim_info.lines[vim_info.active_line];
+    // Where the caret last was in the page: opening some popups (a comment)
+    // moves Vimtion's line before focus arrives here.
+    const caretLine =
+      lastPageCaret && lastPageCaret.element.isConnected
+        ? vim_info.lines.findIndex((l) => l.element === lastPageCaret?.element)
+        : -1;
+    const lineIndex = caretLine !== -1 ? caretLine : vim_info.active_line;
+    const line = vim_info.lines[lineIndex];
     if (!line) return;
     popupReturn = {
       blockId: line.block_id,
-      line: vim_info.active_line,
+      line: lineIndex,
       pos:
         lastPageCaret && lastPageCaret.element === line.element
           ? lastPageCaret.pos
@@ -790,7 +802,13 @@ document.addEventListener(
     setTimeout(() => {
       const active = document.activeElement;
       // Popup still open (e.g. Enter opened a submenu): keep waiting.
-      if (active && !isPageEditable(active) && active.tagName === "INPUT") return;
+      if (
+        active &&
+        !isPageEditable(active) &&
+        (active.tagName === "INPUT" || (active as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
       popupReturn = null;
       const { vim_info } = window;
       refreshLines();

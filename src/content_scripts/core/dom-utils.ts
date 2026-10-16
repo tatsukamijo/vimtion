@@ -16,6 +16,34 @@ export const clearAllBackgroundColors = (): void => {
   });
 };
 
+/**
+ * True for an editable that belongs to the page being edited. Notion also
+ * renders contenteditables in popovers (sidebar Rename, database cell editor),
+ * comment boxes and the sidebar; treating those as lines turned what the user
+ * typed there into Vim commands (k + dd deleted a page block while renaming).
+ */
+export const isDocumentEditable = (el: Element): boolean => {
+  if (
+    el.closest(
+      '[role="dialog"], .notion-overlay-container, .notion-sidebar-container, .notion-sidebar, .notion-topbar, nav, aside',
+    )
+  ) {
+    return false;
+  }
+  // Comment / discussion inputs inside the page.
+  if (el.closest('[class*="discussion"]')) return false;
+  const frame = document.querySelector(".notion-frame");
+  return !frame || frame.contains(el);
+};
+
+/** The page's editable lines, in DOM order (see isDocumentEditable). */
+export const documentEditables = (): HTMLDivElement[] =>
+  (
+    Array.from(
+      document.querySelectorAll("[contenteditable=true]"),
+    ) as HTMLDivElement[]
+  ).filter(isDocumentEditable);
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Focus a leaf and put a collapsed caret at its start. */

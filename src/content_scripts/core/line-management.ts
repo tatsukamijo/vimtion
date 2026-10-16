@@ -4,6 +4,7 @@
  */
 
 import { isInsideCodeBlock } from "../notion";
+import { documentEditables, isDocumentEditable } from "./dom-utils";
 import {
   setCursorPosition,
   getCursorIndexInElement,
@@ -164,9 +165,7 @@ export const setActiveLine = (idx: number): void => {
 export const createRefreshLines = (handlers: EventHandlers) => {
   return (): void => {
     const { vim_info } = window;
-    const allEditableElements = Array.from(
-      document.querySelectorAll("[contenteditable=true]"),
-    ) as HTMLDivElement[];
+    const allEditableElements = documentEditables();
 
     // Snapshot the active line's identity BEFORE rebuilding the lines array.
     // The element reference may become stale (Notion swaps leaf elements during
@@ -376,7 +375,7 @@ export const createSetLines = (
   return (elements: HTMLDivElement[]): void => {
     const { vim_info } = window;
 
-    vim_info.lines = elements.map((elem) => ({
+    vim_info.lines = elements.filter(isDocumentEditable).map((elem) => ({
       cursor_position: 0,
       element: elem as HTMLDivElement,
       block_id:

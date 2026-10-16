@@ -7,6 +7,8 @@ export {
   deleteNormalBlockWithKeyboardEvents,
   deleteCodeBlockWithKeyboardEvents,
   deleteMultipleLinesAtomically,
+  isDocumentEditable,
+  documentEditables,
 } from "./dom-utils";
 
 export {

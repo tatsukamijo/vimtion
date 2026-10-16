@@ -683,3 +683,13 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 
 - **Detected**: 2026-10-16 (pre-ship sweep, timing agent)
 - **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Undo remembers where it left the cursor (the changed spot). If the redo changed the page, the cursor goes back there. Notion's redo restores the selection from undo time, and `redo()` adopts it.
+
+## BUG-091: Typing in Notion's non-page editables ran Vim commands (sidebar Rename, comment box, database cell editor)
+
+- **Detected**: 2026-10-16 (post-fix sweep, focus agent). **Critical**: renaming a page from the sidebar and typing `kdd` deleted a block of the open page.
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Root cause**: `refreshLines`/`setLines` took every `[contenteditable=true]` in the document as a line, including the sidebar Rename popover, the comment box (`.discussion-input-text-block`) and the database cell editor. Their keydowns went to the normal-mode reducer. This predates today's branch.
+- **Fix**:
+  - Lines are only editables that belong to the page (`isDocumentEditable`: inside `.notion-frame`, not in a dialog, overlay, sidebar, top bar or discussion).
+  - Focus moving into one of the other editables saves the page position (from the last page caret) like the popup-return episode, and Esc/Enter there restores it.
+  - Verified: Cmd+Shift+M, type `hello` + `o` → the comment holds `helloo`. Esc returns to the same line and column, and `x` edits there.
