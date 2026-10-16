@@ -77,7 +77,7 @@ export async function navigateToTestPage(
 
   // If already on the test page with Vimtion ready, skip navigation
   const currentUrl = page.url();
-  if (currentUrl.includes("notion.so")) {
+  if (/notion\.(so|com)/.test(currentUrl)) {
     const text = await page.locator(".vim-mode").textContent().catch(() => "");
     if (text && text.includes("Line")) {
       return;

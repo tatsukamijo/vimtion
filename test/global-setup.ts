@@ -66,7 +66,7 @@ setup("authenticate with Notion", async () => {
 
   const isLoggedIn = await Promise.race([
     page
-      .waitForURL(/notion\.so\/(?!login)/, { timeout: 5_000 })
+      .waitForURL(/notion\.(so|com)\/(?!login)/, { timeout: 5_000 })
       .then(() => true)
       .catch(() => false),
     page
@@ -87,10 +87,10 @@ setup("authenticate with Notion", async () => {
 
   const url = page.url();
   const loggedIn =
-    url.includes("notion.so") && !url.includes("/login");
+    /notion\.(so|com)/.test(url) && !url.includes("/login");
 
   if (!loggedIn) {
-    await page.waitForURL(/notion\.so\/(?!login)/, { timeout: 30_000 });
+    await page.waitForURL(/notion\.(so|com)\/(?!login)/, { timeout: 30_000 });
   }
 
   console.log("Notion authentication successful. Session saved.");
