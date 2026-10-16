@@ -346,9 +346,46 @@ export const createSetLines = (
         elem.closest("[data-block-id]")?.getAttribute("data-block-id") ?? null,
     }));
 
-    // Set initial active line to 0 BEFORE adding event listeners
-    // (to prevent Notion's auto-focus from changing it)
-    setActiveLine(0); // Uses the exported setActiveLine from this module
+    // If the user is already typing in one of these lines (e.g. the title of
+    // a brand-new page, which Notion focuses before Vimtion has its lines),
+    // adopt that line and leave the caret alone. Calling setActiveLine(0)
+    // there put the caret back at column 0 of the title in the middle of
+    // typing (observed: type title, Enter → cursor jumps to the title start).
+    const sel = window.getSelection();
+    const anchor = sel && sel.rangeCount > 0 ? sel.anchorNode : null;
+    const anchorEl =
+      anchor &&
+      (anchor.nodeType === Node.ELEMENT_NODE
+        ? (anchor as Element)
+        : anchor.parentElement);
+    const typingLine = anchorEl
+      ? vim_info.lines.findIndex(
+          (line, i) =>
+            !isWrapperLine(i) &&
+            (line.element === anchorEl || line.element.contains(anchorEl)),
+        )
+      : -1;
+    if (typingLine !== -1) {
+      vim_info.active_line = typingLine;
+      // A brand-new page: Notion put the caret in the (empty) title for the
+      // user to type it. Start in insert mode so those keystrokes are text,
+      // not Vim commands. (Notion marks the new-page flow with showMoveTo.)
+      const lineEl = vim_info.lines[typingLine].element;
+      const isTitle = !!lineEl
+        .closest("[data-block-id]")
+        ?.classList.contains("notion-page-block");
+      const isNewPage =
+        (lineEl.textContent || "").length === 0 ||
+        /[?&]showMoveTo=true/.test(window.location.search);
+      if (isTitle && isNewPage && vim_info.mode === "normal") {
+        vim_info.mode = "insert";
+      }
+      updateInfoContainer();
+    } else {
+      // Set initial active line to 0 BEFORE adding event listeners
+      // (to prevent Notion's auto-focus from changing it)
+      setActiveLine(0); // Uses the exported setActiveLine from this module
+    }
 
     // Add event listeners to ALL lines at once
     vim_info.lines.forEach((line) => {

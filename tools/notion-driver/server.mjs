@@ -382,7 +382,7 @@ async function createFixture(spec, title) {
   const children = parseFixture(spec);
   const created = await notionApi("POST", "/v1/pages", {
     parent: { page_id: ENV.NOTION_PARENT_PAGE_ID },
-    properties: { title: { title: [{ type: "text", text: { content: title } }] } },
+    properties: { title: { title: title ? [{ type: "text", text: { content: title } }] : [] } },
     children,
   });
   const st = readState();
@@ -654,7 +654,7 @@ const commands = {
   },
 
   async fixture({ spec, title }) {
-    const created = await createFixture(spec, title || "vt fixture");
+    const created = await createFixture(spec, title ?? "vt fixture");
     await sleep(500);
     const s = await openUrl(created.url);
     return { url: created.url, snapshot: s, text: `fixture: ${created.url}\n${render(s, { all: true })}` };

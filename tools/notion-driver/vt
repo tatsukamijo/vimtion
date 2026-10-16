@@ -6,7 +6,8 @@
  *   vt stop
  *   vt clean [--all]             delete profiles/state of stopped ports (keeps 9333 login seed)
  *   vt open [url]                open url (default: NOTION_TEST_PAGE_URL)
- *   vt fixture <file|->          create a fresh Notion page from a spec and open it
+ *   vt fixture <file|-> [--title T]  create a fresh Notion page from a spec and open it
+ *                                (empty spec + --title "" = a brand-new blank page)
  *   vt refixture                 re-create the last fixture (clean slate)
  *   vt keys <seq> [--delay ms] [--each] [--series 0,50,200,700] [--settle ms] [--all]
  *   vt hold <key> <n> [--interval ms] [--series ...]
@@ -37,7 +38,7 @@ for (let i = 0; i < argv.length; i++) {
   if (a.startsWith("--")) {
     const k = a.slice(2);
     const next = argv[i + 1];
-    if (["delay", "series", "settle", "interval", "mod"].includes(k)) {
+    if (["delay", "series", "settle", "interval", "mod", "title"].includes(k)) {
       flags[k] = next;
       i++;
     } else flags[k] = true;
@@ -133,7 +134,7 @@ async function main() {
       break;
     case "fixture": {
       const src = rest[0] && rest[0] !== "-" ? fs.readFileSync(rest[0], "utf8") : fs.readFileSync(0, "utf8");
-      payload = { cmd, spec: src, title: flags.title };
+      payload = { cmd, spec: src, title: flags.title === undefined ? undefined : String(flags.title) };
       break;
     }
     case "keys":

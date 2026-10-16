@@ -549,3 +549,11 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
 - **Root cause**: `z-`/`zb` put the line flush with the bottom edge. The debounced scroll listener treated any sub-pixel overhang (`rect.bottom > innerHeight`) as off-screen and moved the cursor to the first visible line.
 - **Fix**: Only move the cursor when the active line has left the viewport entirely.
+
+## BUG-076: New page — type the title, press Enter, and the cursor jumps back to the start of the title
+
+- **Detected**: 2026-10-16 (user report; reproduced with the live driver by creating the page through Notion's UI: sidebar new-page button → Page)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Repro**: Create a page from the UI. Notion focuses the empty title. Type a title, then Enter. The caret goes to the new body line, then about 600ms later jumps to column 0 of the title. Also, Vimtion was not listening to the title at all on the new page: an `i` typed as a command ended up in the title text.
+- **Root cause**: `reinitializeAfterNavigation` waited for at least 3 editable elements. A brand-new page has only the page wrapper and the title, so it retried every 200ms, resetting `active_line = 0` each time and never calling `setLines`. When Enter created the first body block, the count reached 3, `setLines` ran, and its `setActiveLine(0)` moved the caret to the title start.
+- **Fix**: The page counts as ready once a content leaf (the title) exists. `active_line` is reset only on the first attempt, not on retries. `setLines` adopts the line the caret is already in, instead of moving it. A new page whose caret Notion put in the title (empty title, or the `showMoveTo=true` new-page URL) starts in insert mode, so typing the title is text, not Vim commands.

@@ -3870,15 +3870,17 @@ const openLineAboveInCodeBlockWrapped = () => {
 
   // Function to reinitialize Vimtion after navigation
   let isReinitializing = false;
-  const reinitializeAfterNavigation = () => {
+  const reinitializeAfterNavigation = (isRetry = false) => {
     if (isReinitializing) {
       return;
     }
 
     isReinitializing = true;
 
-    // Reset active_line to prevent old page state from leaking
-    window.vim_info.active_line = 0;
+    // Reset active_line to prevent old page state from leaking. Only on the
+    // first attempt: retries happen while the user may already be typing on
+    // the new page.
+    if (!isRetry) window.vim_info.active_line = 0;
 
     // Exit link selection mode if active (old page's link references)
     if (linkSelectionMode) {
@@ -3899,9 +3901,15 @@ const openLineAboveInCodeBlockWrapped = () => {
         document.querySelectorAll("[contenteditable=true]"),
       ) as HTMLDivElement[];
 
-      // Wait for at least 3 elements to ensure page is fully loaded
-      // (Notion pages typically have multiple editable blocks)
-      if (editableElements.length >= 3) {
+      // Ready once the page's own content leaves exist (at least the title).
+      // Requiring 3 editables never succeeded on a brand-new page (wrapper +
+      // title only), so Vimtion kept retrying — not listening to the title —
+      // until the first Enter added a body line, then reset the cursor.
+      // Later blocks are picked up by the MutationObserver → refreshLines.
+      const hasContentLeaf = editableElements.some((el) =>
+        el.matches('[data-content-editable-leaf="true"]'),
+      );
+      if (hasContentLeaf) {
         setLines(editableElements);
 
         // Restore cursor position after navigation (if available)
@@ -3943,11 +3951,11 @@ const openLineAboveInCodeBlockWrapped = () => {
       } else if (editableElements.length > 0) {
         // Page is still loading, wait a bit longer
         isReinitializing = false;
-        setTimeout(reinitializeAfterNavigation, 200);
+        setTimeout(() => reinitializeAfterNavigation(true), 200);
       } else {
         // Retry after a longer delay if elements not found yet
         isReinitializing = false;
-        setTimeout(reinitializeAfterNavigation, 500);
+        setTimeout(() => reinitializeAfterNavigation(true), 500);
       }
     }, 300);
   };
