@@ -66,19 +66,26 @@ function writeState(s) {
 // ---------------------------------------------------------------------------
 
 /**
- * The driver uses its own copy of the Playwright login profile so it can run
- * while `npm test` holds test/auth/.user-data (Chromium locks a profile dir).
+ * The driver uses its own copy of a login profile so it can run while
+ * `npm test` holds test/auth/.user-data (Chromium locks a profile dir).
+ * New ports are seeded from the default port's profile when it exists (it is
+ * the one most recently logged in), else from the Playwright auth profile.
+ * Caches are skipped: they are ~900MB per profile and not needed for login.
  */
+const SEED_PROFILE = path.join(HERE, ".profile-9333");
+const CACHE_DIRS = /(^|\/)(Cache|Code Cache|GPUCache|DawnCache|DawnGraphiteCache|DawnWebGPUCache|GrShaderCache|GraphiteDawnCache|ShaderCache|CacheStorage|ScriptCache|component_crx_cache|optimization_guide_model_store|Safe Browsing)(\/|$)|Singleton(Lock|Socket|Cookie)$/;
+
 function ensureProfile() {
   if (fs.existsSync(PROFILE)) return;
-  if (!fs.existsSync(SRC_PROFILE)) {
+  const src = PROFILE !== SEED_PROFILE && fs.existsSync(SEED_PROFILE) ? SEED_PROFILE : SRC_PROFILE;
+  if (!fs.existsSync(src)) {
     throw new Error(
       "No login profile. Run `PW_HEADLESS=false npm run test:setup-auth` once to log in to Notion.",
     );
   }
-  fs.cpSync(SRC_PROFILE, PROFILE, {
+  fs.cpSync(src, PROFILE, {
     recursive: true,
-    filter: (src) => !/Singleton(Lock|Socket|Cookie)$/.test(src),
+    filter: (p) => !CACHE_DIRS.test(path.relative(src, p)),
   });
 }
 
@@ -184,6 +191,11 @@ async function openUrl(url) {
       await sleep(1500 * attempt);
     }
   }
+  if (/\/(login|signup)/.test(page.url())) {
+    throw new Error(
+      "Notion session expired (redirected to login). Run `PW_HEADLESS=false npm run test:setup-auth`, then `vt clean --all`.",
+    );
+  }
   await page.waitForSelector(".vim-mode", { timeout: 30_000 });
   await page.waitForSelector('[data-content-editable-leaf="true"]', { timeout: 30_000 });
   await sleep(800);
@@ -201,7 +213,28 @@ async function openUrl(url) {
     const el = vi.lines[vi.active_line]?.element;
     if (el && document.activeElement !== el) el.focus({ preventScroll: true });
   })()`).catch(() => {});
+  await waitUntilSettled();
   return snapshot();
+}
+
+/**
+ * Wait until Vimtion's line cache stops changing. Keys sent while Notion is
+ * still hydrating the page get lost or land on the wrong line, which made
+ * setup navigation non-deterministic right after `fixture`/`refixture`.
+ */
+async function waitUntilSettled(timeoutMs = 5000) {
+  let prev = "";
+  let stable = 0;
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const sig = await evalIso(
+      `(() => { const v = window.vim_info; return v ? v.mode + ":" + v.lines.length + ":" + v.active_line + ":" + document.querySelectorAll('[contenteditable="true"]').length : ""; })()`,
+    ).catch(() => "");
+    stable = sig && sig === prev ? stable + 1 : 0;
+    prev = sig;
+    if (stable >= 3) return;
+    await sleep(200);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -588,7 +621,9 @@ const commands = {
     return commands.fixture({ spec: st.lastFixture.spec });
   },
 
-  async keys({ keys, delay = 0, series, each, settle, all }) {
+  // Default 30ms between keys ≈ fast human typing / OS autorepeat. 0ms bursts
+  // are a stress test (they drop keys today) — pass --delay 0 explicitly.
+  async keys({ keys, delay = 30, series, each, settle, all }) {
     if (each) {
       const chords = parseKeys(keys);
       const lines = [];

@@ -29,11 +29,12 @@ plain paragraph
 - bullet
   - nested bullet
 [ ] todo
-```js
+```javascript
 const x = 1;
 ```
 EOF
-$VT keys jjdw                   # vim notation: <Esc> <CR> <BS> <C-d> <S-CR> <D-z>
+$VT keys jjdw                   # vim notation: <Esc> <CR> <BS> <C-d> <S-CR> <D-z>; 30ms between keys
+$VT keys jjj --delay 0          # zero-gap burst (stress test; currently drops keys)
 $VT keys jjj --each             # snapshot after every key (find the key that breaks)
 $VT keys Vjd --series 0,50,200,700   # snapshots over time after the last key
 $VT hold j 20                   # OS-style autorepeat (held key)
@@ -46,11 +47,13 @@ $VT clip                        # clipboard contents (yank checks)
 $VT reload                      # npm run build + hot-reload extension + reload page
 $VT refixture                   # re-create the last fixture (clean slate)
 $VT stop
+$VT clean [--all]               # delete stopped ports' profiles (keeps the 9333 login seed)
 ```
 
 Fixture spec, one block per line: `#`/`##`/`###` headings, `- ` bullet,
 `1. ` numbered, `[ ] `/`[x] ` todo, `> ` quote, `>> ` toggle, `! ` callout,
-`---` divider, a ```` ```lang ```` … ```` ``` ```` code block, an empty line for an empty
+`---` divider, a ```` ```lang ```` … ```` ``` ```` code block (Notion API language
+names: `javascript`, `python`, `plain text`, …), an empty line for an empty
 paragraph, anything else for a paragraph. Indent 2 spaces to nest. The last 5
 fixtures per port are kept; older ones are archived.
 
@@ -81,12 +84,21 @@ ok: vim/DOM/overlay in sync
 
 ## Parallel instances
 
-Every port gets its own profile copy, state, and output dir, so agents can run
-side by side:
+Every port gets its own profile (seeded from `.profile-9333`, without caches),
+state, and output dir, so agents can run side by side:
 
 ```bash
-VT_PORT=9341 $VT start --headless && VT_PORT=9341 $VT fixture spec.txt
+export VT_PORT=9341                # export it: in zsh a "VT_PORT=… cmd" string in a variable won't split
+$VT start --headless && $VT fixture spec.txt
+$VT stop && $VT clean
 ```
+
+Rules for parallel agents:
+- Keep helper scripts and fixture files in a directory unique to your port.
+  The scratchpad is shared, so a generic `./v` or `f1.txt` gets overwritten by another agent.
+- Headed browsers share the macOS clipboard. Before a yank/paste check, write a sentinel
+  (`vt eval 'navigator.clipboard.writeText("SENTINEL")'`), or keep yank and paste
+  in one `keys` call.
 
 ## Caveats
 
