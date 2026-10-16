@@ -248,6 +248,7 @@ export const setCursorPosition = (element: Element, index: number) => {
 // selection elsewhere — with no mouse press since — is stray: put it back.
 let navGuard: { element: Element; offset: number; at: number } | null = null;
 let lastMouseDownAt = 0;
+let lastUserScrollAt = 0;
 document.addEventListener(
   "mousedown",
   () => {
@@ -255,6 +256,12 @@ document.addEventListener(
   },
   true,
 );
+// Wheel / touch scrolls are the user's, never Notion catching up with the caret.
+const noteUserScroll = () => {
+  lastUserScrollAt = Date.now();
+};
+document.addEventListener("wheel", noteUserScroll, { capture: true, passive: true });
+document.addEventListener("touchmove", noteUserScroll, { capture: true, passive: true });
 const NAV_GUARD_MS = 400;
 
 /** Record a caret placement made by a Vimtion navigation (j/k/gg/G...). */
@@ -267,9 +274,14 @@ export const clearNavigationGuard = (): void => {
   navGuard = null;
 };
 
-/** ms since the last guarded navigation (Infinity if none / cleared). */
-export const msSinceNavigation = (): number =>
-  navGuard ? Date.now() - navGuard.at : Infinity;
+/**
+ * ms since the last guarded navigation (Infinity if none / cleared, or if the
+ * user has scrolled by wheel/touch since — that scroll is theirs to keep).
+ */
+export const msSinceNavigation = (): number => {
+  if (!navGuard || lastUserScrollAt >= navGuard.at) return Infinity;
+  return Date.now() - navGuard.at;
+};
 
 /**
  * True when the selection (leaf, and optionally offset within it) is not where

@@ -2,7 +2,7 @@
  * Scroll and viewport navigation (Ctrl+d, Ctrl+u, Ctrl+f, Ctrl+b, gg, G)
  */
 
-import { setCursorPosition } from "../cursor";
+import { setCursorPosition, clearNavigationGuard } from "../cursor";
 import { setActiveLine } from "../core/line-management";
 
 export const findScrollableContainer = (): HTMLElement => {
@@ -58,6 +58,9 @@ export const scrollActiveLineTo = (
 // Scroll by a fraction of the viewport height
 // Cursor position will be automatically updated by scroll event listener
 export const scrollAndMoveCursor = (pageAmount: number) => {
+  // This scroll is deliberate: the scroll listener must relocate the cursor,
+  // not pull the previous motion's line back into view.
+  clearNavigationGuard();
   const scrollContainer = findScrollableContainer();
   const scrollAmount = window.innerHeight * pageAmount;
   const currentScroll =

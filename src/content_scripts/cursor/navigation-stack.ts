@@ -3,7 +3,11 @@
  * Saves and restores cursor positions when navigating between pages
  */
 
-import { setCursorPosition } from "./position";
+import {
+  setCursorPosition,
+  getCursorIndexInElement,
+  markNavigation,
+} from "./position";
 import { updateBlockCursor } from "./block-cursor";
 
 export const saveCursorPosition = () => {
@@ -32,10 +36,22 @@ export const saveCursorPosition = () => {
       ? JSON.parse(savedPositions)
       : {};
 
+    // vim_info.cursor_position is not kept current by every motion; the DOM
+    // caret is the truth when it is on the active line.
+    const sel = document.getSelection();
+    const caretOnLine =
+      !!currentElement &&
+      !!sel &&
+      sel.rangeCount > 0 &&
+      currentElement.contains(sel.getRangeAt(0).startContainer);
+    const column = caretOnLine
+      ? getCursorIndexInElement(currentElement)
+      : vim_info.cursor_position;
+
     // Save position for current URL with block ID
     positionsMap[currentUrl] = {
       active_line: vim_info.active_line,
-      cursor_position: vim_info.cursor_position,
+      cursor_position: column,
       block_id: blockId !== "N/A" ? blockId : null,
     };
 
@@ -86,28 +102,37 @@ export const restoreCursorPosition = () => {
         }
 
         if (targetLineIndex < vim_info.lines.length) {
-          vim_info.active_line = targetLineIndex;
-          vim_info.cursor_position = data.cursor_position;
-
           const targetElement = vim_info.lines[targetLineIndex]?.element;
           if (targetElement && document.contains(targetElement)) {
+            const column = Math.min(
+              data.cursor_position || 0,
+              targetElement.textContent?.length || 0,
+            );
+            const place = () => {
+              vim_info.active_line = targetLineIndex;
+              vim_info.cursor_position = column;
+              vim_info.desired_column = column;
+              setCursorPosition(targetElement, column);
+              // The caret is still on the title from page init; its queued
+              // selectionchange must not pull the cursor back there.
+              markNavigation(targetElement, column);
+              updateBlockCursor();
+            };
             // Scroll to the target element first (before Notion does its own scrolling)
             // Use 'nearest' to avoid creating white space at the bottom
             targetElement.scrollIntoView({
               behavior: "auto",
               block: "nearest",
             });
-
-            // Then restore cursor position with delay to allow DOM to settle
+            place();
+            // Notion may move the caret again while it finishes rendering.
             setTimeout(() => {
-              // Re-set cursor position in case Notion moved it during re-render
-              const currentElement =
-                vim_info.lines[vim_info.active_line]?.element;
-              if (currentElement && document.contains(currentElement)) {
-                setCursorPosition(currentElement, vim_info.cursor_position);
+              if (
+                document.contains(targetElement) &&
+                vim_info.mode === "normal"
+              ) {
+                place();
               }
-
-              updateBlockCursor();
             }, 100);
           }
         }

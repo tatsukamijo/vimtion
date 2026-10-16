@@ -2932,11 +2932,17 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     }
 
     // For other Ctrl combinations, let browser handle them
+    clearNavigationGuard();
     return false;
   }
 
-  // Don't handle keys with modifiers (Command, Alt) - let browser handle them
+  // Don't handle keys with modifiers (Command, Alt) - let browser handle them.
+  // Notion's own edits (Cmd-Z, Cmd-V, ...) place the caret themselves, so the
+  // previous motion's caret must no longer be reasserted over theirs.
   if (e.metaKey || e.altKey) {
+    if (!["Meta", "Alt", "Shift", "Control"].includes(e.key)) {
+      clearNavigationGuard();
+    }
     return false;
   }
 
@@ -4072,6 +4078,15 @@ const openLineAboveInCodeBlockWrapped = () => {
 
   // Listen for browser history navigation (back/forward buttons, H/L keys)
   window.addEventListener("popstate", () => {
+    // Back/forward returns to a page the user left: restore its cursor
+    // (the flag from saving was consumed when the next page loaded).
+    try {
+      sessionStorage.setItem("vimtion_intentional_navigation", "true");
+    } catch (e) {
+      // Ignore storage errors
+    }
+    // Keep the URL poller from starting a second, cursor-resetting reinit.
+    lastPageId = extractPageId(window.location.href);
     reinitializeAfterNavigation();
   });
 

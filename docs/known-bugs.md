@@ -567,3 +567,108 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - **Repro**: Create a page from the UI. Notion focuses the empty title. Type a title, then Enter. The caret goes to the new body line, then about 600ms later jumps to column 0 of the title. Also, Vimtion was not listening to the title at all on the new page: an `i` typed as a command ended up in the title text.
 - **Root cause**: `reinitializeAfterNavigation` waited for at least 3 editable elements. A brand-new page has only the page wrapper and the title, so it retried every 200ms, resetting `active_line = 0` each time and never calling `setLines`. When Enter created the first body block, the count reached 3, `setLines` ran, and its `setActiveLine(0)` moved the caret to the title start.
 - **Fix**: The page counts as ready once a content leaf (the title) exists. `active_line` is reset only on the first attempt, not on retries. `setLines` adopts the line the caret is already in, instead of moving it. A new page whose caret Notion put in the title (empty title, or the `showMoveTo=true` new-page URL) starts in insert mode, so typing the title is text, not Vim commands.
+
+## Pre-ship sweep (2026-10-16)
+
+Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, old bugs ×2, timing), then one adversarial verifier per finding. 32 of 39 findings were confirmed. Not confirmed:
+- Cmd+Shift+Up/Down losing the caret. Notion does this without the extension too.
+- ```` ``` ```` sending the caret to the title (not reproduced by 3 of 4 verifiers; see BUG-041).
+
+## BUG-077: The navigation guard undid deliberate scrolls and Notion's own edits
+
+- **Detected**: 2026-10-16 (pre-ship sweep, timing agent). Regression from the BUG-070/057/071 guard.
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Repro**: 40-line page.
+  - `jj<C-f>`, `j<C-d>`, or `G` then `k<C-b>`: the page scrolls, then snaps back, and the cursor does not move.
+  - A wheel/trackpad flick within ~600ms of `j`: snaps back the same way.
+  - `jj<D-z>` after an earlier `x`, or `j<D-v>`: the text changes, but the caret is put back on the `j` target.
+- **Root cause**: The scroll listener's "Notion is catching up with the caret" branch (`msSinceNavigation() < 600`) also caught Vimtion's own page scrolls and user scrolls. Meta-key edits passed through to Notion left the caret guard armed, so Notion's caret was treated as stray.
+- **Fix**: Ctrl-d/u/f/b clear the guard. A wheel or touch scroll after the motion ends the guard window. Any Ctrl/Meta/Alt key that normal mode passes through to Notion clears the guard.
+
+## BUG-078: `H` / browser back never restored the cursor
+
+- **Detected**: 2026-10-16 (pre-ship sweep, pages agent)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Repro**: `jjjjll`, `gl` + a hint to another page, then `H` (or Cmd+[ / `history.back()`). The cursor lands on the title.
+- **Root cause**:
+  - `restoreCursorPosition` set `active_line` but moved the DOM caret only 100ms later, re-reading `active_line`. The title caret's queued `selectionchange` had already reconciled `active_line` back to the title by then.
+  - Native back had no "intentional navigation" flag, because it was consumed on the previous page load, so the saved position was deleted as if on reload.
+  - The saved column was the stale `vim_info.cursor_position`.
+- **Fix**: Restore places the caret synchronously and marks it as a navigation, then re-places it after 100ms. `popstate` sets the intentional-navigation flag and syncs the URL poller. The saved column comes from the DOM caret.
+
+## BUG-079: `x` on the second half of an emoji deletes the whole line
+
+- **Detected**: 2026-10-16 (pre-ship sweep, menus agent). **Critical** (data loss).
+- **Status**: OPEN
+- **Repro**: `ab😃cd`, `$hh`, then `x`. The whole block is removed. `h`/`l` also take two presses to cross an emoji.
+- **Root cause**: Columns are UTF-16 code units, so the cursor can sit between a surrogate pair. `x` then cuts a lone low surrogate, and Notion's cut handler removes the whole block. This happens even when Vimtion is not involved.
+
+## BUG-080: Clicking another line in `v` / `V` mode
+
+- **Detected**: 2026-10-16 (pre-ship sweep, mouse agent)
+- **Status**: OPEN
+- **Repro**: `v` (or `V`), then click a different line. `v` stays in VISUAL with focus on `body`, and Esc/`x` do nothing. In `V`, the click is ignored; Esc returns to the old line, and the next edit hits it.
+
+## BUG-081: Clicking a to-do checkbox or toggle triangle puts the cursor on line 0
+
+- **Detected**: 2026-10-16 (pre-ship sweep, mouse + structure agents)
+- **Status**: OPEN
+- **Repro**: Click a to-do checkbox or toggle triangle on another line. `active_line` becomes 0 (the page wrapper), and the next `j` goes to the title.
+
+## BUG-082: After dragging a block by its handle, keys do nothing until a click
+
+- **Detected**: 2026-10-16 (pre-ship sweep, structure agent)
+- **Status**: OPEN
+
+## BUG-083: A key or click within ~150ms after `dd` is dropped
+
+- **Detected**: 2026-10-16 (pre-ship sweep, mouse + timing agents)
+- **Status**: OPEN
+- **Repro**: `jjj`, then `ddj` (or `ddx`, `ddk`) at typing speed. The second command is lost.
+- **Root cause**: `createDeleteCurrentLine` sets `mode = "insert"` while the async block cut runs (~150ms). Keys go to the insert reducer (the `j` is eaten as a pending `jk`), and clicks are ignored. The `.then` then resets the line.
+
+## BUG-084: Normal-mode Enter on a line with a link can open a sidebar link
+
+- **Detected**: 2026-10-16 (pre-ship sweep, pages agent)
+- **Status**: OPEN
+- **Root cause**: The link is picked from `detectAllLinks()` (which includes the sidebar) by vertical distance to the line's centre, not from the line's own anchors.
+
+## BUG-085: Code-block edge cases
+
+- **Detected**: 2026-10-16 (pre-ship sweep, core + timing + old-bugs agents)
+- **Status**: OPEN
+- **Repro**:
+  - `j`/`k` onto a shorter code line puts the caret on the line's `\n` (column = length), so `x` does nothing (`navigation/code-block.ts` clamps to `len`, not `len-1`).
+  - `dd` on the last code line leaves an empty code line.
+  - Linewise `p` into a code block pastes nothing and moves the cursor below.
+  - `r` after `u` of a `dd` next to a code block lands below the block or on line 0.
+
+## BUG-086: `O` followed by fast typing sends the first characters into the original line
+
+- **Detected**: 2026-10-16 (pre-ship sweep, core + old-bugs agents)
+- **Status**: OPEN. Seen with quote, toggle and nested bullet, at fast human typing speed.
+
+## BUG-087: `/table` and multi-line Cmd+V lose the caret
+
+- **Detected**: 2026-10-16 (pre-ship sweep, core, structure and old-bugs agents)
+- **Status**: OPEN
+- **Repro**: Create a table with `/table` + Enter, then Esc. Or paste multi-line text with Cmd+V in insert mode, then Esc. Vimtion is left on line 0 with no caret, and the next `j` goes to the title.
+
+## BUG-088: Notion `@` / `:` menus and chips
+
+- **Detected**: 2026-10-16 (pre-ship sweep, menus agent)
+- **Status**: OPEN
+- **Repro**:
+  - Esc does not close the `@` mention or `:` emoji menu. It stays open in normal mode, and a later `x` edits its search text.
+  - `w` skips over an `@mention` chip, and `h`/`b` cannot cross it.
+
+## BUG-089: More ways to end up with the normal-mode caret past the last character (BUG-051 triggers)
+
+- **Detected**: 2026-10-16 (pre-ship sweep)
+- **Status**: OPEN
+- **Repro**: `u` of an `A`/`o` insert or of a markdown conversion, or a click past the end of a line. Afterwards `x` does nothing.
+
+## BUG-090: `r` (redo) puts the cursor where it was when `u` was pressed
+
+- **Detected**: 2026-10-16 (pre-ship sweep, timing agent)
+- **Status**: OPEN (minor). Notion's redo restores the selection from undo time, and `redo()` adopts it.
