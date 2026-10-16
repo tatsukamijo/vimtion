@@ -607,6 +607,109 @@ document.addEventListener(
   true,
 );
 
+// ---------------------------------------------------------------------------
+// Notion popups (Cmd+/ block menu, slash menu search, …)
+// ---------------------------------------------------------------------------
+// While a Notion popup's own <input> has focus, keys never reach Vimtion
+// (its keydown listeners sit on the editor's lines). When the popup is closed
+// with Esc — or an action like Duplicate is picked with Enter — Notion does not
+// put the caret back into the page, and line recovery then fell back to the
+// page title, so the next key edited the title. Remember where the cursor was
+// when focus left the page for a popup, and put it back after Esc/Enter there.
+// (A popup closed by clicking elsewhere is left alone: the click placed the
+// caret where the user wanted it.)
+let popupReturn: {
+  blockId: string | null;
+  line: number;
+  pos: number;
+  mode: Window["vim_info"]["mode"];
+} | null = null;
+
+const isPageEditable = (el: Element | null): boolean =>
+  !!el && !!el.closest('[contenteditable="true"]') && !el.closest('[role="dialog"]');
+
+// Last collapsed caret inside the page. Saved at focusin time it would be too
+// late: Cmd+/ first block-selects the line (moving the selection), then
+// focuses the menu input.
+let lastPageCaret: { element: Element; pos: number } | null = null;
+document.addEventListener("selectionchange", () => {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+  const node = sel.anchorNode;
+  const el = node && (node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement);
+  const leaf = el?.closest('[data-content-editable-leaf="true"]');
+  if (!leaf || !isPageEditable(leaf)) return;
+  lastPageCaret = { element: leaf, pos: getCursorIndexInElement(leaf) };
+});
+
+document.addEventListener(
+  "focusin",
+  (e) => {
+    const target = e.target as Element | null;
+    if (!target || isPageEditable(target)) return;
+    const isPopupInput =
+      target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      !!target.closest('[role="dialog"], [role="menu"], [role="listbox"]');
+    if (!isPopupInput || popupReturn) return;
+    const { vim_info } = window;
+    const line = vim_info.lines[vim_info.active_line];
+    if (!line) return;
+    popupReturn = {
+      blockId: line.block_id,
+      line: vim_info.active_line,
+      pos:
+        lastPageCaret && lastPageCaret.element === line.element
+          ? lastPageCaret.pos
+          : getCursorIndexInElement(line.element),
+      mode: vim_info.mode,
+    };
+  },
+  true,
+);
+
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (!popupReturn || (e.key !== "Escape" && e.key !== "Enter")) return;
+    if (isPageEditable(e.target as Element | null)) return;
+    const saved = popupReturn;
+    // Let Notion close the popup / run the action first.
+    setTimeout(() => {
+      const active = document.activeElement;
+      // Popup still open (e.g. Enter opened a submenu): keep waiting.
+      if (active && !isPageEditable(active) && active.tagName === "INPUT") return;
+      popupReturn = null;
+      const { vim_info } = window;
+      refreshLines();
+      if (vim_info.lines.length === 0) return;
+      const idx = findLineByBlockId(saved.blockId, saved.line);
+      const element = vim_info.lines[idx].element;
+      vim_info.mode = saved.mode === "insert" ? "insert" : "normal";
+      const length = (element.textContent || "").length;
+      const pos =
+        vim_info.mode === "insert"
+          ? Math.min(saved.pos, length)
+          : Math.max(0, Math.min(saved.pos, length - 1));
+      vim_info.active_line = idx;
+      element.focus({ preventScroll: true });
+      setCursorPosition(element, pos);
+      vim_info.desired_column = columnInLine(element, pos);
+      updateInfoContainer();
+    }, 120);
+  },
+  true,
+);
+
+// A click back into the page ends the popup episode without restoring.
+document.addEventListener(
+  "mousedown",
+  (e) => {
+    if (popupReturn && isPageEditable(e.target as Element | null)) popupReturn = null;
+  },
+  true,
+);
+
 /**
  * When a normal-mode command enters insert mode, make sure the active line's
  * element really has focus. j/k into a code block only moves the selection
@@ -3874,8 +3977,11 @@ const openLineAboveInCodeBlockWrapped = () => {
       const rect = activeElement.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
 
-      // If active line is off-screen, move cursor to first visible line
-      if (rect.top < 0 || rect.bottom > viewportHeight) {
+      // If the active line has left the screen entirely, move the cursor to
+      // the first visible line. (Checking "any part outside" made z- / zb,
+      // which put the line flush with the bottom edge, bounce the cursor up
+      // to the top line on a sub-pixel overhang.)
+      if (rect.bottom <= 0 || rect.top >= viewportHeight) {
         const firstVisibleLine = getFirstVisibleLine();
 
         // Only update if we found a different visible line

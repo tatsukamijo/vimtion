@@ -520,3 +520,18 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - The "Using Vimium?" warning tells users to exclude `https://www.notion.com/*`, but pages are now on `app.notion.com`.
 - `test/helpers.ts` `navigateToTestPage` short-circuits on `url.includes("notion.so")`, which no longer matches.
 - `npm run build` silently produced no `dist/` until `.parcel-cache` was deleted.
+
+## BUG-074: Closing Notion's Cmd+/ block menu sends the cursor to the page title
+
+- **Detected**: 2026-10-16 (user report, then reproduced with the live driver)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Repro**: fixture `alpha one / bravo two / charlie three / delta four`; on `charlie three` col 2: `<D-/>`, optionally type into the menu's search, then `<Esc>`. The cursor lands on L1 (title). This happens in normal and insert mode. Picking **Duplicate** with Enter leaves no caret at all, so the next key acts on the title too.
+- **Root cause**: Keys typed in Notion's popup inputs never reach Vimtion (its keydown listeners sit on the editor lines). When the popup closes, Notion does not restore the caret, and line recovery falls back to the title.
+- **Fix**: When focus moves from the page into a popup input, remember the block, the caret column (the last collapsed page caret, since Cmd+/ block-selects the line first) and the mode. After Esc/Enter in the popup, restore them. A popup closed by clicking back into the page is left alone.
+
+## BUG-075: `z-` / `zb` bounce the cursor to the top visible line
+
+- **Detected**: 2026-10-16 (full suite: `z-scroll.spec.ts` "z. / z<CR> / z- run without leaving normal mode")
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Root cause**: `z-`/`zb` put the line flush with the bottom edge. The debounced scroll listener treated any sub-pixel overhang (`rect.bottom > innerHeight`) as off-screen and moved the cursor to the first visible line.
+- **Fix**: Only move the cursor when the active line has left the viewport entirely.
