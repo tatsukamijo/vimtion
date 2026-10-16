@@ -23,7 +23,11 @@ import { chromium } from "@playwright/test";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..");
-const DIST = path.join(ROOT, "dist");
+// VT_DIST builds and loads the extension from another directory, so a driver
+// can test new code while something else (the Playwright suite, other
+// drivers) keeps using dist/.
+const DIST_REL = process.env.VT_DIST || "dist";
+const DIST = path.resolve(ROOT, DIST_REL);
 const SRC_PROFILE = path.join(ROOT, "test", "auth", ".user-data");
 const PORT = Number(process.env.VT_PORT || 9333);
 // One profile / state file / output dir per port, so several drivers (e.g.
@@ -811,7 +815,18 @@ const commands = {
         // content_scripts build (dist/ ends up without vim.js and the
         // extension silently stops injecting), so always build cold.
         fs.rmSync(path.join(ROOT, ".parcel-cache"), { recursive: true, force: true });
-        execSync("npm run build", { cwd: ROOT, stdio: "pipe" });
+        if (DIST_REL === "dist") {
+          execSync("npm run build", { cwd: ROOT, stdio: "pipe" });
+        } else {
+          const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+          const cmd = pkg.scripts.build.replace(/(^|\s)dist(?=[\s/]|$)/g, `$1${DIST_REL}`);
+          execSync(cmd, {
+            cwd: ROOT,
+            stdio: "pipe",
+            shell: "/bin/bash",
+            env: { ...process.env, PATH: `${path.join(ROOT, "node_modules", ".bin")}:${process.env.PATH}` },
+          });
+        }
       } catch (e) {
         await launch();
         await openUrl(url).catch(() => {});

@@ -58,6 +58,9 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
     lineStart = lineStart === -1 ? 0 : lineStart + 1;
 
     let lineEnd = text.indexOf("\n", cursorPos);
+    // Notion ends a code block's text with a placeholder "\n"; the line before
+    // it is the last real line (deleting "line\n" there left an empty line).
+    if (lineEnd === text.length - 1) lineEnd = -1;
     // Include the newline character in deletion (if it exists)
     if (lineEnd !== -1) {
       lineEnd = lineEnd + 1; // Include the \n
@@ -67,7 +70,7 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
         // Delete the newline before this line instead
         lineStart = lineStart - 1;
       }
-      lineEnd = text.length;
+      lineEnd = text.endsWith("\n") ? text.length - 1 : text.length;
     }
 
     // Extract the line text for clipboard (without newlines for clipboard)
@@ -84,6 +87,7 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
 
     // Temporarily switch to insert mode
     vim_info.mode = "insert";
+    beginBusy();
 
     // Select the line content using TreeWalker
     const walker = document.createTreeWalker(
@@ -132,12 +136,22 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
 
         setTimeout(() => {
           vim_info.mode = "normal";
-          // Position cursor at the start of the line (or end of previous line if we deleted content)
-          const newCursorPos = lineStart;
+          // Vim: the cursor goes to the start of the line that took the
+          // deleted line's place (the previous line after deleting the last).
+          const newText = currentElement.textContent || "";
+          const newCursorPos = lineBoundsAt(
+            newText,
+            Math.min(lineStart, Math.max(0, newText.length - 1)),
+          ).start;
+          vim_info.desired_column = 0;
           setCursorPosition(currentElement, newCursorPos);
           updateInfoContainer();
+          endBusy();
         }, 10);
       }, 10);
+    } else {
+      vim_info.mode = "normal";
+      endBusy();
     }
   } else {
     const lineText = currentElement.textContent || "";

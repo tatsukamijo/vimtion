@@ -17,6 +17,14 @@
 
 import { getCursorIndexInElement, setCursorPosition } from "../cursor";
 
+/** A Notion popup menu is showing while focus stays in the page. */
+const inlineMenuOpen = (): boolean =>
+  Array.from(
+    document.querySelectorAll(
+      '.notion-overlay-container [role="listbox"], .notion-overlay-container [role="menu"]',
+    ),
+  ).some((el) => el.getClientRects().length > 0);
+
 export interface InsertReducerDeps {
   updateInfoContainer: () => void;
   JK_TIMEOUT_MS: number;
@@ -87,6 +95,15 @@ export const createInsertReducer = (deps: InsertReducerDeps) => {
   return (e: KeyboardEvent) => {
     switch (e.key) {
       case "Escape":
+        // Notion's inline menus (@ mention, : emoji) keep focus in the line
+        // and close on Esc; swallowing it left them open in normal mode,
+        // where the next x edited their search text. Let Notion have the
+        // Esc too, then leave insert mode.
+        if (inlineMenuOpen()) {
+          commitPendingJ();
+          setTimeout(exitToNormal, 30);
+          break;
+        }
         e.preventDefault();
         e.stopPropagation();
         // A `j` typed right before Escape is real text (only `jk` escapes).

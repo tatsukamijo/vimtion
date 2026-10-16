@@ -94,6 +94,13 @@ $VT start --headless && $VT fixture spec.txt
 $VT stop && $VT clean
 ```
 
+To test new code while the Playwright suite (or other drivers) keeps using
+`dist/`, give the driver its own build directory:
+
+```bash
+export VT_PORT=9334 VT_DIST=dist-dev   # vt reload then builds into dist-dev/
+```
+
 Rules for parallel agents:
 - Never run `npm run build` (or `vt reload`) while another driver is running.
   The build deletes `dist/`, and Chrome disables a running unpacked extension whose

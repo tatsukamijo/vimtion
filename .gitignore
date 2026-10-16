@@ -11,3 +11,4 @@ playwright-report/
 tools/notion-driver/.profile-*/
 tools/notion-driver/.state-*.json
 tools/notion-driver/out/
+dist-*/

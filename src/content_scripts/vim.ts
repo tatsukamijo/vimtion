@@ -159,7 +159,6 @@ import {
   removeAllHintOverlays,
   filterHintsByInput,
   navigateToLink,
-  detectAllLinks,
   generateHints,
 } from "./links";
 
@@ -336,6 +335,10 @@ const openLineAbove = () => {
   vim_info.mode = "insert";
   updateInfoContainer();
 
+  // Text typed before the caret reaches the new block went into this one;
+  // hold it until the caret has moved (core/busy.ts).
+  beginBusy();
+
   // Enter at column 0 makes Notion insert an empty block ABOVE this one and
   // keep the caret in this (now lower) block.
   setTimeout(() => {
@@ -378,7 +381,10 @@ const openLineAbove = () => {
             cancelable: true,
           }),
         );
-        setTimeout(() => refreshLines(), 50);
+        setTimeout(() => {
+          refreshLines();
+          endBusy();
+        }, 50);
         return;
       }
       const newElement = vim_info.lines[newIdx].element;
@@ -388,6 +394,7 @@ const openLineAbove = () => {
       newElement.focus({ preventScroll: true });
       setCursorPosition(newElement, 0);
       updateInfoContainer();
+      endBusy();
     }, 50);
   }, 0);
 };
@@ -2498,6 +2505,28 @@ const pasteBeforeCursor = async () => {
   }
 };
 
+// Where the last undo left the cursor — the changed spot. Notion's redo puts
+// the caret back where it was when u was pressed instead; Vim puts it on the
+// change, which is this spot (for a redone dd, the line that took its place).
+let lastUndoSpot: { line: number; pos: number } | null = null;
+
+const pageText = (): string =>
+  document.querySelector(".notion-page-content")?.textContent ?? "";
+
+// Notion's undo/redo often leaves the caret after the last character (undo of
+// an A / o insert, of a markdown conversion). Normal mode rests ON a
+// character, or x does nothing.
+const restOnCharacter = (element: Element): number => {
+  const text = element.textContent || "";
+  let pos = getCursorIndexInElement(element);
+  const { start, end } = lineBoundsAt(text, pos);
+  if (pos >= end && end > start) {
+    pos = charBoundsAt(text, end - 1).start;
+    setCursorPosition(element, pos);
+  }
+  return pos;
+};
+
 const undo = () => {
   const { vim_info } = window;
 
@@ -2560,9 +2589,10 @@ const undo = () => {
           if (after && after.rangeCount > 0 && !after.isCollapsed) {
             after.collapseToStart();
           }
-          const cursorIndex = getCursorIndexInElement(currentElement);
+          const cursorIndex = restOnCharacter(currentElement);
           vim_info.desired_column = columnInLine(currentElement, cursorIndex);
           updateBlockCursor();
+          lastUndoSpot = { line: vim_info.active_line, pos: cursorIndex };
         }
       }, 50);
       return;
@@ -2593,6 +2623,8 @@ const undo = () => {
 const redo = () => {
   clearNavigationGuard();
   const { vim_info } = window;
+  const textBeforeRedo = pageText();
+  const spot = lastUndoSpot;
 
   // Check if we need to redo multiple operations (from grouped deletions)
   const count = vim_info.undo_count > 0 ? vim_info.undo_count : 1;
@@ -2606,6 +2638,18 @@ const redo = () => {
       vim_info.undo_count = 0;
 
       setTimeout(() => {
+        refreshLines();
+        if (spot && pageText() !== textBeforeRedo && vim_info.lines.length > 0) {
+          const line = Math.min(spot.line, vim_info.lines.length - 1);
+          const el = vim_info.lines[line].element;
+          const text = el.textContent || "";
+          const pos = Math.min(spot.pos, Math.max(0, text.length - 1));
+          vim_info.desired_column = columnInLine(el, pos);
+          setActiveLine(line);
+          // Exact offset (setActiveLine picks a code block's first/last line).
+          setCursorPosition(el, pos);
+          lastUndoSpot = null;
+        }
         const currentElement = vim_info.lines[vim_info.active_line]?.element;
         if (currentElement) {
           // Notion re-selects restored text after undo; normal mode has a
@@ -2614,7 +2658,7 @@ const redo = () => {
           if (after && after.rangeCount > 0 && !after.isCollapsed) {
             after.collapseToStart();
           }
-          const cursorIndex = getCursorIndexInElement(currentElement);
+          const cursorIndex = restOnCharacter(currentElement);
           vim_info.desired_column = columnInLine(currentElement, cursorIndex);
           updateBlockCursor();
         }
@@ -3554,30 +3598,32 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         const linkInCurrentLine = currentLineElement.querySelector("a[href]");
 
         if (linkInCurrentLine) {
-          // Current line has a link - use detectAllLinks() to find closest link
-          const allLinks = detectAllLinks();
-
-          if (allLinks.length === 0) {
-            return true;
-          }
-
-          const currentRect = currentLineElement.getBoundingClientRect();
-          const currentY = currentRect.top + currentRect.height / 2;
-
-          // Find the closest link to cursor position
+          // Pick among this line's own links (the page-wide list includes the
+          // sidebar, whose rows can be closer in Y than a link on a tall
+          // wrapped line): the one under the cursor, else the next one after
+          // it, else the last one before it.
+          const lineLinks = Array.from(
+            currentLineElement.querySelectorAll("a[href]"),
+          ) as HTMLAnchorElement[];
+          const caret = getCursorIndexInElement(currentLineElement);
+          const offsetOf = (node: Node, atEnd: boolean): number => {
+            const r = document.createRange();
+            r.selectNodeContents(currentLineElement);
+            if (atEnd) r.setEndAfter(node);
+            else r.setEndBefore(node);
+            return r.toString().length;
+          };
           let closestLink: HTMLAnchorElement | null = null;
-          let minDistance = Infinity;
-
-          for (const link of allLinks) {
-            const linkRect = link.getBoundingClientRect();
-            const linkY = linkRect.top + linkRect.height / 2;
-            const distance = Math.abs(linkY - currentY);
-
-            if (distance < minDistance) {
-              minDistance = distance;
+          for (const link of lineLinks) {
+            const from = offsetOf(link, false);
+            const to = offsetOf(link, true);
+            if (caret >= from && caret < to) {
               closestLink = link;
+              break;
             }
+            if (!closestLink && from > caret) closestLink = link;
           }
+          if (!closestLink) closestLink = lineLinks[lineLinks.length - 1] ?? null;
 
           if (closestLink) {
             // Helper to extract page ID (using regex like navigateToLink)

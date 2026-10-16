@@ -633,13 +633,17 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 ## BUG-084: Normal-mode Enter on a line with a link can open a sidebar link
 
 - **Detected**: 2026-10-16 (pre-ship sweep, pages agent)
-- **Status**: OPEN
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Enter now picks among the line's own links: the one under the cursor, else the next one after it, else the last one before it.
 - **Root cause**: The link is picked from `detectAllLinks()` (which includes the sidebar) by vertical distance to the line's centre, not from the line's own anchors.
 
 ## BUG-085: Code-block edge cases
 
 - **Detected**: 2026-10-16 (pre-ship sweep, core + timing + old-bugs agents)
-- **Status**: OPEN
+- **Status**: **PARTIAL** on `fix/live-sweep-batch1`.
+  - Fixed: `j`/`k` clamp to the last character.
+  - Fixed: `dd` on the last code line treats Notion's trailing placeholder `\n` as the end; the cursor goes to the start of the line that took the deleted line's place.
+  - Fixed: `r` lands on the redone change (BUG-090).
+  - Still open: linewise `p` into a code block (also the unresolved part of BUG-055).
 - **Repro**:
   - `j`/`k` onto a shorter code line puts the caret on the line's `\n` (column = length), so `x` does nothing (`navigation/code-block.ts` clamps to `len`, not `len-1`).
   - `dd` on the last code line leaves an empty code line.
@@ -649,7 +653,7 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 ## BUG-086: `O` followed by fast typing sends the first characters into the original line
 
 - **Detected**: 2026-10-16 (pre-ship sweep, core + old-bugs agents)
-- **Status**: OPEN. Seen with quote, toggle and nested bullet, at fast human typing speed.
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. `O` holds typeahead (`core/busy.ts`) until the caret is in the new block. Verified at 30ms key gaps on a paragraph, a quote, a code line and the line after a code block. Seen with quote, toggle and nested bullet, at fast human typing speed.
 
 ## BUG-087: `/table` and multi-line Cmd+V lose the caret
 
@@ -662,7 +666,9 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 ## BUG-088: Notion `@` / `:` menus and chips
 
 - **Detected**: 2026-10-16 (pre-ship sweep, menus agent)
-- **Status**: OPEN
+- **Status**: **PARTIAL** on `fix/live-sweep-batch1`.
+  - Fixed: with a Notion menu open in the page overlay, insert-mode Esc reaches Notion, so the menu closes, and Vimtion then leaves insert mode.
+  - Still open: `w`/`h`/`b` over a mention chip.
 - **Repro**:
   - Esc does not close the `@` mention or `:` emoji menu. It stays open in normal mode, and a later `x` edits its search text.
   - `w` skips over an `@mention` chip, and `h`/`b` cannot cross it.
@@ -670,10 +676,10 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 ## BUG-089: More ways to end up with the normal-mode caret past the last character (BUG-051 triggers)
 
 - **Detected**: 2026-10-16 (pre-ship sweep)
-- **Status**: OPEN
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. After undo/redo and after a click, the caret steps back onto the last character of the (code) line.
 - **Repro**: `u` of an `A`/`o` insert or of a markdown conversion, or a click past the end of a line. Afterwards `x` does nothing.
 
 ## BUG-090: `r` (redo) puts the cursor where it was when `u` was pressed
 
 - **Detected**: 2026-10-16 (pre-ship sweep, timing agent)
-- **Status**: OPEN (minor). Notion's redo restores the selection from undo time, and `redo()` adopts it.
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Undo remembers where it left the cursor (the changed spot). If the redo changed the page, the cursor goes back there. Notion's redo restores the selection from undo time, and `redo()` adopts it.

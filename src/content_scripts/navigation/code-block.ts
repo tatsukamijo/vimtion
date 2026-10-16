@@ -48,7 +48,11 @@ export const moveCursorDownInCodeBlock = () => {
 
   // Calculate target position in next line
   const nextLineLength = nextLineEnd - nextLineStart;
-  const targetColumn = Math.min(vim_info.desired_column, nextLineLength);
+  // Normal mode rests ON the last character, never on the line's "\n".
+  const targetColumn = Math.min(
+    vim_info.desired_column,
+    Math.max(0, nextLineLength - 1),
+  );
   const targetPos = nextLineStart + targetColumn;
 
   setCursorPosition(currentElement, targetPos);
@@ -80,7 +84,10 @@ export const moveCursorUpInCodeBlock = () => {
 
   // Previous line is between prevLineStart and lineStart
   const prevLineLength = lineStart - prevLineStart - 1;
-  const targetColumn = Math.min(vim_info.desired_column, prevLineLength);
+  const targetColumn = Math.min(
+    vim_info.desired_column,
+    Math.max(0, prevLineLength - 1),
+  );
   const targetPos = prevLineStart + 1 + targetColumn;
 
   setCursorPosition(currentElement, targetPos);
