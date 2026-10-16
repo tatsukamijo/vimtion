@@ -707,9 +707,13 @@ const commands = {
       const [text, atStr] = t.split("@");
       return page.evaluate(
         ({ text: needle, at }) => {
-          const leaves = Array.from(document.querySelectorAll('[contenteditable="true"]'))
-            .filter((e) => !e.querySelector('[contenteditable="true"]'));
-          const leaf = leaves.find((e) => (e.textContent || "").includes(needle));
+          // Smallest editable element containing the text (code blocks and
+          // nested editables included), outside Notion's hover-menu copies.
+          const leaf = Array.from(
+            document.querySelectorAll('[data-content-editable-leaf="true"], [contenteditable="true"]'),
+          )
+            .filter((e) => (e.textContent || "").includes(needle) && !e.closest(".notion-selectable-hover-menu-item"))
+            .sort((a, b) => (a.textContent || "").length - (b.textContent || "").length)[0];
           if (!leaf) throw new Error(`no line containing "${needle}"`);
           const idx = (leaf.textContent || "").indexOf(needle) + at;
           const w = document.createTreeWalker(leaf, NodeFilter.SHOW_TEXT);
@@ -722,9 +726,10 @@ const commands = {
               r.setStart(t2, Math.max(0, off));
               r.setEnd(t2, Math.max(0, off) + (t2.data.length ? 1 : 0));
               const b = r.getBoundingClientRect();
-              // Just inside the char's left edge: a click there puts the caret BEFORE
-              // the char (clicking its middle can land on either side).
-              return { x: b.left + Math.min(2, b.width / 4), y: b.top + b.height / 2 };
+              // Left of the char's middle: the caret lands BEFORE the char (the right
+              // half would put it after; the very edge can resolve to the previous
+              // syntax token in code blocks).
+              return { x: b.left + b.width * 0.4, y: b.top + b.height / 2 };
             }
             n += t2.data.length;
           }
