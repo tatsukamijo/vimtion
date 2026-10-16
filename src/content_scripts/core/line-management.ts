@@ -50,6 +50,14 @@ export const isWrapperLine = (idx: number): boolean => {
  *
  * @param idx - Line index to activate
  */
+/**
+ * Highest column the caret may rest on for a line of `length` characters:
+ * in normal/visual mode it sits ON the last character (length - 1), in insert
+ * mode it may sit after it.
+ */
+const lastColumn = (length: number): number =>
+  window.vim_info.mode === "insert" ? length : Math.max(0, length - 1);
+
 export const setActiveLine = (idx: number): void => {
   const {
     vim_info: { lines, desired_column },
@@ -106,11 +114,11 @@ export const setActiveLine = (idx: number): void => {
       }
       // Add desired column on the last line
       const lastLineLength = codeLines[codeLines.length - 1].length;
-      cursorPosition += Math.min(desired_column, lastLineLength);
+      cursorPosition += Math.min(desired_column, lastColumn(lastLineLength));
     } else {
       // Moving down: go to the first line at desired column
       const firstLineLength = codeLines[0].length;
-      cursorPosition = Math.min(desired_column, firstLineLength);
+      cursorPosition = Math.min(desired_column, lastColumn(firstLineLength));
     }
 
     setCursorPosition(targetElement, cursorPosition);
@@ -133,7 +141,7 @@ export const setActiveLine = (idx: number): void => {
 
     // Set cursor to desired column, or end of line if line is shorter
     const lineLength = targetElement.textContent?.length || 0;
-    const targetColumn = Math.min(desired_column, lineLength);
+    const targetColumn = Math.min(desired_column, lastColumn(lineLength));
     setCursorPosition(targetElement, targetColumn);
   }
 };

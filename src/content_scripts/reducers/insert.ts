@@ -15,6 +15,8 @@
  * (which required `k` within ~200ms or the user saw `j` linger as text).
  */
 
+import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+
 export interface InsertReducerDeps {
   updateInfoContainer: () => void;
   JK_TIMEOUT_MS: number;
@@ -42,11 +44,44 @@ export const createInsertReducer = (deps: InsertReducerDeps) => {
   };
 
   // Drop the suppressed `j` without committing — used when `k` arrives
-  // (jk-escape) or Escape is pressed (user is exiting anyway).
+  // (jk-escape).
   const cancelPendingJ = (): void => {
     if (pendingJTimer === null) return;
     clearTimeout(pendingJTimer);
     pendingJTimer = null;
+  };
+
+  // Leave insert mode the way Vim does: the caret steps back one character
+  // (it was *between* characters in insert mode, normal mode sits *on* one),
+  // never across a line start, and the column memory follows the caret so the
+  // next j/k doesn't use the pre-insert column.
+  const exitToNormal = (): void => {
+    const { vim_info } = window;
+    vim_info.mode = "normal";
+
+    const sel = window.getSelection();
+    const anchor = sel && sel.rangeCount > 0 ? sel.anchorNode : null;
+    const anchorEl =
+      anchor && anchor.nodeType === Node.ELEMENT_NODE
+        ? (anchor as Element)
+        : anchor?.parentElement ?? null;
+    const leaf =
+      anchorEl?.closest('[data-content-editable-leaf="true"]') ??
+      vim_info.lines[vim_info.active_line]?.element ??
+      null;
+    if (leaf) {
+      const text = leaf.textContent || "";
+      const pos = getCursorIndexInElement(leaf);
+      const lineStart = text.lastIndexOf("\n", pos - 1) + 1;
+      let target = pos > lineStart ? pos - 1 : pos;
+      // Clamp onto the last character of the (code) line.
+      const lineEnd = text.indexOf("\n", lineStart);
+      const lastChar = (lineEnd === -1 ? text.length : lineEnd) - 1;
+      if (lastChar >= lineStart) target = Math.min(target, lastChar);
+      if (target !== pos) setCursorPosition(leaf, target);
+      vim_info.desired_column = target - lineStart;
+    }
+    updateInfoContainer();
   };
 
   return (e: KeyboardEvent) => {
@@ -54,9 +89,9 @@ export const createInsertReducer = (deps: InsertReducerDeps) => {
       case "Escape":
         e.preventDefault();
         e.stopPropagation();
-        cancelPendingJ();
-        window.vim_info.mode = "normal";
-        updateInfoContainer();
+        // A `j` typed right before Escape is real text (only `jk` escapes).
+        commitPendingJ();
+        exitToNormal();
         break;
       case "j":
         // If a previous `j` is still pending (user typed `jj`), commit
@@ -78,8 +113,7 @@ export const createInsertReducer = (deps: InsertReducerDeps) => {
           e.preventDefault();
           e.stopPropagation();
           cancelPendingJ();
-          window.vim_info.mode = "normal";
-          updateInfoContainer();
+          exitToNormal();
         }
         // Otherwise let `k` insert normally.
         break;

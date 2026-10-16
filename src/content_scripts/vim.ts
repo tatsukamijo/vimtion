@@ -1910,6 +1910,16 @@ const pasteAfterCursor = async () => {
 
       setTimeout(() => {
         vim_info.mode = "normal";
+        // Notion leaves the caret after the pasted text; Vim's p rests on
+        // the last pasted character.
+        const element = currentElement.isConnected
+          ? currentElement
+          : vim_info.lines[vim_info.active_line].element;
+        const pos = getCursorIndexInElement(element);
+        if (pos > 0) {
+          setCursorPosition(element, pos - 1);
+          vim_info.desired_column = pos - 1;
+        }
         updateInfoContainer();
       }, 100);
     }
