@@ -694,3 +694,31 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
   - Lines are only editables that belong to the page (`isDocumentEditable`: inside `.notion-frame`, not in a dialog, overlay, sidebar, top bar or discussion).
   - Focus moving into one of the other editables saves the page position (from the last page caret) like the popup-return episode, and Esc/Enter there restores it.
   - Verified: Cmd+Shift+M, type `hello` + `o` → the comment holds `helloo`. Esc returns to the same line and column, and `x` edits there.
+
+## Open from the post-fix sweep (2026-10-16, stopped before it finished)
+
+Confirmed, not yet fixed:
+- **Regression (ed2bb05)**: a mouse drag across blocks in normal mode is collapsed. The click lands on the page wrapper, and `followClickAtPoint` → `followClick` replaces the non-collapsed selection with a caret. Fix: skip when the selection is not collapsed.
+- **Regression (ed2bb05)**: clicking a checkbox or toggle triangle in `v`/`V` mode, then pressing a key, silently drops visual mode. The stranded-focus keydown fallback forces normal mode. Fix: keep the visual mode when refocusing.
+- A mouse range selection (drag, double-click, Shift+click) in normal mode is not used by `x`/`d`/`y`/`v`. In Vim with `mouse=a` it enters visual mode.
+- Normal-mode Enter on a link does not save the cursor, so Back/`H` lands on the title.
+- The status-bar line number is stale after navigation plus cursor restore. A newly opened page puts the cursor on the title at the previous page's column.
+- After navigating away by a sidebar click, `H` does not restore the cursor.
+- The block cursor is drawn at column 0 while focus is outside the page.
+
+Unverified sweep claims (re-check):
+- Esc from the top-bar `...` menu or Share popover leaves Vimtion deaf. Stale `popupReturn` after a popup is closed by clicking outside.
+- Cmd-z in normal mode leaves the restored text selected. Cmd-Shift-z lands on the pre-undo position. `desired_column` is not updated after Cmd-v.
+- `z<CR>`/`z-` leave the line 70px from the window edge.
+- Esc does not close the AI prompt (space on an empty line) or the `:` emoji picker. A code block made with ```` ``` ```` puts the caret on the title (also claimed in the first sweep, not reproduced there).
+- `j`/`k` skip the rows of a soft-line-break text block. A column inside an emoji after Esc.
+- Text typed into a table cell is not saved. `W` on the last WORD. `;` after `t`/`T` next to the target.
+- The refix-a/refix-b areas (emoji edges, undo/redo chains, typeahead edges) did not finish. Their browsers also lost the extension mid-run when `dist-dev` was rebuilt.
+
+Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes (code-block-nav:416, operators:81, undo-redo:132, markdown-chaos). To investigate:
+- navigation:485 `{`
+- operators-block-types:61 `V+d`
+- scenario-ime:184
+- scenario-speed-typist:82 (`holdKey j×30`)
+- stress-fast-user:91
+- ui-sync:80/98/111/139/161: timeouts, "page closed"; possibly infrastructure
