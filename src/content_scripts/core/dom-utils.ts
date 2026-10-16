@@ -17,17 +17,47 @@ export const clearAllBackgroundColors = (): void => {
 };
 
 /**
- * Delete multiple lines atomically using Notion's block selection UI
- * Simulates mouse drag selection to select multiple blocks, then Backspace
+ * Remove one whole Notion block (with any nested children) via Notion's own
+ * cut handler: a COLLAPSED selection inside the block + execCommand("cut")
+ * makes Notion cut the entire block, exactly like Cmd+X with nothing
+ * selected. It also puts the block on the clipboard as Notion markdown.
+ *
+ * Why not the old approaches: Notion ignores synthetic (untrusted) mouse
+ * drags and KeyboardEvents, so neither the drag-to-select + Backspace path nor
+ * Delete/Backspace key events delete anything on current Notion.
+ * execCommand runs Notion's real clipboard pipeline.
+ *
+ * @returns true if the block was removed
+ */
+export const cutWholeBlock = (element: HTMLElement): boolean => {
+  if (!element.isConnected) return false;
+  const block = element.closest("[data-block-id]");
+  element.focus({ preventScroll: true });
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.collapse(true);
+  const sel = window.getSelection();
+  if (!sel) return false;
+  sel.removeAllRanges();
+  sel.addRange(range);
+  document.execCommand("cut");
+  return !block || !block.isConnected;
+};
+
+/**
+ * Delete `lineCount` consecutive lines starting at `firstElement`, one Notion
+ * block per line. Lines whose block sits inside another deleted block are
+ * skipped (they go away with their parent). Blocks are cut bottom-up so the
+ * remaining elements stay valid.
  *
  * @param firstElement - First contenteditable element to delete
  * @param lineCount - Number of lines to delete
- * @returns Promise that resolves when deletion completes
+ * @returns Promise resolving to the number of blocks cut (= undo steps)
  */
 export const deleteMultipleLinesAtomically = (
   firstElement: HTMLElement,
   lineCount: number,
-): Promise<void> => {
+): Promise<number> => {
   return new Promise((resolve) => {
     const { vim_info } = window;
     const firstLineIndex = vim_info.lines.findIndex(
@@ -35,110 +65,43 @@ export const deleteMultipleLinesAtomically = (
     );
 
     if (firstLineIndex === -1) {
-      resolve();
+      resolve(0);
       return;
     }
 
-    const lastLineIndex = firstLineIndex + lineCount - 1;
-    if (lastLineIndex >= vim_info.lines.length) {
-      resolve();
-      return;
-    }
+    const lastLineIndex = Math.min(
+      firstLineIndex + lineCount - 1,
+      vim_info.lines.length - 1,
+    );
+    const elements = vim_info.lines
+      .slice(firstLineIndex, lastLineIndex + 1)
+      .map((line) => line.element);
+    const blocks = elements.map((el) => el.closest("[data-block-id]"));
+    const targets = elements.filter(
+      (_, i) =>
+        !blocks.some(
+          (other, j) =>
+            j !== i && other && blocks[i] && other !== blocks[i] &&
+            other.contains(blocks[i]),
+        ),
+    );
 
-    const firstBlock = firstElement.closest("[data-block-id]") as HTMLElement;
-    const lastElement = vim_info.lines[lastLineIndex].element;
-    const lastBlock = lastElement.closest("[data-block-id]") as HTMLElement;
-
-    if (!firstBlock || !lastBlock) {
-      resolve();
-      return;
-    }
-
-    firstBlock.scrollIntoView({ block: "center", behavior: "instant" });
-
-    const firstRect = firstBlock.getBoundingClientRect();
-    const lastRect = lastBlock.getBoundingClientRect();
-
-    const startX = firstRect.left - 30;
-    const startY = firstRect.top + 2;
-    const endX = firstRect.left + 200;
-    const endY = lastRect.bottom - 2;
-
-    const startElement = document.elementFromPoint(startX, startY);
-
-    const mouseDownEvent = new MouseEvent("mousedown", {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-      clientX: startX,
-      clientY: startY,
-      button: 0,
-    });
-    startElement?.dispatchEvent(mouseDownEvent);
-
-    setTimeout(() => {
-      const mouseMoveEvent = new MouseEvent("mousemove", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: endX,
-        clientY: endY,
-        button: 0,
-      });
-      document.dispatchEvent(mouseMoveEvent);
-
-      setTimeout(() => {
-        const mouseUpEvent = new MouseEvent("mouseup", {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          clientX: endX,
-          clientY: endY,
-          button: 0,
-        });
-        document.dispatchEvent(mouseUpEvent);
-
-        setTimeout(() => {
-          const selectedBlocks = document.querySelectorAll(
-            "[data-block-id][data-block-selected]",
-          );
-
-          if (selectedBlocks.length === 0) {
-            for (
-              let i = firstLineIndex + lineCount - 1;
-              i >= firstLineIndex;
-              i--
-            ) {
-              const element = vim_info.lines[i].element;
-              deleteNormalBlockWithKeyboardEvents(
-                element,
-                (firstLineIndex + lineCount - 1 - i) * 100,
-              );
-            }
-            setTimeout(() => resolve(), lineCount * 100 + 100);
-            return;
-          }
-
-          const backspaceEvent = new KeyboardEvent("keydown", {
-            key: "Backspace",
-            code: "Backspace",
-            keyCode: 8,
-            which: 8,
-            bubbles: true,
-            cancelable: true,
-          });
-          document.dispatchEvent(backspaceEvent);
-
-          setTimeout(() => resolve(), 20);
-        }, 100);
-      }, 50);
-    }, 50);
+    const cutNext = (k: number) => {
+      if (k < 0) {
+        setTimeout(() => resolve(targets.length), 50);
+        return;
+      }
+      cutWholeBlock(targets[k]);
+      // Give Notion a tick to commit the transaction before the next cut.
+      setTimeout(() => cutNext(k - 1), 30);
+    };
+    cutNext(targets.length - 1);
   });
 };
 
 /**
- * Delete a normal Notion block using keyboard events
- * Uses Delete+Backspace sequence with empty block detection
+ * Delete a normal Notion block (kept for its existing callers: paragraph and
+ * visual-line change operators). Uses the execCommand("cut") primitive.
  *
  * @param element - The contenteditable element to delete
  * @param delay - Delay in ms before starting deletion (for batched operations)
@@ -148,82 +111,7 @@ export const deleteNormalBlockWithKeyboardEvents = (
   delay: number = 0,
 ): void => {
   setTimeout(() => {
-    if (!document.contains(element)) {
-      return;
-    }
-
-    const blockElement = element.closest("[data-block-id]");
-    const blockClassName = blockElement?.className || "";
-
-    const isListBlock =
-      blockClassName.includes("bulleted_list") ||
-      blockClassName.includes("numbered_list") ||
-      blockClassName.includes("to_do") ||
-      blockClassName.includes("quote");
-
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-
-    element.focus();
-
-    setTimeout(() => {
-      const deleteEvent = new KeyboardEvent("keydown", {
-        key: "Delete",
-        code: "Delete",
-        keyCode: 46,
-        which: 46,
-        bubbles: true,
-        cancelable: true,
-      });
-      element.dispatchEvent(deleteEvent);
-
-      setTimeout(() => {
-        const isEmpty = (element.textContent || "").trim().length === 0;
-        const blockStillExists =
-          blockElement && document.contains(blockElement);
-
-        if (isEmpty && blockStillExists) {
-          if (isListBlock) {
-            const backspaceEvent = new KeyboardEvent("keydown", {
-              key: "Backspace",
-              code: "Backspace",
-              keyCode: 8,
-              which: 8,
-              bubbles: true,
-              cancelable: true,
-            });
-            element.dispatchEvent(backspaceEvent);
-
-            setTimeout(() => {
-              if (document.contains(blockElement)) {
-                const backspace2 = new KeyboardEvent("keydown", {
-                  key: "Backspace",
-                  code: "Backspace",
-                  keyCode: 8,
-                  which: 8,
-                  bubbles: true,
-                  cancelable: true,
-                });
-                document.dispatchEvent(backspace2);
-              }
-            }, 30);
-          } else {
-            const backspaceEvent = new KeyboardEvent("keydown", {
-              key: "Backspace",
-              code: "Backspace",
-              keyCode: 8,
-              which: 8,
-              bubbles: true,
-              cancelable: true,
-            });
-            element.dispatchEvent(backspaceEvent);
-          }
-        }
-      }, 30);
-    }, 10);
+    cutWholeBlock(element);
   }, delay);
 };
 

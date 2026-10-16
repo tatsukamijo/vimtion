@@ -1619,7 +1619,16 @@ const deleteVisualLineSelection = () => {
 
   // Always try atomic deletion first (works for all block types including code blocks)
   const firstElement = vim_info.lines[firstLine].element;
-  deleteMultipleLinesAtomically(firstElement, lineCount).then(() => {
+  deleteMultipleLinesAtomically(firstElement, lineCount).then((cuts) => {
+    // Each block cut is one Notion undo step; u must undo them all together.
+    vim_info.undo_count = Math.max(1, cuts);
+    vim_info.yank_type = "line";
+    // Every cut replaced the clipboard; put the whole deleted range back.
+    if (cuts > 1) {
+      navigator.clipboard.writeText(clipboardText).catch((err) => {
+        console.error("[Vim-Notion] Failed to copy to clipboard:", err);
+      });
+    }
     setTimeout(() => {
       vim_info.mode = "normal";
       vim_info.in_undo_group = false;
