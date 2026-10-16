@@ -9,6 +9,8 @@ import {
   selectCharRange,
   deleteCharRange,
   lineBoundsAt,
+  columnInLine,
+  cutCharRange,
 } from "../cursor";
 import { isParagraphBoundary, isInsideCodeBlock } from "../notion";
 import {
@@ -200,10 +202,11 @@ export const createDeleteToNextWord =
       pos++;
     }
 
-    // Select from cursor to pos (boundary-safe across formatting spans)
-    if (selectCharRange(currentElement, currentCursorPosition, pos)) {
-      document.execCommand("cut");
-    }
+    // dw stops at the end of the (code) line; it never joins lines.
+    pos = Math.min(pos, lineBoundsAt(text, currentCursorPosition).end);
+
+    // Cut from cursor to pos (boundary-safe; never cuts a whole code block)
+    cutCharRange(currentElement, currentCursorPosition, pos);
 
     // Stay on the deletion point, clamped onto the remaining text. Only move
     // the caret when Notion left it somewhere else: an extra selection change
@@ -217,7 +220,7 @@ export const createDeleteToNextWord =
     if (getCursorIndexInElement(currentElement) !== newPosition) {
       setCursorPosition(currentElement, newPosition);
     }
-    vim_info.desired_column = newPosition;
+    vim_info.desired_column = columnInLine(currentElement, newPosition);
   };
 
 /**

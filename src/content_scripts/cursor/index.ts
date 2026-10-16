@@ -10,6 +10,8 @@ export {
   selectCharRange,
   deleteCharRange,
   lineBoundsAt,
+  columnInLine,
+  cutCharRange,
 } from "./position";
 
 export { createBlockCursor, updateBlockCursor } from "./block-cursor";

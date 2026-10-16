@@ -317,12 +317,12 @@ Found with `tools/notion-driver` (`vt`) against real Notion (now served from `ap
 
 Repro notation: `fixture` lines use the `vt fixture` spec (see `tools/notion-driver/README.md`). Line numbers are driver lines: L1 = page title, content starts at L2. Keys are Vim notation, sent with the 30ms default gap unless noted.
 
-## BUG-048: Line/block deletion (`dd`, `Vd`, `Vjd`, `2dd`) deletes nothing on current Notion
+## BUG-048: Line/block deletion (`dd`, `Vd`, `Vjd`) deletes nothing on current Notion
 
 - **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Each block is now removed with a collapsed `execCommand('cut')` (Notion's real cut path) instead of synthetic drag/key events. Undo counts one step per Notion edit.
 
 - **Detected**: 2026-10-15 (live driver, headed + headless)
-- **Repro**: fixture `alpha one / bravo two / charlie three`; `jjj` (on `bravo two`) then `dd`, or `Vjd`. Nothing is deleted. The mode reads `insert` for about 800ms, then returns to normal. Reproduced on heading, paragraph, todo, quote, callout, toggle, last line, and a top-level bullet with children.
+- **Repro**: fixture `alpha one / bravo two / charlie three`; `jjj` (on `bravo two`) then `dd`, or `Vjd`. Nothing is deleted. The mode reads `insert` for about 800ms, then returns to normal. Reproduced on heading, paragraph, todo, quote, callout, toggle, last line, and a top-level bullet with children. (`2dd` also deletes one line, but that is the missing count prefix, MISSING-001, not this bug.)
 - **Root cause**: `deleteMultipleLinesAtomically` (`core/dom-utils.ts`) selects blocks with a synthetic `mousedown`/`mousemove`/`mouseup` drag, then dispatches a synthetic `Backspace`. Current Notion does not react to the synthetic drag (no `[data-block-selected]`), and the per-block keyboard fallback also fails.
 - **Severity**: **Critical**. Every line-wise delete is broken. Visual-line delete and the stashed WIP fix `WIP: visual-line delete cursor sync` both sit on top of this.
 

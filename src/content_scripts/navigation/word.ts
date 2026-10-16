@@ -2,7 +2,11 @@
  * Word navigation functions (w, b, e, W, B, E)
  */
 
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  columnInLine,
+} from "../cursor";
 import { isWrapperLine } from "../core";
 
 export const jumpToNextWord = () => {
@@ -33,7 +37,7 @@ export const jumpToNextWord = () => {
   }
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToPreviousWord = () => {
@@ -63,7 +67,7 @@ export const jumpToPreviousWord = () => {
     while (p > 0 && !/\w/.test(prevText[p - 1])) p--;
     while (p > 0 && /\w/.test(prevText[p - 1])) p--;
     setCursorPosition(prevElement, p);
-    vim_info.desired_column = p;
+    vim_info.desired_column = columnInLine(prevElement, p);
     return;
   }
 
@@ -80,7 +84,7 @@ export const jumpToPreviousWord = () => {
   }
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToEndOfWord = () => {
@@ -110,7 +114,7 @@ export const jumpToEndOfWord = () => {
   if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToEndOfWORD = () => {
@@ -140,7 +144,7 @@ export const jumpToEndOfWORD = () => {
   if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToNextWORD = () => {
@@ -162,7 +166,7 @@ export const jumpToNextWORD = () => {
   }
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToPreviousWORD = () => {
@@ -186,5 +190,5 @@ export const jumpToPreviousWORD = () => {
   }
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };

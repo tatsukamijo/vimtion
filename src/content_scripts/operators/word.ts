@@ -68,7 +68,7 @@ export const createWordOperators = (deps: OperatorDeps) => {
   /**
    * Delete inner word
    */
-  const deleteInnerWord = (): void => {
+  const deleteInnerWord = (): number => {
     const { vim_info } = window;
     const currentElement = vim_info.lines[vim_info.active_line].element;
     const currentCursorPosition = getCursorIndexInElement(currentElement);
@@ -84,16 +84,22 @@ export const createWordOperators = (deps: OperatorDeps) => {
 
     deleteCharRange(currentElement, start, end);
 
-    setCursorPosition(currentElement, start);
-    vim_info.desired_column = start;
+    // Normal mode rests ON a character: clamp after deleting the line's tail.
+    const restAt = Math.max(
+      0,
+      Math.min(start, (currentElement.textContent || "").length - 1),
+    );
+    setCursorPosition(currentElement, restAt);
+    vim_info.desired_column = restAt;
     vim_info.pending_operator = null;
     updateInfoContainer();
+    return start;
   };
 
   /**
    * Delete around word
    */
-  const deleteAroundWord = (): void => {
+  const deleteAroundWord = (): number => {
     const { vim_info } = window;
     const currentElement = vim_info.lines[vim_info.active_line].element;
     const currentCursorPosition = getCursorIndexInElement(currentElement);
@@ -109,18 +115,27 @@ export const createWordOperators = (deps: OperatorDeps) => {
 
     deleteCharRange(currentElement, start, end);
 
-    setCursorPosition(currentElement, start);
-    vim_info.desired_column = start;
+    // Normal mode rests ON a character: clamp after deleting the line's tail.
+    const restAt = Math.max(
+      0,
+      Math.min(start, (currentElement.textContent || "").length - 1),
+    );
+    setCursorPosition(currentElement, restAt);
+    vim_info.desired_column = restAt;
     vim_info.pending_operator = null;
     updateInfoContainer();
+    return start;
   };
 
   /**
    * Change inner word (delete and enter insert mode)
    */
   const changeInnerWord = (): void => {
-    deleteInnerWord();
-    window.vim_info.mode = "insert";
+    const start = deleteInnerWord();
+    const { vim_info } = window;
+    // Insert at the deletion point (the delete clamped the normal-mode caret).
+    setCursorPosition(vim_info.lines[vim_info.active_line].element, start);
+    vim_info.mode = "insert";
     updateInfoContainer();
   };
 
@@ -128,8 +143,11 @@ export const createWordOperators = (deps: OperatorDeps) => {
    * Change around word (delete and enter insert mode)
    */
   const changeAroundWord = (): void => {
-    deleteAroundWord();
-    window.vim_info.mode = "insert";
+    const start = deleteAroundWord();
+    const { vim_info } = window;
+    // Insert at the deletion point (the delete clamped the normal-mode caret).
+    setCursorPosition(vim_info.lines[vim_info.active_line].element, start);
+    vim_info.mode = "insert";
     updateInfoContainer();
   };
 

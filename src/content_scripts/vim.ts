@@ -57,6 +57,7 @@ import {
   selectCharRange,
   deleteCharRange,
   lineBoundsAt,
+  columnInLine,
   setCursorPosition,
   createBlockCursor,
   updateBlockCursor,
@@ -373,7 +374,14 @@ const deleteCharacter = () => {
   // `x` keystroke bubbles through and is inserted as the literal letter.
   if (isInsideCodeBlock(currentElement)) {
     deleteCharacterInCodeBlock(currentElement, currentCursorPosition);
-    vim_info.desired_column = currentCursorPosition;
+    // Rest on the code line's new last char after deleting at its end.
+    const { start, end } = lineBoundsAt(
+      currentElement.textContent || "",
+      currentCursorPosition,
+    );
+    const rest = Math.max(start, Math.min(currentCursorPosition, end - 1));
+    if (rest !== currentCursorPosition) setCursorPosition(currentElement, rest);
+    vim_info.desired_column = rest - start;
     return;
   }
 
@@ -420,7 +428,7 @@ const deleteCharacterBefore = () => {
   // Move cursor back one position
   const newCursorPosition = currentCursorPosition - 1;
   setCursorPosition(currentElement, newCursorPosition);
-  vim_info.desired_column = newCursorPosition;
+  vim_info.desired_column = columnInLine(currentElement, newCursorPosition);
 };
 
 const substituteCharacter = () => {
@@ -599,6 +607,34 @@ document.addEventListener(
   true,
 );
 
+/**
+ * When a normal-mode command enters insert mode, make sure the active line's
+ * element really has focus. j/k into a code block only moves the selection
+ * (setActiveLine avoids click() there), so Notion still treated the previous
+ * block as focused and an Enter typed next split THAT block. focus() moves
+ * the caret, so the current selection is put back afterwards.
+ */
+const focusActiveLineForInsert = () => {
+  const { vim_info } = window;
+  const element = vim_info.lines[vim_info.active_line]?.element;
+  if (!element) return;
+  const sel = window.getSelection();
+  const saved =
+    sel && sel.rangeCount > 0 && element.contains(sel.anchorNode)
+      ? sel.getRangeAt(0).cloneRange()
+      : null;
+  // Notion decides which block an Enter acts on from a click on the block,
+  // not from focus. setActiveLine skips click() for code blocks (during
+  // navigation it made the cursor jump), so give the code block its click
+  // only now, when typing starts in it.
+  if (isInsideCodeBlock(element)) element.click();
+  element.focus({ preventScroll: true });
+  if (saved && sel) {
+    sel.removeAllRanges();
+    sel.addRange(saved);
+  }
+};
+
 const handleKeydown = (e: KeyboardEvent) => {
   const { vim_info } = window;
 
@@ -654,10 +690,18 @@ const handleKeydown = (e: KeyboardEvent) => {
   if (vim_info.mode === "normal") {
     // Let normalReducer decide if this key should be handled
     const handled = normalReducer(e);
+    // (cast: TS narrowed mode to "normal" before the reducer ran)
+    if (handled && (vim_info.mode as string) === "insert") {
+      focusActiveLineForInsert();
+    }
     if (handled) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      // Refresh the status bar after every handled normal-mode key: several
+      // motions (e.g. w/b crossing into another block) change active_line
+      // without calling updateInfoContainer(), leaving "Line N" stale.
+      if (vim_info.mode === "normal") updateInfoContainer();
     }
   } else if (vim_info.mode === "visual") {
     const handled = visualReducer(e);
@@ -1577,6 +1621,38 @@ const deleteVisualLineSelection = () => {
   const [firstLine, lastLine] =
     startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
 
+  // V inside a single code block selects code LINES of one Notion block.
+  // Delete just those code lines (like dd does there) instead of cutting the
+  // whole code block.
+  const codeElement = vim_info.lines[firstLine].element;
+  if (firstLine === lastLine && isInsideCodeBlock(codeElement)) {
+    const text = codeElement.textContent || "";
+    const sel = window.getSelection();
+    const selStart = getCursorIndexInElement(codeElement);
+    const selText = sel ? sel.toString() : "";
+    const selEnd = Math.max(selStart, selStart + selText.length - 1);
+    let from = lineBoundsAt(text, selStart).start;
+    let to = lineBoundsAt(text, selEnd).end;
+    const lineText = text.slice(from, to);
+    // Take one line separator with the lines: the following "\n" when there
+    // is a next code line, else the preceding one.
+    const hasNextLine = to < text.length - 1;
+    if (hasNextLine) to += 1;
+    else if (from > 0) from -= 1;
+    navigator.clipboard.writeText(lineText).catch(() => {});
+    vim_info.yank_type = "line";
+    clearAllBackgroundColors();
+    deleteCharRange(codeElement, from, to);
+    vim_info.mode = "normal";
+    const after = codeElement.textContent || "";
+    const landing = Math.min(hasNextLine ? from : from + 1, Math.max(0, after.length - 1));
+    const landStart = lineBoundsAt(after, landing).start;
+    setCursorPosition(codeElement, landStart);
+    vim_info.desired_column = 0;
+    updateInfoContainer();
+    return;
+  }
+
   // Collect text from all lines for clipboard
   const textLines: string[] = [];
   for (let i = firstLine; i <= lastLine; i++) {
@@ -2113,8 +2189,14 @@ const undo = () => {
         }
         const currentElement = vim_info.lines[vim_info.active_line]?.element;
         if (currentElement) {
+          // Notion re-selects restored text after undo; normal mode has a
+          // caret, not a selection (typing would overwrite the restored text).
+          const after = window.getSelection();
+          if (after && after.rangeCount > 0 && !after.isCollapsed) {
+            after.collapseToStart();
+          }
           const cursorIndex = getCursorIndexInElement(currentElement);
-          vim_info.desired_column = cursorIndex;
+          vim_info.desired_column = columnInLine(currentElement, cursorIndex);
           updateBlockCursor();
         }
       }, 50);
@@ -2160,8 +2242,14 @@ const redo = () => {
       setTimeout(() => {
         const currentElement = vim_info.lines[vim_info.active_line]?.element;
         if (currentElement) {
+          // Notion re-selects restored text after undo; normal mode has a
+          // caret, not a selection (typing would overwrite the restored text).
+          const after = window.getSelection();
+          if (after && after.rangeCount > 0 && !after.isCollapsed) {
+            after.collapseToStart();
+          }
           const cursorIndex = getCursorIndexInElement(currentElement);
-          vim_info.desired_column = cursorIndex;
+          vim_info.desired_column = columnInLine(currentElement, cursorIndex);
           updateBlockCursor();
         }
       }, 50);
@@ -3593,7 +3681,10 @@ const visualSelectAroundParagraph = createVisualSelectAroundParagraph(
   updateVisualLineSelection,
   updateInfoContainer,
 );
-const deleteVisualSelection = createDeleteVisualSelection(updateInfoContainer);
+const deleteVisualSelection = createDeleteVisualSelection(
+  updateInfoContainer,
+  refreshLines,
+);
 const yankVisualSelection = createYankVisualSelection(updateInfoContainer);
 const yankVisualLineSelection =
   createYankVisualLineSelection(updateInfoContainer);

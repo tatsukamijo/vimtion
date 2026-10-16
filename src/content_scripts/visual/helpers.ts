@@ -314,8 +314,14 @@ export const createVisualSelectAroundParagraph = (
  */
 export const visualMoveCursorBackwards = () => {
   const { vim_info } = window;
+  const element = vim_info.lines[vim_info.active_line].element;
+  // h never leaves the (code) line.
+  const { start } = lineBoundsAt(
+    element.textContent || "",
+    vim_info.desired_column,
+  );
 
-  if (vim_info.desired_column === 0) return;
+  if (vim_info.desired_column <= start) return;
 
   vim_info.desired_column--;
   updateVisualSelection();
@@ -327,9 +333,14 @@ export const visualMoveCursorBackwards = () => {
 export const visualMoveCursorForwards = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
-  const lineLength = currentElement.textContent?.length || 0;
+  // l may reach the line's end-of-line position (as in Vim's visual mode)
+  // but never the next (code) line.
+  const { end } = lineBoundsAt(
+    currentElement.textContent || "",
+    vim_info.desired_column,
+  );
 
-  if (vim_info.desired_column >= lineLength) return;
+  if (vim_info.desired_column >= end) return;
 
   vim_info.desired_column++;
   updateVisualSelection();
@@ -539,7 +550,7 @@ const placeCaretAfterVisualOp = (position: number) => {
   const length = (element.textContent || "").length;
   const target = Math.max(0, Math.min(position, length - 1));
   setCursorPosition(element, target);
-  vim_info.desired_column = target;
+  vim_info.desired_column = target - lineBoundsAt(element.textContent || "", target).start;
 };
 
 /**
@@ -547,6 +558,7 @@ const placeCaretAfterVisualOp = (position: number) => {
  */
 export const createDeleteVisualSelection = (
   updateInfoContainer: () => void,
+  refreshLines?: () => void,
 ) => {
   return () => {
     const { vim_info } = window;
@@ -557,6 +569,24 @@ export const createDeleteVisualSelection = (
     }
 
     const element = vim_info.lines[vim_info.active_line].element;
+
+    // v on an empty line selects its line break; d removes the line (Vim).
+    // The collapsed cut makes Notion remove the empty block and drop the
+    // caret, so re-anchor on the line that moved up instead of letting
+    // recovery fall back to the page title.
+    if ((element.textContent || "").length === 0) {
+      const lineIndex = vim_info.active_line;
+      document.execCommand("cut");
+      vim_info.mode = "normal";
+      setTimeout(() => {
+        refreshLines?.();
+        if (vim_info.lines.length === 0) return;
+        vim_info.desired_column = 0;
+        setActiveLine(Math.min(lineIndex, vim_info.lines.length - 1));
+        updateInfoContainer();
+      }, 50);
+      return;
+    }
     // The selection start is where Vim leaves the cursor after d.
     const start = getCursorIndexInElement(element);
 

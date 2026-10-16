@@ -152,6 +152,36 @@ export const lineBoundsAt = (
 };
 
 /**
+ * Column of absolute offset `pos` within its logical line: `pos` itself for
+ * normal blocks, the offset from the code line's start inside a code block.
+ * desired_column holds this value in normal mode (j/k re-apply it per line).
+ */
+export const columnInLine = (element: Element, pos: number): number =>
+  pos - lineBoundsAt(element.textContent || "", pos).start;
+
+/**
+ * Cut characters [start, end) to the clipboard (Vim's d / x yank).
+ * Outside code blocks this is execCommand("cut") on the range, which keeps
+ * rich formatting on the clipboard. Inside a code block Notion turns any cut
+ * into "cut the whole code block", so write the text ourselves and delete the
+ * range through the editing pipeline instead.
+ */
+export const cutCharRange = (
+  element: Element,
+  start: number,
+  end: number,
+): boolean => {
+  if (end <= start) return false;
+  if (element.closest(".notion-code-block")) {
+    const text = element.textContent || "";
+    navigator.clipboard.writeText(text.slice(start, end)).catch(() => {});
+    return deleteCharRange(element, start, end);
+  }
+  if (!selectCharRange(element, start, end)) return false;
+  return document.execCommand("cut");
+};
+
+/**
  * Set cursor position within an element
  */
 export const setCursorPosition = (element: Element, index: number) => {

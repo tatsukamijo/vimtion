@@ -3,7 +3,7 @@
  * Handles yanking (copying) text based on motion commands
  */
 
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import { getCursorIndexInElement } from "../cursor";
 import { isParagraphBoundary } from "../notion";
 
 /**
@@ -12,17 +12,26 @@ import { isParagraphBoundary } from "../notion";
 export const createYankCurrentLine = () => () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
-  const cursorPosition = getCursorIndexInElement(currentElement);
+  const text = currentElement.textContent || "";
 
-  const range = document.createRange();
-  range.selectNodeContents(currentElement);
-  const sel = window.getSelection();
-  sel?.removeAllRanges();
-  sel?.addRange(range);
-  document.execCommand("copy");
-  // Put the caret back where it was. Clearing the selection instead left no
-  // caret at all, and selection recovery then moved the cursor to the title.
-  setCursorPosition(currentElement, cursorPosition);
+  // Write the line to the clipboard directly (plain text + its HTML so p keeps
+  // inline formatting) instead of selecting it and running execCommand("copy").
+  // Selecting the line made Notion re-assert that selection after we put the
+  // caret back, so the whole line stayed selected and the next i/x/a acted on
+  // it (insert replaced the line).
+  const html = currentElement.innerHTML;
+  const write =
+    typeof ClipboardItem !== "undefined" && navigator.clipboard.write
+      ? navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([text], { type: "text/plain" }),
+            "text/html": new Blob([html], { type: "text/html" }),
+          }),
+        ])
+      : navigator.clipboard.writeText(text);
+  write.catch((err) => {
+    console.error("[Vim-Notion] Failed to yank line:", err);
+  });
   vim_info.yank_type = "line";
 };
 
