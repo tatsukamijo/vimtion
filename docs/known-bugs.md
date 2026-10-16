@@ -374,6 +374,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-054: Code-block operators act on the whole block, not the current code line (data loss, not undoable)
 
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: edits go through `deleteCharRange` (execCommand delete), scoped to the current code line. They persist after reload and undo works.
+
 - **Repro**: fixture `top / ```python / x = 1 / y = 2 / z = 3 / ``` / end`.
   - `cc` on `y = 2` empties the **entire** code block.
   - `D` / `C` / `d$` / `c$` truncate everything after the cursor across all code lines. `d0` deletes from the block start, and `y$` yanks to the block end.
@@ -382,6 +384,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - **Severity**: **High**. Data loss.
 
 ## BUG-055: Code-block motions and inserts use the whole block instead of the current code line
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` for `0`/`$`/`^`/`f`/`t`/`I`/`A`/`X` verified. `yy`+`p` inside a code block and normal-mode `h`/`l` crossing code lines were not re-checked.
 
 - `0` → block offset 0; `$` → the trailing `⏎` after the last line; `f(`/`F`/`t`/`T` search across code lines (`navigation/basic.ts`, `navigation/char-find.ts`).
 - `I` on the 2nd code line inserts at the start of the 1st (`insertAtLineStart`).
@@ -392,6 +396,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - **Severity**: Medium (X / yy+p: High).
 
 ## BUG-056: `A` + `Enter` in a code block splits the block *above* and types there
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: the caret goes to the end of the code line, and entering insert mode clicks the code block so Notion's Enter acts on it, including after `j`/`k` entry.
 
 - **Repro**: fixture `para above / ```python / x = 1 / y = 2 / ``` / after code`; on `x = 1`: `A<CR>`, then type `z = 3` → `z = 3para above`. The code block is unchanged.
 - **Root cause**: `setCursorPastLineEnd` (`vim.ts`) uses the full `textContent.length` of the code leaf, including Notion's trailing `\n` placeholder, so the caret leaves the block.
@@ -427,6 +433,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-061: Visual `v` + operator with no motion deletes/yanks the whole block
 
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: `v` draws its one-char selection immediately and starts from the real caret.
+
 - **Repro**: fixture `hello world foo bar / second line here`; on L2, `wvd` → the whole block is deleted and the cursor goes to the title (nvim: `hello orld foo bar`). `wvx` does the same, and `wvy` yanks the whole line.
 - **Same mechanism**: `v` after `j` onto a shorter line. Visual motions use the stale `desired_column` instead of the real caret, so the selection collapses, and `vhd` then deletes the whole `abc def` block.
 - **Root cause**: `createStartVisualMode` (`visual/helpers.ts`) never calls `updateVisualSelection()`. `execCommand('cut')` on a collapsed selection cuts the whole block.
@@ -434,11 +442,15 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-062: Visual `v` inside a code block operates on the paragraph *above* the block
 
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: `setRangeInElement` resolves endpoints inside nested tokens. Visual delete in a code block deletes only the selection; `Vd` deletes only the code line.
+
 - **Repro**: fixture `para QQQ above / ```python / alpha = 1 / beta = two / gamma / ``` / after code`; on `beta = two`, `vlld` → `para QQQ above` is deleted and the code block is untouched. `v$y` yanks `para QQQ above`. A bold span inside a `v` selection sometimes yanks the whole line the same way.
 - **Root cause**: `setRangeInElement` (`visual/helpers.ts`) recurses into the element that contains the start and returns without setting the end.
 - **Severity**: **High**. Data loss.
 
 ## BUG-063: Visual-line yank in a code block leaves the line selected; the next insert overwrites it
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
 
 - **Repro**: same fixture as BUG-062; on `beta = two`, `VyiZ<Esc>` → `alpha = 1\nZ\ngamma`.
 - **Root cause**: `removeAllRanges()` after `Vy` does not stick for the code-block range.
@@ -476,6 +488,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - **Severity**: Low–Medium.
 
 ## BUG-068: Text-object edge cases
+
+- **Status**: **PARTIAL** on `fix/live-sweep-batch1`: `ci(`/`ci"` with no pair now abort, and `diw`/`daw` at line end keep the caret on a char. The inner-closing-bracket pair choice and the `da"` double space are still open.
 
 - With the cursor on an inner closing bracket, the outer pair is used: `call(foo(bar), baz)` with the cursor on the first `)`, then `di(` → `call() end` (nvim: `call(foo(), baz) end`). Same for `[]` and `{}` (`text-objects/bracket.ts` counts the bracket under the cursor as depth+1).
 - `da"` / `ca'` leave a double space (trailing whitespace is not consumed).
