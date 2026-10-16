@@ -3,7 +3,12 @@
  * Handles changing (delete + enter insert mode) text based on motion commands
  */
 
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  deleteCharRange,
+  lineBoundsAt,
+} from "../cursor";
 import { isParagraphBoundary } from "../notion";
 import { deleteNormalBlockWithKeyboardEvents } from "../core/dom-utils";
 
@@ -30,9 +35,19 @@ export const createChangeCurrentLine =
     const { updateInfoContainer } = deps;
     const { vim_info } = window;
     const currentElement = vim_info.lines[vim_info.active_line].element;
+    const text = currentElement.textContent || "";
+    // In a code block cc clears only the current code line.
+    const { start, end } = lineBoundsAt(
+      text,
+      getCursorIndexInElement(currentElement),
+    );
 
-    currentElement.textContent = "";
-    setCursorPosition(currentElement, 0);
+    if (end > start) {
+      navigator.clipboard.writeText(text.slice(start, end)).catch(() => {});
+      vim_info.yank_type = "line";
+    }
+    deleteCharRange(currentElement, start, end);
+    setCursorPosition(currentElement, start);
     vim_info.desired_column = 0;
     vim_info.mode = "insert";
     updateInfoContainer();
@@ -57,8 +72,13 @@ export const createChangeToEndOfLine =
   (deps: Pick<MotionChangeDeps, "deleteToEndOfLine" | "updateInfoContainer">) =>
   () => {
     const { deleteToEndOfLine, updateInfoContainer } = deps;
+    const { vim_info } = window;
+    const element = vim_info.lines[vim_info.active_line].element;
+    const pos = getCursorIndexInElement(element);
     deleteToEndOfLine();
-    window.vim_info.mode = "insert";
+    // D steps back onto the last char; C inserts where the text was cut.
+    setCursorPosition(element, pos);
+    vim_info.mode = "insert";
     updateInfoContainer();
   };
 

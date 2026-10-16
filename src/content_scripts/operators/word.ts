@@ -4,7 +4,11 @@
  */
 
 import { getInnerWordBounds, getAroundWordBounds } from "../text-objects/word";
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  deleteCharRange,
+} from "../cursor";
 
 /**
  * Dependencies injected from vim.ts
@@ -78,8 +82,7 @@ export const createWordOperators = (deps: OperatorDeps) => {
       console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
-    const newText = text.slice(0, start) + text.slice(end);
-    currentElement.textContent = newText;
+    deleteCharRange(currentElement, start, end);
 
     setCursorPosition(currentElement, start);
     vim_info.desired_column = start;
@@ -104,8 +107,7 @@ export const createWordOperators = (deps: OperatorDeps) => {
       console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
-    const newText = text.slice(0, start) + text.slice(end);
-    currentElement.textContent = newText;
+    deleteCharRange(currentElement, start, end);
 
     setCursorPosition(currentElement, start);
     vim_info.desired_column = start;

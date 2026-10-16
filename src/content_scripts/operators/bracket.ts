@@ -7,7 +7,11 @@ import {
   findMatchingQuotes,
   findMatchingBrackets,
 } from "../text-objects/bracket";
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  deleteCharRange,
+} from "../cursor";
 
 /**
  * Dependencies injected from vim.ts
@@ -122,8 +126,7 @@ export const createBracketOperators = (deps: OperatorDeps) => {
       console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
-    const newText = text.slice(0, openIndex + 1) + text.slice(closeIndex);
-    currentElement.textContent = newText;
+    deleteCharRange(currentElement, openIndex + 1, closeIndex);
 
     setCursorPosition(currentElement, openIndex + 1);
     vim_info.desired_column = openIndex + 1;
@@ -165,8 +168,7 @@ export const createBracketOperators = (deps: OperatorDeps) => {
       console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
-    const newText = text.slice(0, openIndex) + text.slice(closeIndex + 1);
-    currentElement.textContent = newText;
+    deleteCharRange(currentElement, openIndex, closeIndex + 1);
 
     setCursorPosition(currentElement, openIndex);
     vim_info.desired_column = openIndex;

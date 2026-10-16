@@ -55,6 +55,8 @@ import {
   getCursorIndex,
   getCursorIndexInElement,
   selectCharRange,
+  deleteCharRange,
+  lineBoundsAt,
   setCursorPosition,
   createBlockCursor,
   updateBlockCursor,
@@ -237,12 +239,19 @@ const getBlockType = (element: HTMLElement): string => {
 // Without this, on a nested bullet child "Nested bullet child 1" the
 // dispatched Enter from o split the leaf at offset 20, producing
 // "Nested bullet child " + "1" instead of an empty new sibling.
+// Inside a code block "the line" is the current code line: going to the end
+// of the whole leaf put the caret after Notion's trailing "\n" placeholder,
+// outside the code block, so A + Enter split the block above instead.
 const setCursorPastLineEnd = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
-  const lineLength = currentElement.textContent?.length || 0;
-  setCursorPosition(currentElement, lineLength);
-  vim_info.desired_column = lineLength;
+  const text = currentElement.textContent || "";
+  const { start, end } = lineBoundsAt(
+    text,
+    getCursorIndexInElement(currentElement),
+  );
+  setCursorPosition(currentElement, end);
+  vim_info.desired_column = end - start;
 };
 
 const insertAtLineEnd = () => {
@@ -252,7 +261,8 @@ const insertAtLineEnd = () => {
 };
 
 const insertAtLineStart = () => {
-  jumpToLineStart();
+  // Vim's I inserts before the first non-blank of the (code) line.
+  jumpToFirstNonBlank();
   window.vim_info.mode = "insert";
   updateInfoContainer();
 };
@@ -395,14 +405,17 @@ const deleteCharacterBefore = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const text = currentElement.textContent || "";
 
-  // Don't delete if at beginning of line
-  if (currentCursorPosition <= 0) return;
+  // Don't delete across the start of the (code) line
+  const { start } = lineBoundsAt(text, currentCursorPosition);
+  if (currentCursorPosition <= start) return;
 
-  // Delete the character before cursor position
-  const newText =
-    text.slice(0, currentCursorPosition - 1) +
-    text.slice(currentCursorPosition);
-  currentElement.textContent = newText;
+  // Delete the character before the cursor through the editing pipeline so
+  // Notion persists it (inside code blocks a textContent write was DOM-only).
+  deleteCharRange(
+    currentElement,
+    currentCursorPosition - 1,
+    currentCursorPosition,
+  );
 
   // Move cursor back one position
   const newCursorPosition = currentCursorPosition - 1;
@@ -995,7 +1008,12 @@ const visualReducer = (e: KeyboardEvent): boolean => {
       window.getSelection()?.removeAllRanges();
       // Restore cursor position when exiting visual mode
       const currentElement = vim_info.lines[vim_info.active_line].element;
-      setCursorPosition(currentElement, vim_info.desired_column);
+      const exitPos = vim_info.desired_column;
+      setCursorPosition(currentElement, exitPos);
+      // Back in normal mode desired_column is a column within the (code) line.
+      vim_info.desired_column =
+        exitPos -
+        lineBoundsAt(currentElement.textContent || "", exitPos).start;
       updateInfoContainer();
       return true;
     case "h":
@@ -3308,6 +3326,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     case "0":
       jumpToLineStart();
+      return true;
+    case "^":
+      jumpToFirstNonBlank();
       return true;
     case "$":
       jumpToLineEnd();

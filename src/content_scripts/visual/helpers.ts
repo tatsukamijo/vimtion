@@ -8,7 +8,13 @@
  * - Visual mode operators (yank, delete)
  */
 
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  resolveTextPosition,
+  lineBoundsAt,
+} from "../cursor";
+import { isInsideCodeBlock } from "../notion";
 import { getInnerWordBounds, getAroundWordBounds } from "../text-objects/word";
 import {
   findMatchingQuotes,
@@ -41,7 +47,12 @@ export const safeAddRange = (
 
 /**
  * Set a range within an element based on character positions.
- * Handles text nodes and nested elements correctly.
+ * Resolves each endpoint to the text node that actually holds it, so ranges
+ * starting inside a nested element (syntax-highlight token, bold span) still
+ * get their end set. (The previous recursive walk returned after descending
+ * into the start's element and never set the end when it lay past that
+ * element; the range then kept its default position at the top of the
+ * document, and operators hit the paragraph above the code block.)
  */
 export const setRangeInElement = (
   range: Range,
@@ -49,36 +60,17 @@ export const setRangeInElement = (
   start: number,
   end: number,
 ) => {
-  let textOffset = 0;
-  let startSet = false;
-  let endSet = false;
-
-  for (const node of Array.from(element.childNodes)) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const nodeLength = node.textContent?.length || 0;
-      const nodeEnd = textOffset + nodeLength;
-
-      if (!startSet && start >= textOffset && start <= nodeEnd) {
-        range.setStart(node, Math.min(start - textOffset, nodeLength));
-        startSet = true;
-      }
-      if (!endSet && end >= textOffset && end <= nodeEnd) {
-        range.setEnd(node, Math.min(end - textOffset, nodeLength));
-        endSet = true;
-      }
-
-      textOffset += nodeLength;
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const childLength = node.textContent?.length || 0;
-
-      if (!startSet && start < textOffset + childLength) {
-        setRangeInElement(range, node, start - textOffset, end - textOffset);
-        return;
-      }
-
-      textOffset += childLength;
-    }
+  const el = element as Element;
+  const from = resolveTextPosition(el, start, start < end);
+  const to = resolveTextPosition(el, end, false);
+  if (!from || !to) {
+    // No text at all (empty line): collapse inside the element itself.
+    range.selectNodeContents(element);
+    range.collapse(true);
+    return;
   }
+  range.setStart(from.node, from.offset);
+  range.setEnd(to.node, to.offset);
 };
 
 /**
@@ -127,6 +119,13 @@ export const createStartVisualMode = (updateInfoContainer: () => void) => {
     vim_info.mode = "visual";
     vim_info.visual_start_line = vim_info.active_line;
     vim_info.visual_start_pos = currentCursorPosition;
+    // In visual mode desired_column is the selection's moving end as an
+    // absolute offset. Start it on the caret and draw the one-char selection
+    // now: leaving a stale column (e.g. a code-line column, or the column
+    // remembered from a longer line) made `vd` act on the wrong text, and an
+    // undrawn (collapsed) selection made `vd`/`vy` cut/copy the whole block.
+    vim_info.desired_column = currentCursorPosition;
+    updateVisualSelection();
 
     updateInfoContainer();
   };
@@ -501,7 +500,12 @@ export const visualJumpToEndOfWORD = () => {
  */
 export const visualJumpToBeginningOfLine = () => {
   const { vim_info } = window;
-  vim_info.desired_column = 0;
+  const element = vim_info.lines[vim_info.active_line].element;
+  // Start of the current (code) line, as an absolute offset.
+  vim_info.desired_column = lineBoundsAt(
+    element.textContent || "",
+    vim_info.desired_column,
+  ).start;
   updateVisualSelection();
 };
 
@@ -511,8 +515,12 @@ export const visualJumpToBeginningOfLine = () => {
 export const visualJumpToEndOfLine = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
-  const lineLength = currentElement.textContent?.length || 0;
-  vim_info.desired_column = lineLength;
+  // Last char of the current (code) line, as an absolute offset.
+  const { start, end } = lineBoundsAt(
+    currentElement.textContent || "",
+    vim_info.desired_column,
+  );
+  vim_info.desired_column = Math.max(start, end - 1);
   updateVisualSelection();
 };
 
@@ -553,8 +561,16 @@ export const createDeleteVisualSelection = (
     const start = getCursorIndexInElement(element);
 
     // The selection is already set by updateVisualSelection
-    // Use 'cut' to copy to clipboard like vim's 'd' command
-    document.execCommand("cut");
+    if (isInsideCodeBlock(element)) {
+      // Notion turns a cut inside a code block into "cut the whole block",
+      // so copy the text ourselves and delete just the selection.
+      const selected = window.getSelection()?.toString() || "";
+      navigator.clipboard.writeText(selected).catch(() => {});
+      document.execCommand("delete");
+    } else {
+      // Use 'cut' to copy to clipboard like vim's 'd' command
+      document.execCommand("cut");
+    }
     vim_info.yank_type = "char";
 
     vim_info.mode = "normal";
@@ -592,6 +608,12 @@ export const createYankVisualLineSelection = (
   return () => {
     const { vim_info } = window;
 
+    const firstLine = Math.min(vim_info.visual_start_line, vim_info.active_line);
+    const firstElement = vim_info.lines[firstLine].element;
+    // Selection start = start of the first yanked line (a code line when V
+    // was used inside a code block).
+    const selectionStart = getCursorIndexInElement(firstElement);
+
     document.execCommand("copy");
     vim_info.yank_type = "line";
 
@@ -599,7 +621,14 @@ export const createYankVisualLineSelection = (
 
     vim_info.mode = "normal";
     // Vim leaves the cursor on the first line of the yanked range.
-    setActiveLine(Math.min(vim_info.visual_start_line, vim_info.active_line));
+    if (isInsideCodeBlock(firstElement)) {
+      // setActiveLine would enter the code block at its first code line.
+      vim_info.active_line = firstLine;
+      setCursorPosition(firstElement, selectionStart);
+      vim_info.desired_column = 0;
+    } else {
+      setActiveLine(firstLine);
+    }
     updateInfoContainer();
   };
 };

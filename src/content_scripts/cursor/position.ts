@@ -120,6 +120,38 @@ export const selectCharRange = (
 };
 
 /**
+ * Delete characters [start, end) of `element` through the browser's editing
+ * pipeline (selection + execCommand("delete")), so Notion records the edit:
+ * it persists, is undoable, and keeps formatting / syntax highlighting.
+ * Assigning element.textContent does none of that — inside code blocks the
+ * change was DOM-only and reverted on reload.
+ * Returns true if something was deleted.
+ */
+export const deleteCharRange = (
+  element: Element,
+  start: number,
+  end: number,
+): boolean => {
+  if (end <= start) return false;
+  if (!selectCharRange(element, start, end)) return false;
+  return document.execCommand("delete");
+};
+
+/**
+ * Bounds [start, end) of the logical line containing `pos`, excluding its
+ * "\n". For a normal block that is the whole block; inside a code block (or
+ * a block with soft line breaks) it is the current "\n"-delimited line.
+ */
+export const lineBoundsAt = (
+  text: string,
+  pos: number,
+): { start: number; end: number } => {
+  const start = pos > 0 ? text.lastIndexOf("\n", pos - 1) + 1 : 0;
+  const nl = text.indexOf("\n", pos);
+  return { start, end: nl === -1 ? text.length : nl };
+};
+
+/**
  * Set cursor position within an element
  */
 export const setCursorPosition = (element: Element, index: number) => {

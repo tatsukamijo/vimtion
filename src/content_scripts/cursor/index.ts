@@ -8,6 +8,8 @@ export {
   setCursorPosition,
   resolveTextPosition,
   selectCharRange,
+  deleteCharRange,
+  lineBoundsAt,
 } from "./position";
 
 export { createBlockCursor, updateBlockCursor } from "./block-cursor";
