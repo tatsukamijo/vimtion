@@ -606,19 +606,22 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 ## BUG-080: Clicking another line in `v` / `V` mode
 
 - **Detected**: 2026-10-16 (pre-ship sweep, mouse agent)
-- **Status**: OPEN
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. A click in visual modes ends visual mode and moves the cursor there (Vim `mouse=a`). Clicks that land on Notion's selection overlay (no line under the target) are resolved with `caretRangeFromPoint`. Note: in headless runs Notion's selection toolbar can cover the click point, and that click is then a toolbar click.
 - **Repro**: `v` (or `V`), then click a different line. `v` stays in VISUAL with focus on `body`, and Esc/`x` do nothing. In `V`, the click is ignored; Esc returns to the old line, and the next edit hits it.
 
 ## BUG-081: Clicking a to-do checkbox or toggle triangle puts the cursor on line 0
 
 - **Detected**: 2026-10-16 (pre-ship sweep, mouse + structure agents)
-- **Status**: OPEN
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+  - Clicks that bubble to the page wrapper are no longer adopted as a line.
+  - Selection recovery (`refreshLines` tier 1, `reconcileFromSelection`) ignores a caret that resolves to the wrapper.
+  - When the active line disappears (a toggle closed around it), the cursor moves to the closest earlier surviving line, which is the toggle head.
 - **Repro**: Click a to-do checkbox or toggle triangle on another line. `active_line` becomes 0 (the page wrapper), and the next `j` goes to the title.
 
 ## BUG-082: After dragging a block by its handle, keys do nothing until a click
 
 - **Detected**: 2026-10-16 (pre-ship sweep, structure agent)
-- **Status**: OPEN
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. A document-level keydown fallback covers focus left on `<body>`, a checkbox or a toggle button inside the page (not text fields or popups): it puts the caret back on the active line and handles the key there. Enter/Space on a focused control still activate it.
 
 ## BUG-083: A key or click within ~150ms after `dd` is dropped
 
@@ -651,7 +654,9 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 ## BUG-087: `/table` and multi-line Cmd+V lose the caret
 
 - **Detected**: 2026-10-16 (pre-ship sweep, core, structure and old-bugs agents)
-- **Status**: OPEN
+- **Status**: **PARTIAL** on `fix/live-sweep-batch1`. The wrapper is no longer adopted as a line, so Esc and `j` no longer go to line 0 or the title.
+  - After `/table` + Esc, the cursor sits on the line above the table.
+  - After a multi-line paste + Esc, it sits on the line before the pasted block, not on its last character.
 - **Repro**: Create a table with `/table` + Enter, then Esc. Or paste multi-line text with Cmd+V in insert mode, then Esc. Vimtion is left on line 0 with no caret, and the next `j` goes to the title.
 
 ## BUG-088: Notion `@` / `:` menus and chips

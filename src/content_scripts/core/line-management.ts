@@ -172,6 +172,8 @@ export const createRefreshLines = (handlers: EventHandlers) => {
     // The element reference may become stale (Notion swaps leaf elements during
     // markdown-shortcut conversion); block_id was cached eagerly when the entry
     // was built, so it survives the swap.
+    const previousLines = vim_info.lines;
+    const previousActiveIndex = vim_info.active_line;
     const previousActive = vim_info.lines[vim_info.active_line];
     const previousActiveElement = previousActive?.element ?? null;
     const previousActiveBlockId = previousActive?.block_id ?? null;
@@ -299,7 +301,9 @@ export const createRefreshLines = (handlers: EventHandlers) => {
       const selIndex = vim_info.lines.findIndex(
         (line) => line.element === selLeaf,
       );
-      if (selIndex !== -1) {
+      // A caret Notion left on no line resolves to the page wrapper; that is
+      // not a line to move to (the next j went to the title).
+      if (selIndex !== -1 && !isWrapperLine(selIndex)) {
         vim_info.active_line = selIndex;
         tierOneFired = true;
       }
@@ -314,8 +318,26 @@ export const createRefreshLines = (handlers: EventHandlers) => {
           (line) => line.block_id === previousActiveBlockId,
         );
       }
+      // Tier 4: the active line is gone (its toggle was closed, Notion
+      // removed or replaced the block). Stay near it: the closest earlier
+      // line that survived — for a closed toggle, its head.
+      for (let i = previousActiveIndex - 1; newIndex === -1 && i >= 0; i--) {
+        const survivor = previousLines[i]?.element;
+        const idx = vim_info.lines.findIndex((line) => line.element === survivor);
+        if (idx !== -1 && !isWrapperLine(idx)) newIndex = idx;
+      }
       if (newIndex !== -1) {
         vim_info.active_line = newIndex;
+        if (
+          vim_info.mode === "normal" &&
+          vim_info.lines[newIndex].element !== previousActiveElement &&
+          !vim_info.lines.some(
+            (line, i) => line.element === selLeaf && !isWrapperLine(i),
+          )
+        ) {
+          // The caret went with the removed line; give it a home.
+          setActiveLine(newIndex);
+        }
       }
     }
 
@@ -451,7 +473,7 @@ export const createSetLines = (
       const { lines, active_line } = vim_info;
       if (lines[active_line]?.element === leaf) return false;
       const idx = lines.findIndex((line) => line.element === leaf);
-      if (idx === -1) return false;
+      if (idx === -1 || isWrapperLine(idx)) return false;
       vim_info.active_line = idx;
       updateInfoContainer();
       return true;

@@ -57,6 +57,7 @@ import {
   selectCharRange,
   deleteCharRange,
   lineBoundsAt,
+  charBoundsAt,
   columnInLine,
   clearNavigationGuard,
   msSinceNavigation,
@@ -535,8 +536,10 @@ const handleClick = (e: MouseEvent) => {
     return;
   }
 
-  // Only handle clicks in normal mode
-  if (vim_info.mode !== "normal") {
+  // Clicks in normal and visual modes move the cursor; insert mode is left to
+  // the browser (the insert reducer follows the caret).
+  const { mode } = vim_info;
+  if (mode !== "normal" && mode !== "visual" && mode !== "visual-line") {
     return;
   }
 
@@ -555,43 +558,96 @@ const handleClick = (e: MouseEvent) => {
     (line: any) => line.element === clickedElement,
   );
 
-  if (lineIndex === -1) {
+  // A click outside every line bubbles up to the page wrapper: a control
+  // (to-do checkbox, toggle triangle), which must not move the cursor —
+  // adopting the wrapper put active_line on 0 and the next j on the title —
+  // or the overlay Notion draws over a text selection (the first click after
+  // `v`), which is resolved from the click point.
+  if (lineIndex === -1 || isWrapperLine(lineIndex)) {
+    followClickAtPoint(e);
     return;
+  }
+
+  followClick(clickedElement, lineIndex, e.clientX, e.clientY);
+};
+
+/** Resolve a click on no line (see handleClick) from the click point. */
+const followClickAtPoint = (e: MouseEvent) => {
+  const { vim_info } = window;
+  const target = e.target as HTMLElement | null;
+  // Controls do their own thing (and never move Vim's cursor).
+  if (
+    !target ||
+    target.closest("input, button, a, [role=button], [role=checkbox]")
+  ) {
+    return;
+  }
+  if (typeof document.caretRangeFromPoint !== "function") return;
+  const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+  const node = range?.startContainer;
+  const el = node instanceof Element ? node : node?.parentElement;
+  const leaf = el?.closest(
+    '[data-content-editable-leaf="true"]',
+  ) as HTMLDivElement | null;
+  if (!leaf) return;
+  const lineIndex = vim_info.lines.findIndex((line) => line.element === leaf);
+  if (lineIndex === -1 || isWrapperLine(lineIndex)) return;
+  followClick(leaf, lineIndex, e.clientX, e.clientY);
+};
+
+const followClick = (
+  clickedElement: HTMLDivElement,
+  lineIndex: number,
+  clientX: number,
+  clientY: number,
+) => {
+  const { vim_info } = window;
+  const { mode } = vim_info;
+
+  // Vim (mouse=a): a click ends visual mode and puts the cursor there.
+  if (mode !== "normal") {
+    clearAllBackgroundColors();
+    vim_info.mode = "normal";
+    vim_info.pending_operator = null;
+    delete vim_info.visual_end_pos;
   }
 
   // Let the browser handle the click to position the cursor, then update our state
   setTimeout(() => {
     const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0);
-
-      // Get cursor position in the element
-      let cursorPos = 0;
-      const walker = document.createTreeWalker(
-        clickedElement,
-        NodeFilter.SHOW_TEXT,
-        null,
-      );
-
-      let node;
-      let found = false;
-      while ((node = walker.nextNode())) {
-        if (node === range.startContainer) {
-          cursorPos += range.startOffset;
-          found = true;
-          break;
-        }
-        cursorPos += node.textContent?.length || 0;
-      }
-
-      if (found) {
-        // Update active line without moving cursor
-        vim_info.active_line = lineIndex;
-        // A column within the (code) line, as j/k expect.
-        vim_info.desired_column = columnInLine(clickedElement, cursorPos);
-        updateInfoContainer();
+    let caretHere =
+      !!selection &&
+      selection.rangeCount > 0 &&
+      clickedElement.contains(selection.getRangeAt(0).startContainer);
+    // Notion's first click after a range selection only clears it (and blurs
+    // the editor); place the caret at the click point ourselves.
+    if (!caretHere && typeof document.caretRangeFromPoint === "function") {
+      const range = document.caretRangeFromPoint(clientX, clientY);
+      if (range && clickedElement.contains(range.startContainer)) {
+        clickedElement.focus({ preventScroll: true });
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        caretHere = true;
       }
     }
+    if (!caretHere || !selection) return;
+
+    vim_info.active_line = lineIndex;
+    let cursorPos = getCursorIndexInElement(clickedElement);
+    // A click past the end of a line leaves the caret after the last
+    // character; normal mode rests ON it.
+    if (selection.isCollapsed) {
+      const text = clickedElement.textContent || "";
+      const { start, end } = lineBoundsAt(text, cursorPos);
+      if (cursorPos >= end && end > start) {
+        cursorPos = charBoundsAt(text, end - 1).start;
+        setCursorPosition(clickedElement, cursorPos);
+      }
+    }
+    // A column within the (code) line, as j/k expect.
+    vim_info.desired_column = columnInLine(clickedElement, cursorPos);
+    updateBlockCursor();
+    updateInfoContainer();
   }, 0);
 };
 
@@ -783,6 +839,57 @@ document.addEventListener(
     if (sel && sel.rangeCount > 0) {
       deferInput({ kind: "click", range: sel.getRangeAt(0).cloneRange() });
     }
+  },
+  true,
+);
+
+// Focus somewhere that takes no typing and belongs to no popup: <body>, a
+// to-do checkbox or toggle triangle that was just clicked.
+const isStrandedFocus = (t: HTMLElement): boolean => {
+  if (t === document.body || t === document.documentElement) return true;
+  if (t.isContentEditable) return false;
+  if (t.closest('[role="dialog"], [role="menu"], [role="listbox"], .notion-overlay-container')) {
+    return false;
+  }
+  if (t.tagName === "TEXTAREA" || t.tagName === "SELECT") return false;
+  if (t.tagName === "INPUT") {
+    const type = (t as HTMLInputElement).type;
+    return type === "checkbox" || type === "radio" || type === "button";
+  }
+  return !!t.closest(".notion-page-content");
+};
+
+// Keys with focus on <body> (after dragging a block, after Notion's click
+// that only clears a range selection, ...) reach none of the per-line
+// listeners, so Vimtion went deaf until the user clicked into a line. Put the
+// caret back on the active line and handle the key there.
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (!e.isTrusted) return;
+    const t = e.target as HTMLElement | null;
+    if (!t || !isStrandedFocus(t)) return;
+    // Enter / Space still activate a focused control.
+    if (t !== document.body && (e.key === "Enter" || e.key === " ")) return;
+    const { vim_info } = window;
+    if (vim_info.mode === "insert") return;
+    // Leave Notion's block-selection shortcuts (Cmd+C, Cmd+D, ...) alone.
+    if (e.metaKey || e.altKey) return;
+    if (["Shift", "Meta", "Control", "Alt", "CapsLock"].includes(e.key)) return;
+    refreshLines();
+    if (vim_info.lines.length === 0) return;
+    vim_info.active_line = Math.max(
+      0,
+      Math.min(vim_info.active_line, vim_info.lines.length - 1),
+    );
+    if (vim_info.mode !== "normal") {
+      clearAllBackgroundColors();
+      vim_info.mode = "normal";
+      vim_info.pending_operator = null;
+    }
+    // Re-places the caret at desired_column (code-line aware) and focuses.
+    setActiveLine(vim_info.active_line);
+    handleKeydown(e);
   },
   true,
 );
