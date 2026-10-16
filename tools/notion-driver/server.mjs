@@ -722,7 +722,9 @@ const commands = {
               r.setStart(t2, Math.max(0, off));
               r.setEnd(t2, Math.max(0, off) + (t2.data.length ? 1 : 0));
               const b = r.getBoundingClientRect();
-              return { x: b.left + Math.max(1, b.width / 2), y: b.top + b.height / 2 };
+              // Just inside the char's left edge: a click there puts the caret BEFORE
+              // the char (clicking its middle can land on either side).
+              return { x: b.left + Math.min(2, b.width / 4), y: b.top + b.height / 2 };
             }
             n += t2.data.length;
           }
