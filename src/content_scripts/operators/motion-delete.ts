@@ -18,6 +18,7 @@ import {
   deleteMultipleLinesAtomically,
 } from "../core/dom-utils";
 import { setActiveLine } from "../core/line-management";
+import { beginBusy, endBusy } from "../core/busy";
 
 /**
  * Dependencies for motion delete operators
@@ -147,6 +148,7 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
     vim_info.mode = "insert";
     vim_info.undo_count = 1;
 
+    beginBusy();
     deleteMultipleLinesAtomically(currentElement, 1).then(() => {
       vim_info.mode = "normal";
       refreshLines();
@@ -159,6 +161,7 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
         setActiveLine(newActiveLine);
       }
       updateInfoContainer();
+      endBusy();
     });
   }
 };

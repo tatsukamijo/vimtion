@@ -623,7 +623,7 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 ## BUG-083: A key or click within ~150ms after `dd` is dropped
 
 - **Detected**: 2026-10-16 (pre-ship sweep, mouse + timing agents)
-- **Status**: OPEN
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. `dd` and `Vd` mark themselves busy (`core/busy.ts`). Real keys and clicks that arrive meanwhile are queued, then replayed in order, paced so that `o`/`O` finish before the typed text. Insert-mode text is replayed with `beforeinput` + `execCommand("insertText")`, because Notion drops a bare `execCommand` insert into a freshly created empty block. Verified: `ddj`, `ddx`, `ddk`, `ddjdd`, `Vjdj`, `ddohey<Esc>`, `ddiXY<Esc>`, `ddOab<Esc>`, `ddAz<Esc>j`, and a click within 0ms of `dd` (3/3).
 - **Repro**: `jjj`, then `ddj` (or `ddx`, `ddk`) at typing speed. The second command is lost.
 - **Root cause**: `createDeleteCurrentLine` sets `mode = "insert"` while the async block cut runs (~150ms). Keys go to the insert reducer (the `j` is eaten as a pending `jk`), and clicks are ignored. The `.then` then resets the line.
 

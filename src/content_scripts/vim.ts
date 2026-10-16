@@ -173,6 +173,15 @@ import {
   createRefreshLines,
   createSetLines,
 } from "./core";
+import {
+  isBusy,
+  beginBusy,
+  endBusy,
+  busyDepth,
+  deferInput,
+  setBusyFlush,
+  Deferred,
+} from "./core/busy";
 
 // Import visual mode helpers
 import {
@@ -749,6 +758,107 @@ document.addEventListener(
   },
   true,
 );
+
+// Typeahead during async edits (see core/busy.ts). Capture phase on the
+// document: during a block cut the caret is often on no line at all, so the
+// per-line listeners would not see the key.
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (!e.isTrusted || !isBusy()) return;
+    if (["Shift", "Meta", "Control", "Alt", "CapsLock"].includes(e.key)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    deferInput({ kind: "key", event: e });
+  },
+  true,
+);
+// The browser has placed the caret by mouseup; remember it for replay.
+document.addEventListener(
+  "mouseup",
+  (e) => {
+    if (!e.isTrusted || !isBusy()) return;
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      deferInput({ kind: "click", range: sel.getRangeAt(0).cloneRange() });
+    }
+  },
+  true,
+);
+
+const replayDeferred = (item: Deferred) => {
+  const { vim_info } = window;
+  if (item.kind === "click") {
+    const { range } = item;
+    const node = range.startContainer;
+    if (!node.isConnected) return;
+    const el = node instanceof Element ? node : node.parentElement;
+    const leaf = el?.closest('[contenteditable="true"]');
+    const idx = vim_info.lines.findIndex((line) => line.element === leaf);
+    if (!leaf || idx === -1) return;
+    clearNavigationGuard();
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    vim_info.active_line = idx;
+    vim_info.desired_column = columnInLine(leaf, getCursorIndexInElement(leaf));
+    updateBlockCursor();
+    updateInfoContainer();
+    return;
+  }
+  const e = item.event;
+  // Text typed after the edit entered insert mode (ddo + typing): the
+  // original event's default action is gone, so insert it ourselves.
+  if (
+    vim_info.mode === "insert" &&
+    e.key.length === 1 &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey
+  ) {
+    // Notion drops a bare execCommand insert into a freshly created empty
+    // block; announcing it with a beforeinput first makes it stick.
+    const target = document.activeElement || document.body;
+    target.dispatchEvent(
+      new InputEvent("beforeinput", {
+        inputType: "insertText",
+        data: e.key,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    document.execCommand("insertText", false, e.key);
+    return;
+  }
+  handleKeydown(e);
+};
+
+// Replay paced like typing: commands such as o / O finish asynchronously, and
+// text typed after them must land in the new line. Replay holds the busy state
+// itself, so input arriving meanwhile queues behind it, and waits whenever a
+// replayed key started another async edit.
+setBusyFlush((items) => {
+  beginBusy();
+  let i = 0;
+  const step = () => {
+    if (busyDepth() > 1) {
+      setTimeout(step, 30);
+      return;
+    }
+    if (i >= items.length) {
+      endBusy();
+      return;
+    }
+    const modeBefore = window.vim_info.mode;
+    replayDeferred(items[i]);
+    i++;
+    setTimeout(step, window.vim_info.mode !== modeBefore ? 120 : 10);
+  };
+  // Notion is still committing the cut for a moment; an Enter (o / O) sent
+  // straight away was dropped.
+  setTimeout(step, 100);
+});
 
 /**
  * When a normal-mode command enters insert mode, make sure the active line's
@@ -1857,6 +1967,7 @@ const deleteVisualLineSelection = () => {
 
   // Always try atomic deletion first (works for all block types including code blocks)
   const firstElement = vim_info.lines[firstLine].element;
+  beginBusy();
   deleteMultipleLinesAtomically(firstElement, lineCount).then((cuts) => {
     // Each block cut is one Notion undo step; u must undo them all together.
     vim_info.undo_count = Math.max(1, cuts);
@@ -1885,6 +1996,7 @@ const deleteVisualLineSelection = () => {
         setCursorPosition(element, 0);
       }
       updateInfoContainer();
+      endBusy();
     }, 50);
   });
 };
