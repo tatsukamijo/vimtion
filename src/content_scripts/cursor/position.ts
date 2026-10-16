@@ -185,6 +185,13 @@ export const cutCharRange = (
  * Set cursor position within an element
  */
 export const setCursorPosition = (element: Element, index: number) => {
+  // Any caret placement Vimtion makes (h/l/w/x in the line, or G / paragraph
+  // motions that set the caret directly on another line) becomes the position
+  // to protect, so the guard never reverts Vimtion's own moves. The guard
+  // window still counts from the last navigation.
+  if (navGuard) {
+    navGuard = { element, offset: index, at: navGuard.at };
+  }
   const childNodes = Array.from(element.childNodes);
 
   // Handle empty elements (no child nodes or only empty text)
@@ -224,4 +231,62 @@ export const setCursorPosition = (element: Element, index: number) => {
     }
     i += nodeLength;
   }
+};
+
+// ---------------------------------------------------------------------------
+// Navigation guard
+// ---------------------------------------------------------------------------
+// Vimtion follows the DOM selection (reconcileFromSelection on selectionchange,
+// the selection tier of refreshLines) to notice caret moves it did not make.
+// But right after a Vimtion navigation Notion often moves the caret again,
+// asynchronously: its click handling in table cells puts it back in the
+// previous cell, leaving a code block it jumps to the block after it (or to
+// column 0), and during held-key repeat a late selectionchange reports an
+// older line. Following those undid the motion just made (tables moved every
+// other press, k out of a code block landed below it, held j dropped presses).
+// So remember where the last navigation put the caret; for a short window a
+// selection elsewhere — with no mouse press since — is stray: put it back.
+let navGuard: { element: Element; offset: number; at: number } | null = null;
+let lastMouseDownAt = 0;
+document.addEventListener(
+  "mousedown",
+  () => {
+    lastMouseDownAt = Date.now();
+  },
+  true,
+);
+const NAV_GUARD_MS = 400;
+
+/** Record a caret placement made by a Vimtion navigation (j/k/gg/G...). */
+export const markNavigation = (element: Element, offset: number): void => {
+  navGuard = { element, offset, at: Date.now() };
+};
+
+/** Forget the guard (undo/redo: Notion's caret placement is the truth). */
+export const clearNavigationGuard = (): void => {
+  navGuard = null;
+};
+
+/** ms since the last guarded navigation (Infinity if none / cleared). */
+export const msSinceNavigation = (): number =>
+  navGuard ? Date.now() - navGuard.at : Infinity;
+
+/**
+ * True when the selection (leaf, and optionally offset within it) is not where
+ * the last navigation put the caret, within the guard window, in normal mode,
+ * with no mouse press since — i.e. Notion's async shuffle, not user intent.
+ */
+export const isStrayCaret = (leaf: Element | null, offset?: number): boolean => {
+  if (!navGuard || !leaf) return false;
+  if (window.vim_info.mode !== "normal") return false;
+  if (Date.now() - navGuard.at > NAV_GUARD_MS) return false;
+  if (lastMouseDownAt >= navGuard.at) return false;
+  if (!navGuard.element.isConnected) return false;
+  if (leaf !== navGuard.element && !navGuard.element.contains(leaf)) return true;
+  return offset !== undefined && offset !== navGuard.offset;
+};
+
+/** Put the caret back where the last navigation placed it. */
+export const reassertNavigation = (): void => {
+  if (navGuard) setCursorPosition(navGuard.element, navGuard.offset);
 };

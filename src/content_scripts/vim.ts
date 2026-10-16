@@ -58,6 +58,8 @@ import {
   deleteCharRange,
   lineBoundsAt,
   columnInLine,
+  clearNavigationGuard,
+  msSinceNavigation,
   setCursorPosition,
   createBlockCursor,
   updateBlockCursor,
@@ -576,7 +578,8 @@ const handleClick = (e: MouseEvent) => {
       if (found) {
         // Update active line without moving cursor
         vim_info.active_line = lineIndex;
-        vim_info.desired_column = cursorPos;
+        // A column within the (code) line, as j/k expect.
+        vim_info.desired_column = columnInLine(clickedElement, cursorPos);
         updateInfoContainer();
       }
     }
@@ -2294,6 +2297,9 @@ const undo = () => {
     window as Window & { __vimtionUndoSettleUntil?: number }
   ).__vimtionUndoSettleUntil = Date.now() + 500;
 
+  // Notion's caret placement after undo is the truth; don't guard against it.
+  clearNavigationGuard();
+
   // Line the cursor is on before undo. Undoing a line deletion re-inserts the
   // lines at this spot, so it is also where Vim puts the cursor afterwards.
   const lineBeforeUndo = vim_info.active_line;
@@ -2366,6 +2372,7 @@ const undo = () => {
 };
 
 const redo = () => {
+  clearNavigationGuard();
   const { vim_info } = window;
 
   // Check if we need to redo multiple operations (from grouped deletions)
@@ -4021,6 +4028,18 @@ const openLineAboveInCodeBlockWrapped = () => {
 
       const rect = activeElement.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
+
+      // A scroll right after a Vimtion motion is Notion catching up with the
+      // caret (it lags during held j/k), not the user scrolling away. Relocating
+      // the cursor to the first visible line there made held k overshoot to the
+      // title. Keep the cursor and bring its line into view instead.
+      if (msSinceNavigation() < 600) {
+        if (rect.bottom <= 0 || rect.top >= viewportHeight) {
+          activeElement.scrollIntoView({ block: "nearest" });
+        }
+        updateBlockCursor();
+        return;
+      }
 
       // If the active line has left the screen entirely, move the cursor to
       // the first visible line. (Checking "any part outside" made z- / zb,

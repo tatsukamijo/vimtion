@@ -4,7 +4,13 @@
  */
 
 import { isInsideCodeBlock } from "../notion";
-import { setCursorPosition } from "../cursor";
+import {
+  setCursorPosition,
+  getCursorIndexInElement,
+  markNavigation,
+  isStrayCaret,
+  reassertNavigation,
+} from "../cursor";
 import { updateInfoContainer } from "../ui/info-container";
 
 /**
@@ -122,6 +128,7 @@ export const setActiveLine = (idx: number): void => {
     }
 
     setCursorPosition(targetElement, cursorPosition);
+    markNavigation(targetElement, cursorPosition);
   } else {
     // For normal blocks, click() and focus() with preventScroll to avoid
     // unwanted page jumps. Headings are an exception: Notion's own click
@@ -143,6 +150,7 @@ export const setActiveLine = (idx: number): void => {
     const lineLength = targetElement.textContent?.length || 0;
     const targetColumn = Math.min(desired_column, lastColumn(lineLength));
     setCursorPosition(targetElement, targetColumn);
+    markNavigation(targetElement, targetColumn);
   }
 };
 
@@ -280,7 +288,14 @@ export const createRefreshLines = (handlers: EventHandlers) => {
       }
     }
 
-    if (!tierOneFired && selLeaf && selLeaf !== previousActiveElement) {
+    const strayAfterNav = isStrayCaret(selLeaf);
+    if (strayAfterNav) reassertNavigation();
+    if (
+      !tierOneFired &&
+      !strayAfterNav &&
+      selLeaf &&
+      selLeaf !== previousActiveElement
+    ) {
       const selIndex = vim_info.lines.findIndex(
         (line) => line.element === selLeaf,
       );
@@ -422,6 +437,17 @@ export const createSetLines = (
           : anchor.parentElement;
       const leaf = el?.closest('[contenteditable="true"]') ?? null;
       if (!leaf) return false;
+      // Notion moved the caret right after a Vimtion navigation (to another
+      // line, or to another column of the right line): put it back.
+      if (
+        isStrayCaret(
+          leaf,
+          sel && sel.isCollapsed ? getCursorIndexInElement(leaf) : undefined,
+        )
+      ) {
+        reassertNavigation();
+        return false;
+      }
       const { lines, active_line } = vim_info;
       if (lines[active_line]?.element === leaf) return false;
       const idx = lines.findIndex((line) => line.element === leaf);

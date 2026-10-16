@@ -12,6 +12,11 @@ export {
   lineBoundsAt,
   columnInLine,
   cutCharRange,
+  markNavigation,
+  clearNavigationGuard,
+  msSinceNavigation,
+  isStrayCaret,
+  reassertNavigation,
 } from "./position";
 
 export { createBlockCursor, updateBlockCursor } from "./block-cursor";

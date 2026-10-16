@@ -4,6 +4,8 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 
 ## BUG-001: Rapid j/k round-trip causes DOM cursor desync
 
+- **Status**: Likely resolved together with BUG-071 (same root cause); not re-run against the original spec.
+
 - **Detected**: 2026-04-14
 - **Test**: `stress-fast-user.spec.ts` → "rapid 20j then 20k returns to start"
 - **Reproduction**: From "Plain text line 1" (block index 2), press j 20 times with no delay, then k 20 times with no delay. DOM cursor ends up on block index 1 instead of 2.
@@ -405,6 +407,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-057: `k` out of the first code line jumps *below* the code block; `j` out loses the column
 
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` by the navigation guard (cursor/position.ts): for 400ms after a Vimtion navigation, a selection that drifts elsewhere with no mouse press since is put back instead of followed. Any Vimtion caret placement re-targets the guard; undo/redo clear it. k from the first code line lands on the line above 5/5, and j out keeps the column. The click handler also stores a code-line column.
+
 - **Repro**: fixture `line above / ```python / a = 1 / b = 2 / ``` / line B after / line C after`; on code line 1, col 4, press `k` → the cursor ends on `line B after` col 0 (4 of 5 trials). For `j` out of the block, the column resets to 0 in 30–60% of trials.
 - **Root cause**: When the caret leaves a code block, Notion asynchronously moves the selection to the start of the block after it, about one macrotask after `setActiveLine`, and reconciliation follows it.
 - **Severity**: **High**.
@@ -505,10 +509,14 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-070: `j`/`k` in a Notion table move only every other press
 
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` by the navigation guard (cursor/position.ts): for 400ms after a Vimtion navigation, a selection that drifts elsewhere with no mouse press since is put back instead of followed. Any Vimtion caret placement re-targets the guard; undo/redo clear it. Table j/k now move one cell per press in both directions.
+
 - **Repro**: shared test page, Section 20 table: `kkkkkk` (150ms or 500ms gap) moves 3 cells. A trace shows the reducer moving 91→90, then `reconcileFromSelection` moving it back 90→91.
 - **Related**: BUG-045. **Severity**: **High** for table users.
 
 ## BUG-071: Fast key repeat drops `j`/`k` presses (BUG-001 still open)
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` by the navigation guard (cursor/position.ts): for 400ms after a Vimtion navigation, a selection that drifts elsewhere with no mouse press since is put back instead of followed. Any Vimtion caret placement re-targets the guard; undo/redo clear it. Held j/k (30 repeats at 16–60ms) land exactly. The scroll listener no longer relocates the cursor for scrolls that follow a Vimtion motion.
 
 - **Repro**: 40-paragraph fixture, `vt hold j 30 --interval 16` → L20–21 instead of L31. Results by repeat interval: 25ms → L28, 33ms → L31 (correct). A burst of 5 `j` with zero gap moves 4.
 - **Root cause**: An async `selectionchange` reports the previous leaf after the next `j` has already moved, and `reconcileFromSelection` reverts it.
