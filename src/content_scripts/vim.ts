@@ -301,6 +301,21 @@ const openLineBelow = () => {
 const openLineAbove = () => {
   const { vim_info } = window;
   const currentLine = vim_info.active_line;
+  const currentElement = vim_info.lines[currentLine].element;
+
+  // Nothing can sit above the page title in Notion, and Enter at the title's
+  // start splits the title (renaming the page). Open the first body line
+  // instead — the closest Notion equivalent of Vim's O on line 1.
+  if (
+    currentElement
+      .closest("[data-block-id]")
+      ?.classList.contains("notion-page-block")
+  ) {
+    openLineBelow();
+    return;
+  }
+
+  const blockIdsBefore = new Set(vim_info.lines.map((line) => line.block_id));
 
   // Move to beginning of current line
   jumpToLineStart();
@@ -309,36 +324,58 @@ const openLineAbove = () => {
   vim_info.mode = "insert";
   updateInfoContainer();
 
-  // Simulate Enter key
+  // Enter at column 0 makes Notion insert an empty block ABOVE this one and
+  // keep the caret in this (now lower) block.
   setTimeout(() => {
-    const currentElement = vim_info.lines[currentLine].element;
-    const enterEvent = new KeyboardEvent("keydown", {
-      key: "Enter",
-      code: "Enter",
-      keyCode: 13,
-      which: 13,
-      bubbles: true,
-      cancelable: true,
-    });
-    currentElement.dispatchEvent(enterEvent);
-
-    // After Enter, cursor is on the new line below
-    // We need to move the cursor back up to the empty line we just created
-    setTimeout(() => {
-      const arrowUpEvent = new KeyboardEvent("keydown", {
-        key: "ArrowUp",
-        code: "ArrowUp",
-        keyCode: 38,
-        which: 38,
+    currentElement.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        keyCode: 13,
+        which: 13,
         bubbles: true,
         cancelable: true,
-      });
-      document.activeElement?.dispatchEvent(arrowUpEvent);
+      }),
+    );
 
-      // Wait for arrow up to take effect, then refresh
-      setTimeout(() => {
-        refreshLines();
-      }, 50);
+    // Put the caret into the new block. Find it as the block that was not
+    // there before, rather than sending ArrowUp: a synthetic ArrowUp does not
+    // leave a callout (typed text went into the callout), and it depends on
+    // Notion's caret being where we expect.
+    setTimeout(() => {
+      refreshLines();
+      const ownIdx = vim_info.lines.findIndex(
+        (line) => line.element === currentElement,
+      );
+      let newIdx = -1;
+      for (let i = (ownIdx === -1 ? vim_info.lines.length : ownIdx) - 1; i >= 0; i--) {
+        if (!blockIdsBefore.has(vim_info.lines[i].block_id)) {
+          newIdx = i;
+          break;
+        }
+      }
+      if (newIdx === -1) {
+        // Fallback: the old behaviour.
+        document.activeElement?.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "ArrowUp",
+            code: "ArrowUp",
+            keyCode: 38,
+            which: 38,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        setTimeout(() => refreshLines(), 50);
+        return;
+      }
+      const newElement = vim_info.lines[newIdx].element;
+      vim_info.active_line = newIdx;
+      vim_info.desired_column = 0;
+      newElement.click();
+      newElement.focus({ preventScroll: true });
+      setCursorPosition(newElement, 0);
+      updateInfoContainer();
     }, 50);
   }, 0);
 };

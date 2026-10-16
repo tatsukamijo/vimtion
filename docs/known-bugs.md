@@ -476,6 +476,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-066: `O` on a callout types into the callout; `O` on the page title renames the page
 
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. After Enter at col 0, `O` finds the newly inserted block (the block id not present before) and puts the caret there, instead of sending a synthetic ArrowUp (which never left a callout). On the page title, `O` opens the first body line, because nothing can sit above the title.
+
 - **Repro**: fixture `alpha / ! callout here / omega`; on the callout, `ONEW<Esc>` → `NEWcallout here`. On a fresh fixture with the cursor on the title, `ONEW<Esc>` → the title becomes `NEW` and the old title moves into a paragraph.
 - **Root cause**: `openLineAbove` (Enter at pos 0, then ArrowUp) does not leave a callout's inner editable and has no title guard.
 - **Severity**: Medium.
