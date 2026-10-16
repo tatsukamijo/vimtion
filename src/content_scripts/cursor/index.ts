@@ -6,6 +6,8 @@ export {
   getCursorIndex,
   getCursorIndexInElement,
   setCursorPosition,
+  resolveTextPosition,
+  selectCharRange,
 } from "./position";
 
 export { createBlockCursor, updateBlockCursor } from "./block-cursor";

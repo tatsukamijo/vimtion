@@ -54,6 +54,7 @@ import {
 import {
   getCursorIndex,
   getCursorIndexInElement,
+  selectCharRange,
   setCursorPosition,
   createBlockCursor,
   updateBlockCursor,
@@ -365,21 +366,26 @@ const deleteCharacter = () => {
     return;
   }
 
-  // Select the character at cursor position
-  setCursorPosition(currentElement, currentCursorPosition);
-  const sel = window.getSelection();
-  if (sel && sel.rangeCount > 0) {
-    const r = sel.getRangeAt(0);
-    r.setStart(r.startContainer, r.startOffset);
-    r.setEnd(r.startContainer, r.startOffset + 1);
-    sel.removeAllRanges();
-    safeAddRange(sel, r);
-
+  // Select the character at the cursor. selectCharRange resolves the start
+  // into the text node that holds the character, so this also works at a
+  // formatting boundary (caret at the end of plain text, char in a bold span).
+  if (
+    selectCharRange(
+      currentElement,
+      currentCursorPosition,
+      currentCursorPosition + 1,
+    )
+  ) {
     // Cut to clipboard like vim's 'x' command
     document.execCommand("cut");
   }
 
-  vim_info.desired_column = currentCursorPosition;
+  // Normal mode never rests past the last character: after deleting the last
+  // char, step back onto the new last one (so repeated x keeps deleting).
+  const newLength = (currentElement.textContent || "").length;
+  const newPosition = Math.max(0, Math.min(currentCursorPosition, newLength - 1));
+  setCursorPosition(currentElement, newPosition);
+  vim_info.desired_column = newPosition;
 };
 
 const deleteCharacterBefore = () => {
@@ -417,17 +423,14 @@ const substituteCharacter = () => {
     return;
   }
 
-  // Select the character at cursor position
-  setCursorPosition(currentElement, currentCursorPosition);
-  const sel = window.getSelection();
-  if (sel && sel.rangeCount > 0) {
-    const r = sel.getRangeAt(0);
-    r.setStart(r.startContainer, r.startOffset);
-    r.setEnd(r.startContainer, r.startOffset + 1);
-    sel.removeAllRanges();
-    safeAddRange(sel, r);
-
-    // Delete the selection using execCommand
+  // Select the character at the cursor (boundary-safe, see deleteCharacter)
+  if (
+    selectCharRange(
+      currentElement,
+      currentCursorPosition,
+      currentCursorPosition + 1,
+    )
+  ) {
     document.execCommand("delete");
   }
 

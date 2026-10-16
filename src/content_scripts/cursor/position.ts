@@ -41,6 +41,12 @@ export const getCursorIndex = () => {
 
 /**
  * Get the cursor index within a specific element
+ *
+ * Counts the characters between the start of `element` and the selection
+ * start with a Range, so it is correct however the selection is anchored:
+ * on a text node, or on an element (e.g. `(leaf, 0)`, which is where Notion
+ * leaves the caret after execCommand("cut")). Walking only text nodes used to
+ * miss element anchors and report the full line length instead.
  */
 export const getCursorIndexInElement = (element: Element): number => {
   const selection = document.getSelection();
@@ -49,27 +55,68 @@ export const getCursorIndexInElement = (element: Element): number => {
   }
 
   const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer)) {
+    // Selection is outside this element: keep the historical fallback.
+    return element.textContent?.length || 0;
+  }
+
+  const prefix = document.createRange();
+  prefix.selectNodeContents(element);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  return prefix.toString().length;
+};
+
+/**
+ * Resolve a character index inside `element` to a (text node, offset) pair.
+ *
+ * At a boundary between two text nodes (e.g. plain text followed by a bold
+ * span, or two syntax-highlight tokens) the index is both "end of the previous
+ * node" and "start of the next one". `preferNext` picks the node that holds
+ * the character AT `index` — what a range start needs — while the default
+ * picks the end of the previous node — what a range end needs.
+ */
+export const resolveTextPosition = (
+  element: Element,
+  index: number,
+  preferNext = false,
+): { node: Text; offset: number } | null => {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   let i = 0;
-
-  const checkElementNode = (el: Element): boolean => {
-    for (const node of Array.from(el.childNodes)) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        if (checkElementNode(node as Element)) {
-          return true;
-        }
-        continue;
-      }
-      if (node.isSameNode(range.startContainer)) {
-        i += range.startOffset;
-        return true;
-      }
-      i += node.textContent?.length || 0;
+  let last: Text | null = null;
+  let node = walker.nextNode() as Text | null;
+  while (node) {
+    const len = node.data.length;
+    if (preferNext ? index < i + len : index <= i + len) {
+      return { node, offset: index - i };
     }
-    return false;
-  };
+    i += len;
+    last = node;
+    node = walker.nextNode() as Text | null;
+  }
+  return last ? { node: last, offset: last.data.length } : null;
+};
 
-  checkElementNode(element);
-  return i;
+/**
+ * Select characters [start, end) of `element` as the document selection,
+ * spanning text-node / formatting boundaries correctly.
+ * Returns false when the element has no text to select.
+ */
+export const selectCharRange = (
+  element: Element,
+  start: number,
+  end: number,
+): boolean => {
+  const from = resolveTextPosition(element, start, true);
+  const to = resolveTextPosition(element, end, false);
+  if (!from || !to) return false;
+  const range = document.createRange();
+  range.setStart(from.node, from.offset);
+  range.setEnd(to.node, to.offset);
+  const selection = window.getSelection();
+  if (!selection) return false;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
 };
 
 /**
