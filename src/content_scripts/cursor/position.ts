@@ -311,6 +311,9 @@ document.addEventListener("wheel", noteUserScroll, { capture: true, passive: tru
 document.addEventListener("touchmove", noteUserScroll, { capture: true, passive: true });
 const NAV_GUARD_MS = 400;
 
+/** ms since the user last scrolled by wheel / touch. */
+export const msSinceUserScroll = (): number => Date.now() - lastUserScrollAt;
+
 /** Record a caret placement made by a Vimtion navigation (j/k/gg/G...). */
 export const markNavigation = (element: Element, offset: number): void => {
   navGuard = { element, offset, at: Date.now() };

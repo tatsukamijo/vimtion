@@ -584,6 +584,7 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
   - `jj<D-z>` after an earlier `x`, or `j<D-v>`: the text changes, but the caret is put back on the `j` target.
 - **Root cause**: The scroll listener's "Notion is catching up with the caret" branch (`msSinceNavigation() < 600`) also caught Vimtion's own page scrolls and user scrolls. Meta-key edits passed through to Notion left the caret guard armed, so Notion's caret was treated as stray.
 - **Fix**: Ctrl-d/u/f/b clear the guard. A wheel or touch scroll after the motion ends the guard window. Any Ctrl/Meta/Alt key that normal mode passes through to Notion clears the guard.
+- **Follow-up (post-fix sweep)**: a key within ~100ms after Ctrl-d/u/f/b still acted on the old line, and `j` re-armed the guard, which pulled the page back. Ctrl-d/u/f/b now move the cursor on screen synchronously (`keepCursorOnScreen`). The scroll listener does not pull the page back within 1s of a wheel/touch scroll. Verified: `<C-d>j`, `G` then `<C-u>k`, `gg` then `<C-f>x`, and held `k` afterwards.
 
 ## BUG-078: `H` / browser back never restored the cursor
 

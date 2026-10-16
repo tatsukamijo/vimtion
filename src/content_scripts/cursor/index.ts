@@ -16,6 +16,7 @@ export {
   markNavigation,
   clearNavigationGuard,
   msSinceNavigation,
+  msSinceUserScroll,
   isStrayCaret,
   reassertNavigation,
 } from "./position";

@@ -61,6 +61,7 @@ import {
   columnInLine,
   clearNavigationGuard,
   msSinceNavigation,
+  msSinceUserScroll,
   setCursorPosition,
   createBlockCursor,
   updateBlockCursor,
@@ -3191,24 +3192,28 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     // Ctrl+d - half page down
     if (key === "d") {
       scrollAndMoveCursor(0.5);
+      keepCursorOnScreen();
       return true;
     }
 
     // Ctrl+u - half page up
     if (key === "u") {
       scrollAndMoveCursor(-0.5);
+      keepCursorOnScreen();
       return true;
     }
 
     // Ctrl+f - full page down
     if (key === "f") {
       scrollAndMoveCursor(1.0);
+      keepCursorOnScreen();
       return true;
     }
 
     // Ctrl+b - full page up
     if (key === "b") {
       scrollAndMoveCursor(-1.0);
+      keepCursorOnScreen();
       return true;
     }
 
@@ -3958,6 +3963,23 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 };
 
 // Get the first visible line in the viewport
+// After a deliberate page scroll (Ctrl-d/u/f/b), move the cursor onto the
+// screen right away. Leaving it to the debounced scroll listener lost a key
+// typed within ~100ms: j moved from the old line (and the guard then pulled
+// the page back to it), x edited the old line.
+const keepCursorOnScreen = () => {
+  const { vim_info } = window;
+  const element = vim_info.lines[vim_info.active_line]?.element;
+  if (!element) return;
+  const rect = element.getBoundingClientRect();
+  if (rect.bottom > 0 && rect.top < window.innerHeight) return;
+  const firstVisibleLine = getFirstVisibleLine();
+  if (firstVisibleLine === vim_info.active_line) return;
+  vim_info.desired_column = 0;
+  setActiveLine(firstVisibleLine);
+  updateInfoContainer();
+};
+
 const getFirstVisibleLine = (): number => {
   const { vim_info } = window;
 
@@ -4322,7 +4344,7 @@ const openLineAboveInCodeBlockWrapped = () => {
       // caret (it lags during held j/k), not the user scrolling away. Relocating
       // the cursor to the first visible line there made held k overshoot to the
       // title. Keep the cursor and bring its line into view instead.
-      if (msSinceNavigation() < 600) {
+      if (msSinceNavigation() < 600 && msSinceUserScroll() > 1000) {
         if (rect.bottom <= 0 || rect.top >= viewportHeight) {
           activeElement.scrollIntoView({ block: "nearest" });
         }
