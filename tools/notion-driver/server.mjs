@@ -700,21 +700,31 @@ const commands = {
     return { text: JSON.stringify(v) };
   },
 
-  /** Rebuild dist/, hot-reload the unpacked extension, reload the page. */
+  /**
+   * Rebuild dist/ and relaunch the browser on the same page so the new build
+   * is loaded. (chrome.runtime.reload() on a --load-extension extension does
+   * not re-inject content scripts, so a relaunch is the reliable path.)
+   */
   async reload({ nobuild }) {
     if (!nobuild) {
       try {
+        // Parcel's cache intermittently drops entries from the multi-entry
+        // content_scripts build (dist/ ends up without vim.js and the
+        // extension silently stops injecting), so always build cold.
+        fs.rmSync(path.join(ROOT, ".parcel-cache"), { recursive: true, force: true });
         execSync("npm run build", { cwd: ROOT, stdio: "pipe" });
       } catch (e) {
         return { text: `BUILD FAILED\n${e.stdout}\n${e.stderr}` };
       }
+      const required = ["manifest.json", "background.js", "content_scripts/vim.js", "content_scripts/vim.css"];
+      const missing = required.filter((f) => !fs.existsSync(path.join(DIST, f)));
+      if (missing.length) return { text: `BUILD INCOMPLETE: dist/ is missing ${missing.join(", ")}` };
     }
-    let [sw] = context.serviceWorkers();
-    if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 5000 });
-    await sw.evaluate(() => chrome.runtime.reload()).catch(() => {});
-    await sleep(1000);
-    const s = await openUrl(page.url());
-    return { snapshot: s, text: `reloaded extension${nobuild ? "" : " (rebuilt)"}\n${render(s)}` };
+    const url = page.url();
+    await context.close().catch(() => {});
+    await launch();
+    const s = await openUrl(url);
+    return { snapshot: s, text: `reloaded${nobuild ? "" : " (rebuilt)"}\n${render(s)}` };
   },
 };
 
