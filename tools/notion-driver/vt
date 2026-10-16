@@ -10,6 +10,9 @@
  *   vt refixture                 re-create the last fixture (clean slate)
  *   vt keys <seq> [--delay ms] [--each] [--series 0,50,200,700] [--settle ms] [--all]
  *   vt hold <key> <n> [--interval ms] [--series ...]
+ *   vt click <target> [--mod Shift]   real mouse click; target = "x,y" or "text@offset"
+ *   vt dblclick|move <target>
+ *   vt drag <from> <to>          real mouse drag (e.g. drag 'bravo@0' 'charlie@3')
  *   vt type <text>               insert literal text
  *   vt state [--all]             vim_info vs DOM snapshot
  *   vt shot [file] [--full]      screenshot → prints path
@@ -34,7 +37,7 @@ for (let i = 0; i < argv.length; i++) {
   if (a.startsWith("--")) {
     const k = a.slice(2);
     const next = argv[i + 1];
-    if (["delay", "series", "settle", "interval"].includes(k)) {
+    if (["delay", "series", "settle", "interval", "mod"].includes(k)) {
       flags[k] = next;
       i++;
     } else flags[k] = true;
@@ -146,6 +149,14 @@ async function main() {
       break;
     case "hold":
       payload = { cmd, key: rest[0], count: Number(rest[1] || 10), interval: num(flags.interval), series: series(flags.series) };
+      break;
+    case "click":
+    case "dblclick":
+    case "move":
+      payload = { cmd: "mouse", action: cmd, from: rest[0], modifiers: flags.mod };
+      break;
+    case "drag":
+      payload = { cmd: "mouse", action: "drag", from: rest[0], to: rest[1], modifiers: flags.mod };
       break;
     case "type":
       payload = { cmd, text: rest.join(" ") };

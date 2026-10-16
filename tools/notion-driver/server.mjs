@@ -693,6 +693,64 @@ const commands = {
     return withSeries(series, { settle });
   },
 
+  /**
+   * Real mouse input (CDP Input.dispatchMouseEvent, like a human's mouse).
+   * Targets: "x,y" viewport coords, or {text, at} = the block line whose text
+   * contains `text`, at char offset `at` within that text (default 0).
+   */
+  async mouse({ action = "click", from, to, steps = 12, modifiers }) {
+    const resolve = async (t) => {
+      if (/^\d+,\d+$/.test(t)) {
+        const [x, y] = t.split(",").map(Number);
+        return { x, y };
+      }
+      const [text, atStr] = t.split("@");
+      return page.evaluate(
+        ({ text: needle, at }) => {
+          const leaves = Array.from(document.querySelectorAll('[contenteditable="true"]'))
+            .filter((e) => !e.querySelector('[contenteditable="true"]'));
+          const leaf = leaves.find((e) => (e.textContent || "").includes(needle));
+          if (!leaf) throw new Error(`no line containing "${needle}"`);
+          const idx = (leaf.textContent || "").indexOf(needle) + at;
+          const w = document.createTreeWalker(leaf, NodeFilter.SHOW_TEXT);
+          let n = 0;
+          let t2;
+          while ((t2 = w.nextNode())) {
+            if (idx <= n + t2.data.length) {
+              const r = document.createRange();
+              const off = Math.min(idx - n, t2.data.length - 1);
+              r.setStart(t2, Math.max(0, off));
+              r.setEnd(t2, Math.max(0, off) + (t2.data.length ? 1 : 0));
+              const b = r.getBoundingClientRect();
+              return { x: b.left + Math.max(1, b.width / 2), y: b.top + b.height / 2 };
+            }
+            n += t2.data.length;
+          }
+          const b = leaf.getBoundingClientRect();
+          return { x: b.left + 4, y: b.top + b.height / 2 };
+        },
+        { text, at: Number(atStr || 0) },
+      );
+    };
+    const mods = (modifiers || "").split("+").filter(Boolean);
+    for (const m of mods) await page.keyboard.down(m);
+    const a = await resolve(from);
+    if (action === "click") await page.mouse.click(a.x, a.y);
+    else if (action === "dblclick") await page.mouse.dblclick(a.x, a.y);
+    else if (action === "move") await page.mouse.move(a.x, a.y, { steps });
+    else if (action === "drag") {
+      const b = await resolve(to);
+      await page.mouse.move(a.x, a.y);
+      await page.mouse.down();
+      await page.mouse.move(b.x, b.y, { steps });
+      await page.mouse.up();
+    }
+    for (const m of mods.reverse()) await page.keyboard.up(m);
+    await sleep(250);
+    const s = await snapshot();
+    return { snapshot: s, text: render(s) };
+  },
+
   /** Insert literal text (use in insert mode). */
   async type({ text, delay = 20 }) {
     await page.keyboard.type(text, { delay });
