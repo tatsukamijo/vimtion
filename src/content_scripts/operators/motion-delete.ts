@@ -203,13 +203,18 @@ export const createDeleteToNextWord =
       document.execCommand("cut");
     }
 
-    // Stay on the deletion point, clamped onto the remaining text.
+    // Stay on the deletion point, clamped onto the remaining text. Only move
+    // the caret when Notion left it somewhere else: an extra selection change
+    // right after the cut makes Notion fold the next edit into the same undo
+    // step (two dw then one u restored both).
     const newLength = (currentElement.textContent || "").length;
     const newPosition = Math.max(
       0,
       Math.min(currentCursorPosition, newLength - 1),
     );
-    setCursorPosition(currentElement, newPosition);
+    if (getCursorIndexInElement(currentElement) !== newPosition) {
+      setCursorPosition(currentElement, newPosition);
+    }
     vim_info.desired_column = newPosition;
   };
 

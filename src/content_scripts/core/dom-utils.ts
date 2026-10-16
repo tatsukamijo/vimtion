@@ -16,6 +16,19 @@ export const clearAllBackgroundColors = (): void => {
   });
 };
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Focus a leaf and put a collapsed caret at its start. */
+const placeCaretAtStart = (leaf: HTMLElement): void => {
+  leaf.focus({ preventScroll: true });
+  const range = document.createRange();
+  range.selectNodeContents(leaf);
+  range.collapse(true);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+};
+
 /**
  * Remove one whole Notion block (with any nested children) via Notion's own
  * cut handler: a COLLAPSED selection inside the block + execCommand("cut")
@@ -29,74 +42,128 @@ export const clearAllBackgroundColors = (): void => {
  *
  * @returns true if the block was removed
  */
-export const cutWholeBlock = (element: HTMLElement): boolean => {
+export const cutWholeBlock = async (element: HTMLElement): Promise<boolean> => {
   if (!element.isConnected) return false;
   const block = element.closest("[data-block-id]");
-  element.focus({ preventScroll: true });
-  const range = document.createRange();
-  range.selectNodeContents(element);
-  range.collapse(true);
-  const sel = window.getSelection();
-  if (!sel) return false;
-  sel.removeAllRanges();
-  sel.addRange(range);
+  placeCaretAtStart(element);
+  // Notion picks up caret moves from the async selectionchange event; cutting
+  // in the same tick would cut whichever block Notion still thinks is active.
+  await sleep(40);
   document.execCommand("cut");
   return !block || !block.isConnected;
 };
 
+
+/** Blocks nested directly under `block` (its children, not grandchildren). */
+const directChildBlocks = (block: Element): Element[] =>
+  Array.from(block.querySelectorAll("[data-block-id]")).filter(
+    (b) => b.parentElement?.closest("[data-block-id]") === block,
+  );
+
+/** The block's own editable leaf (not one belonging to a nested block). */
+const ownLeaf = (block: Element): HTMLElement | null =>
+  (Array.from(block.querySelectorAll('[contenteditable="true"]')).find(
+    (leaf) => leaf.closest("[data-block-id]") === block,
+  ) as HTMLElement | undefined) ?? null;
+
+/**
+ * Find the live editor block for an id. Several elements can share one
+ * data-block-id: Notion renders a copy inside the hover menu while the mouse
+ * is over a block, plus leaf-less layout wrappers. Only the block that owns
+ * an editable leaf is the real one.
+ */
+const findBlock = (blockId: string): Element | null =>
+  Array.from(
+    document.querySelectorAll(`[data-block-id="${blockId}"]`),
+  ).find((b) => ownLeaf(b) !== null) ?? null;
+
+/**
+ * Outdent one block by sending Shift+Tab to its leaf. Notion handles Tab in
+ * its keydown handler and accepts this synthetic event (unlike Backspace on a
+ * block selection). Vimtion's own listener must see insert mode so it lets the
+ * key through.
+ */
+const outdentBlock = async (block: Element): Promise<boolean> => {
+  const leaf = ownLeaf(block);
+  if (!leaf) return false;
+  placeCaretAtStart(leaf);
+  await sleep(40); // let Notion register the caret move (see cutWholeBlock)
+  const { vim_info } = window;
+  const previousMode = vim_info.mode;
+  vim_info.mode = "insert";
+  leaf.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Tab",
+      code: "Tab",
+      keyCode: 9,
+      which: 9,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  vim_info.mode = previousMode;
+  return true;
+};
+
 /**
  * Delete `lineCount` consecutive lines starting at `firstElement`, one Notion
- * block per line. Lines whose block sits inside another deleted block are
- * skipped (they go away with their parent). Blocks are cut bottom-up so the
- * remaining elements stay valid.
+ * block per line, like Vim deletes lines: only those lines go away. A deleted
+ * block's children that are NOT being deleted are lifted one level first (so
+ * they take the deleted line's place) instead of disappearing with it.
+ *
+ * Blocks are processed bottom-up, so selected children are removed before their
+ * parent is processed, and remaining elements stay valid. Children are lifted
+ * last-first: outdenting the last child puts it right after the parent; doing
+ * the first child first would make Notion adopt its later siblings under it.
  *
  * @param firstElement - First contenteditable element to delete
  * @param lineCount - Number of lines to delete
- * @returns Promise resolving to the number of blocks cut (= undo steps)
+ * @returns Promise resolving to the number of Notion edits made (= undo steps)
  */
-export const deleteMultipleLinesAtomically = (
+export const deleteMultipleLinesAtomically = async (
   firstElement: HTMLElement,
   lineCount: number,
 ): Promise<number> => {
-  return new Promise((resolve) => {
-    const { vim_info } = window;
-    const firstLineIndex = vim_info.lines.findIndex(
-      (line) => line.element === firstElement,
-    );
+  const { vim_info } = window;
+  const firstLineIndex = vim_info.lines.findIndex(
+    (line) => line.element === firstElement,
+  );
+  if (firstLineIndex === -1) return 0;
 
-    if (firstLineIndex === -1) {
-      resolve(0);
-      return;
+  const lastLineIndex = Math.min(
+    firstLineIndex + lineCount - 1,
+    vim_info.lines.length - 1,
+  );
+  const blockIds = vim_info.lines
+    .slice(firstLineIndex, lastLineIndex + 1)
+    .map((line) => line.element.closest("[data-block-id]")?.getAttribute("data-block-id"))
+    .filter((id): id is string => !!id);
+  const uniqueIds = blockIds.filter((id, i) => blockIds.indexOf(id) === i);
+
+  let edits = 0;
+  for (let k = uniqueIds.length - 1; k >= 0; k--) {
+    const blockId = uniqueIds[k];
+
+    // Lift surviving children (last-first) so only this line is deleted.
+    for (let guard = 0; guard < 200; guard++) {
+      const block = findBlock(blockId);
+      const children = block ? directChildBlocks(block) : [];
+      const lastChild = children[children.length - 1];
+      if (!lastChild || !(await outdentBlock(lastChild))) break;
+      edits++;
+      await sleep(60);
     }
 
-    const lastLineIndex = Math.min(
-      firstLineIndex + lineCount - 1,
-      vim_info.lines.length - 1,
-    );
-    const elements = vim_info.lines
-      .slice(firstLineIndex, lastLineIndex + 1)
-      .map((line) => line.element);
-    const blocks = elements.map((el) => el.closest("[data-block-id]"));
-    const targets = elements.filter(
-      (_, i) =>
-        !blocks.some(
-          (other, j) =>
-            j !== i && other && blocks[i] && other !== blocks[i] &&
-            other.contains(blocks[i]),
-        ),
-    );
+    const block = findBlock(blockId);
+    const leaf = block ? ownLeaf(block) : null;
+    if (leaf && (await cutWholeBlock(leaf))) edits++;
+    // Give Notion a tick to commit the transaction before the next edit.
+    await sleep(30);
+  }
 
-    const cutNext = (k: number) => {
-      if (k < 0) {
-        setTimeout(() => resolve(targets.length), 50);
-        return;
-      }
-      cutWholeBlock(targets[k]);
-      // Give Notion a tick to commit the transaction before the next cut.
-      setTimeout(() => cutNext(k - 1), 30);
-    };
-    cutNext(targets.length - 1);
-  });
+  await sleep(50);
+  return edits;
 };
 
 /**
@@ -111,7 +178,7 @@ export const deleteNormalBlockWithKeyboardEvents = (
   delay: number = 0,
 ): void => {
   setTimeout(() => {
-    cutWholeBlock(element);
+    cutWholeBlock(element).catch(() => {});
   }, delay);
 };
 

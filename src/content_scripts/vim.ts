@@ -164,6 +164,7 @@ import {
   deleteCodeBlockWithKeyboardEvents,
   deleteMultipleLinesAtomically,
   setActiveLine,
+  isWrapperLine,
   createRefreshLines,
   createSetLines,
 } from "./core";
@@ -2059,6 +2060,10 @@ const undo = () => {
     window as Window & { __vimtionUndoSettleUntil?: number }
   ).__vimtionUndoSettleUntil = Date.now() + 500;
 
+  // Line the cursor is on before undo. Undoing a line deletion re-inserts the
+  // lines at this spot, so it is also where Vim puts the cursor afterwards.
+  const lineBeforeUndo = vim_info.active_line;
+
   // Perform undo operations
   performUndoOperations(count);
 
@@ -2068,6 +2073,26 @@ const undo = () => {
       vim_info.undo_count = 0;
 
       setTimeout(() => {
+        // Notion restores deleted blocks without a caret in any line, which
+        // made line recovery fall back to the page title. Re-anchor on the
+        // pre-undo line when the caret is not inside a content line.
+        refreshLines();
+        const sel = window.getSelection();
+        const anchor = sel && sel.rangeCount > 0 ? sel.anchorNode : null;
+        const anchorEl =
+          anchor && anchor.nodeType === Node.ELEMENT_NODE
+            ? (anchor as Element)
+            : anchor?.parentElement ?? null;
+        const caretLine = vim_info.lines.findIndex(
+          (line) =>
+            !!anchorEl &&
+            (line.element === anchorEl || line.element.contains(anchorEl)) &&
+            !isWrapperLine(vim_info.lines.indexOf(line)),
+        );
+        if (lineBeforeUndo > 1 && caretLine <= 1 && vim_info.lines.length > 1) {
+          vim_info.desired_column = 0;
+          setActiveLine(Math.min(lineBeforeUndo, vim_info.lines.length - 1));
+        }
         const currentElement = vim_info.lines[vim_info.active_line]?.element;
         if (currentElement) {
           const cursorIndex = getCursorIndexInElement(currentElement);

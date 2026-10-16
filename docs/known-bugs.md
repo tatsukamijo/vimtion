@@ -319,6 +319,8 @@ Repro notation: `fixture` lines use the `vt fixture` spec (see `tools/notion-dri
 
 ## BUG-048: Line/block deletion (`dd`, `Vd`, `Vjd`, `2dd`) deletes nothing on current Notion
 
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Each block is now removed with a collapsed `execCommand('cut')` (Notion's real cut path) instead of synthetic drag/key events. Undo counts one step per Notion edit.
+
 - **Detected**: 2026-10-15 (live driver, headed + headless)
 - **Repro**: fixture `alpha one / bravo two / charlie three`; `jjj` (on `bravo two`) then `dd`, or `Vjd`. Nothing is deleted. The mode reads `insert` for about 800ms, then returns to normal. Reproduced on heading, paragraph, todo, quote, callout, toggle, last line, and a top-level bullet with children.
 - **Root cause**: `deleteMultipleLinesAtomically` (`core/dom-utils.ts`) selects blocks with a synthetic `mousedown`/`mousemove`/`mouseup` drag, then dispatches a synthetic `Backspace`. Current Notion does not react to the synthetic drag (no `[data-block-selected]`), and the per-block keyboard fallback also fails.
@@ -326,11 +328,15 @@ Repro notation: `fixture` lines use the `vt fixture` spec (see `tools/notion-dri
 
 ## BUG-049: `dd` on a nested bullet child deletes the whole parent subtree
 
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Deletion now matches Vim: only the deleted lines go. Surviving children are lifted one level first (synthetic Shift+Tab, last child first) and take the deleted line's place. Undo restores the original tree.
+
 - **Repro**: fixture `top / - parent /   - child a /   - child b / tail`; cursor on `child a` → `dd`. Result: `top / tail`. Parent and both children are deleted, and a reload confirms it. `u` restores the blocks but leaves the cursor on `tail`.
 - **Root cause**: Same synthetic drag as BUG-048. On a nested block it selects the top-level ancestor.
 - **Severity**: **High**. Data loss.
 
 ## BUG-050: Cursor jumps to the page title after yank / visual-delete / `dw` on an empty line
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` for `yy`, visual `d`/`y`, `Vy`, and `dw` on an empty line: the caret is restored instead of cleared. The `dw`-on-empty-line case still flashes the title for one frame (about 0–50ms).
 
 - **Repro**:
   - `yy`: fixture `alpha one / beta two / gamma three`; on `gamma three`, `yy` → `--series` shows `@0ms dom=L0`, then `@100ms vim=L1` (the title). `yyp` pastes under the title.
@@ -340,6 +346,8 @@ Repro notation: `fixture` lines use the `vt fixture` spec (see `tools/notion-dri
 - **Severity**: **High**. The very next edit silently modifies the page title.
 
 ## BUG-051: Normal-mode caret ends up past the last character (no Vim "step back")
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` for Esc/`jk`, `x` at EOL, `p`, and `j`/`k` clamping. `W`/`w` at the end of a line and `D`/`d$` are still open.
 
 One root idea (normal-mode column must be clamped to `len-1`) behind several triggers:
 - **Esc / `jk` from insert** never moves the caret one left: `AZ<Esc>` leaves col = len, and `x` then does nothing. `wiXY<Esc>` should end on `Y`. This hits almost every edit (`reducers/insert.ts`).
@@ -357,6 +365,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - **Severity**: Low.
 
 ## BUG-053: `desired_column` is stale after leaving insert mode
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` (Esc syncs `desired_column`).
 
 - **Repro**: `iabcdef<Esc>j` lands at C0 (nvim: col 5). After `A<CR>two<Esc>k`, `k` lands past the end of the previous line.
 - **Root cause**: The insert-mode Escape handler does not sync `desired_column` from the DOM selection.
@@ -401,11 +411,15 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-059: `x` at column 0 loses the cursor
 
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: `getCursorIndexInElement` is Range-based, so element-anchored selections are read correctly.
+
 - **Repro**: fixture `alpha beta gamma delta / second line`; on L2, `xxx` → only the first `x` deletes. After that, `w` jumps to the next line, `h` jumps to the end of the line, and `l` is a no-op. Same on heading, bullet and todo.
 - **Root cause**: After `execCommand('cut')` the selection is anchored on the leaf element (`DIV`, offset 0), not on a text node. `getCursorIndexInElement` (`cursor/position.ts`) only resolves text-node anchors.
 - **Severity**: **High**. The most basic edit is broken.
 
 ## BUG-060: `x` / `s` / `dw` / `cw` at a formatted-span or syntax-token boundary type the letter instead of deleting
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` for `x`/`s`/`dw` (`selectCharRange` resolves offsets at formatting boundaries). `cw` and code-block tokens still need re-verification.
 
 - **Repro**: make `beta` bold in `alpha beta gamma delta` (`jwviw<D-b><Esc>`); `0w` then `x` → `alpha x**beta**…` (a literal `x` is inserted). `s` inserts `s` and stays in normal mode. `dw`/`cw` at the boundary throw `IndexSizeError`. The same happens on code-block syntax tokens.
 - **Root cause**: `deleteCharacter` / `substituteCharacter` (`vim.ts`) do `r.setEnd(r.startContainer, r.startOffset + 1)`. When the caret sits at the end of the previous text node, that offset is out of range.
@@ -495,9 +509,13 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - `aTaj<Esc>` drops the trailing `j` (the Escape path calls `cancelPendingJ()` instead of committing it).
 - A change op (`C`, `ciw`), a pause, then typing takes two `u` to undo; `o` + type also takes two `u`.
 - Machine-speed `oxyz<Esc>` (0–5ms gaps) puts the first character into the original line: the synthetic Enter is dispatched in `setTimeout(0)`.
+- Notion merges edits made within about 1s into one undo step: `dw dw u` (400ms apart) undoes both words. With a gap of 1.2s or more, each `u` undoes one `dw`. On `main` this was masked because the second `dw` lost the cursor to the title, and that selection jump split the undo group. Test: `undo-redo.spec.ts` "multiple u undoes consecutive dw one by one". It is left failing on purpose.
+- After undoing a multi-line `Vjd`, the cursor lands on the second restored line instead of the first (Notion leaves the caret there).
 - **Severity**: Low.
 
 ## Harness / environment notes from the sweep
+
+- Notion renders a copy of a block, with the same `data-block-id`, inside its hover menu while the mouse is over the block. `querySelector('[data-block-id="…"]')` can then return the copy, which has no editable leaf. Block deletion now picks the block that owns an editable leaf. The block-link navigation lookups in `vim.ts` (~2733, ~3104) and `links/link-hints.ts` (~204) still use plain `querySelector` and are likely affected.
 
 - The "Using Vimium?" warning tells users to exclude `https://www.notion.com/*`, but pages are now on `app.notion.com`.
 - `test/helpers.ts` `navigateToTestPage` short-circuits on `url.includes("notion.so")`, which no longer matches.
