@@ -19,6 +19,7 @@ import {
   getAroundParagraphBounds,
 } from "../operators/helpers";
 import { clearAllBackgroundColors } from "../core/dom-utils";
+import { setActiveLine } from "../core/line-management";
 
 /**
  * Safely add a range to a selection, handling errors gracefully
@@ -520,6 +521,20 @@ export const visualJumpToEndOfLine = () => {
 // ============================================================================
 
 /**
+ * Leave a visual operator with the caret ON a character of the active line
+ * (never with no selection at all: an empty selection makes line recovery
+ * fall back to the page title, so the next edit would hit the title).
+ */
+const placeCaretAfterVisualOp = (position: number) => {
+  const { vim_info } = window;
+  const element = vim_info.lines[vim_info.active_line].element;
+  const length = (element.textContent || "").length;
+  const target = Math.max(0, Math.min(position, length - 1));
+  setCursorPosition(element, target);
+  vim_info.desired_column = target;
+};
+
+/**
  * Delete visual selection (cuts to clipboard)
  */
 export const createDeleteVisualSelection = (
@@ -533,12 +548,17 @@ export const createDeleteVisualSelection = (
       return;
     }
 
+    const element = vim_info.lines[vim_info.active_line].element;
+    // The selection start is where Vim leaves the cursor after d.
+    const start = getCursorIndexInElement(element);
+
     // The selection is already set by updateVisualSelection
     // Use 'cut' to copy to clipboard like vim's 'd' command
     document.execCommand("cut");
+    vim_info.yank_type = "char";
 
     vim_info.mode = "normal";
-    window.getSelection()?.removeAllRanges();
+    placeCaretAfterVisualOp(start);
     updateInfoContainer();
   };
 };
@@ -549,12 +569,16 @@ export const createDeleteVisualSelection = (
 export const createYankVisualSelection = (updateInfoContainer: () => void) => {
   return () => {
     const { vim_info } = window;
+    const element = vim_info.lines[vim_info.active_line].element;
+    // Vim moves the cursor to the start of the yanked text.
+    const start = getCursorIndexInElement(element);
 
     // Use execCommand('copy') to copy to clipboard without deleting
     document.execCommand("copy");
+    vim_info.yank_type = "char";
 
     vim_info.mode = "normal";
-    window.getSelection()?.removeAllRanges();
+    placeCaretAfterVisualOp(start);
     updateInfoContainer();
   };
 };
@@ -569,11 +593,13 @@ export const createYankVisualLineSelection = (
     const { vim_info } = window;
 
     document.execCommand("copy");
+    vim_info.yank_type = "line";
 
     clearAllBackgroundColors();
 
     vim_info.mode = "normal";
-    window.getSelection()?.removeAllRanges();
+    // Vim leaves the cursor on the first line of the yanked range.
+    setActiveLine(Math.min(vim_info.visual_start_line, vim_info.active_line));
     updateInfoContainer();
   };
 };

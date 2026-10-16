@@ -3,7 +3,11 @@
  * Handles deleting text based on motion commands
  */
 
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  selectCharRange,
+} from "../cursor";
 import { isParagraphBoundary, isInsideCodeBlock } from "../notion";
 import {
   deleteNormalBlockWithKeyboardEvents,
@@ -158,39 +162,56 @@ export const createDeleteCurrentLine = (deps: MotionDeleteDeps) => async () => {
 /**
  * Delete from cursor to next word boundary
  */
-export const createDeleteToNextWord = () => () => {
-  const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const currentCursorPosition = getCursorIndexInElement(currentElement);
-  const text = currentElement.textContent || "";
+export const createDeleteToNextWord =
+  (deps: { refreshLines?: () => void } = {}) =>
+  () => {
+    const { vim_info } = window;
+    const lineIndex = vim_info.active_line;
+    const currentElement = vim_info.lines[lineIndex].element;
+    const currentCursorPosition = getCursorIndexInElement(currentElement);
+    const text = currentElement.textContent || "";
 
-  let pos = currentCursorPosition;
+    // dw on an empty line deletes the line itself (Vim joins it away). The
+    // collapsed cut below makes Notion remove the empty block, after which the
+    // DOM selection is gone; re-anchor on the line that moved up into its slot
+    // instead of letting selection recovery fall back to the page title.
+    if (text.length === 0) {
+      document.execCommand("cut");
+      setTimeout(() => {
+        deps.refreshLines?.();
+        if (vim_info.lines.length === 0) return;
+        vim_info.desired_column = 0;
+        setActiveLine(Math.min(lineIndex, vim_info.lines.length - 1));
+      }, 50);
+      return;
+    }
 
-  // Skip current word
-  while (pos < text.length && /\w/.test(text[pos])) {
-    pos++;
-  }
+    let pos = currentCursorPosition;
 
-  // Skip non-word characters
-  while (pos < text.length && !/\w/.test(text[pos])) {
-    pos++;
-  }
+    // Skip current word
+    while (pos < text.length && /\w/.test(text[pos])) {
+      pos++;
+    }
 
-  // Select from cursor to pos
-  setCursorPosition(currentElement, currentCursorPosition);
-  const sel = window.getSelection();
-  if (sel && sel.rangeCount > 0) {
-    const r = sel.getRangeAt(0);
-    r.setStart(r.startContainer, r.startOffset);
-    r.setEnd(r.startContainer, r.startOffset + (pos - currentCursorPosition));
-    sel.removeAllRanges();
-    sel.addRange(r);
+    // Skip non-word characters
+    while (pos < text.length && !/\w/.test(text[pos])) {
+      pos++;
+    }
 
-    document.execCommand("cut");
-  }
+    // Select from cursor to pos (boundary-safe across formatting spans)
+    if (selectCharRange(currentElement, currentCursorPosition, pos)) {
+      document.execCommand("cut");
+    }
 
-  vim_info.desired_column = currentCursorPosition;
-};
+    // Stay on the deletion point, clamped onto the remaining text.
+    const newLength = (currentElement.textContent || "").length;
+    const newPosition = Math.max(
+      0,
+      Math.min(currentCursorPosition, newLength - 1),
+    );
+    setCursorPosition(currentElement, newPosition);
+    vim_info.desired_column = newPosition;
+  };
 
 /**
  * Delete from cursor to end of line

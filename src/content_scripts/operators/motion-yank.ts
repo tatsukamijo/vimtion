@@ -3,7 +3,7 @@
  * Handles yanking (copying) text based on motion commands
  */
 
-import { getCursorIndexInElement } from "../cursor";
+import { getCursorIndexInElement, setCursorPosition } from "../cursor";
 import { isParagraphBoundary } from "../notion";
 
 /**
@@ -12,6 +12,7 @@ import { isParagraphBoundary } from "../notion";
 export const createYankCurrentLine = () => () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
+  const cursorPosition = getCursorIndexInElement(currentElement);
 
   const range = document.createRange();
   range.selectNodeContents(currentElement);
@@ -19,7 +20,9 @@ export const createYankCurrentLine = () => () => {
   sel?.removeAllRanges();
   sel?.addRange(range);
   document.execCommand("copy");
-  sel?.removeAllRanges();
+  // Put the caret back where it was. Clearing the selection instead left no
+  // caret at all, and selection recovery then moved the cursor to the title.
+  setCursorPosition(currentElement, cursorPosition);
   vim_info.yank_type = "line";
 };
 

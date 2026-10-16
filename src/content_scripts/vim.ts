@@ -2155,6 +2155,19 @@ const handlePendingOperator = (key: string): boolean => {
   // Clear pending operator
   vim_info.pending_operator = null;
 
+  // Register type for a later p/P: the doubled operators (yy/dd/cc) and
+  // paragraph motions are linewise, every other motion or text object is
+  // charwise. Without resetting it, a `yw` after a `yy` pasted as a new line.
+  if (operator === "y" || operator === "d" || operator === "c") {
+    if (key === operator || key === "{" || key === "}") {
+      vim_info.yank_type = "line";
+    } else if (key !== "i" && key !== "a") {
+      vim_info.yank_type = "char";
+    }
+  } else if (operator && /^[ydc][ia]$/.test(operator)) {
+    vim_info.yank_type = key === "p" ? "line" : "char";
+  }
+
   if (operator === "f") {
     // Handle f{char} - find character forward
     findCharForward(key);
@@ -3448,7 +3461,7 @@ const deleteCurrentLine = createDeleteCurrentLine({
   refreshLines,
   updateInfoContainer,
 });
-const deleteToNextWord = createDeleteToNextWord();
+const deleteToNextWord = createDeleteToNextWord({ refreshLines });
 const deleteToEndOfLine = createDeleteToEndOfLine();
 const deleteToBeginningOfLine = createDeleteToBeginningOfLine();
 const deleteToPreviousParagraph = createDeleteToPreviousParagraph({
