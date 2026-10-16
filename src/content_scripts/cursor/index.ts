@@ -10,6 +10,7 @@ export {
   selectCharRange,
   deleteCharRange,
   lineBoundsAt,
+  charBoundsAt,
   columnInLine,
   cutCharRange,
   markNavigation,

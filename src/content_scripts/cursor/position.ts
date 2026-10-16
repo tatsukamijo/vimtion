@@ -97,6 +97,50 @@ export const resolveTextPosition = (
 };
 
 /**
+ * Bounds [start, end) of the user-perceived character (grapheme) at `pos`.
+ * Columns are UTF-16 offsets, so an emoji spans 2+ of them. A cursor or range
+ * edge inside one splits a surrogate pair, and Notion's cut handler then cuts
+ * the whole block. Every caret placement and edited range snaps to these.
+ */
+const graphemeSegmenter = (Intl as any).Segmenter
+  ? new (Intl as any).Segmenter(undefined, { granularity: "grapheme" })
+  : null;
+
+export const charBoundsAt = (
+  text: string,
+  pos: number,
+): { start: number; end: number } => {
+  if (pos >= text.length) return { start: text.length, end: text.length };
+  if (graphemeSegmenter) {
+    // Segment a small window around pos: clusters are short.
+    const from = Math.max(0, pos - 32);
+    const chunk = text.slice(from, pos + 32);
+    const segs: { index: number; segment: string }[] = Array.from(
+      graphemeSegmenter.segment(chunk),
+    );
+    for (let k = 0; k < segs.length; k++) {
+      const start = from + segs[k].index;
+      const end = start + segs[k].segment.length;
+      if (pos < end) return { start, end };
+    }
+  }
+  const code = (i: number) => text.charCodeAt(i);
+  const isHigh = (i: number) => code(i) >= 0xd800 && code(i) <= 0xdbff;
+  const isLow = (i: number) => code(i) >= 0xdc00 && code(i) <= 0xdfff;
+  const start = pos > 0 && isLow(pos) && isHigh(pos - 1) ? pos - 1 : pos;
+  const end = isHigh(start) && isLow(start + 1) ? start + 2 : start + 1;
+  return { start, end };
+};
+
+/** Snap a range [start, end) outward to whole characters. */
+const snapRange = (element: Element, start: number, end: number) => {
+  const text = element.textContent || "";
+  const s = charBoundsAt(text, start).start;
+  const e = end > s && end < text.length ? charBoundsAt(text, end - 1).end : end;
+  return { start: s, end: Math.max(e, end) };
+};
+
+/**
  * Select characters [start, end) of `element` as the document selection,
  * spanning text-node / formatting boundaries correctly.
  * Returns false when the element has no text to select.
@@ -106,6 +150,7 @@ export const selectCharRange = (
   start: number,
   end: number,
 ): boolean => {
+  ({ start, end } = snapRange(element, start, end));
   const from = resolveTextPosition(element, start, true);
   const to = resolveTextPosition(element, end, false);
   if (!from || !to) return false;
@@ -185,6 +230,8 @@ export const cutCharRange = (
  * Set cursor position within an element
  */
 export const setCursorPosition = (element: Element, index: number) => {
+  // Never rest inside a multi-unit character (emoji): snap to its start.
+  index = charBoundsAt(element.textContent || "", index).start;
   // Any caret placement Vimtion makes (h/l/w/x in the line, or G / paragraph
   // motions that set the caret directly on another line) becomes the position
   // to protect, so the guard never reverts Vimtion's own moves. The guard

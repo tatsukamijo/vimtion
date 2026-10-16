@@ -599,7 +599,7 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 ## BUG-079: `x` on the second half of an emoji deletes the whole line
 
 - **Detected**: 2026-10-16 (pre-ship sweep, menus agent). **Critical** (data loss).
-- **Status**: OPEN
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Caret placement and edited/selected ranges snap to grapheme boundaries (`charBoundsAt`, `Intl.Segmenter`); `h`/`l`/`$` step by whole characters. Verified with 😃, 👍🏽 and 🇯🇵.
 - **Repro**: `ab😃cd`, `$hh`, then `x`. The whole block is removed. `h`/`l` also take two presses to cross an emoji.
 - **Root cause**: Columns are UTF-16 code units, so the cursor can sit between a surrogate pair. `x` then cuts a lone low surrogate, and Notion's cut handler removes the whole block. This happens even when Vimtion is not involved.
 

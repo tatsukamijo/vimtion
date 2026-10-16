@@ -6,6 +6,7 @@ import {
   getCursorIndexInElement,
   setCursorPosition,
   lineBoundsAt,
+  charBoundsAt,
 } from "../cursor";
 
 export const moveCursorBackwards = () => {
@@ -16,7 +17,8 @@ export const moveCursorBackwards = () => {
   // Vim semantics: h at col 0 is a no-op (no wrap to previous line).
   if (currentCursorPosition <= 0) return;
 
-  const newPosition = currentCursorPosition - 1;
+  const text = currentElement.textContent || "";
+  const newPosition = charBoundsAt(text, currentCursorPosition - 1).start;
   setCursorPosition(currentElement, newPosition);
   vim_info.desired_column = newPosition; // Remember this column
 };
@@ -27,12 +29,13 @@ export const moveCursorForwards = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const lineLength = currentElement.textContent?.length || 0;
   // Vim's normal-mode cursor sits ON a character; max valid column is len-1.
-  const maxCol = Math.max(0, lineLength - 1);
+  const text = currentElement.textContent || "";
+  const maxCol = charBoundsAt(text, Math.max(0, lineLength - 1)).start;
 
   // Vim semantics: l at last char is a no-op (no wrap to next line).
   if (currentCursorPosition >= maxCol) return;
 
-  const newPosition = currentCursorPosition + 1;
+  const newPosition = charBoundsAt(text, currentCursorPosition).end;
   setCursorPosition(currentElement, newPosition);
   vim_info.desired_column = newPosition; // Remember this column
 };
@@ -64,7 +67,7 @@ export const jumpToLineEnd = () => {
 
   // Vim semantics: $ lands ON the last character (col = len - 1), not past it.
   // Empty line: clamp to the line start.
-  const newPos = Math.max(start, end - 1);
+  const newPos = Math.max(start, charBoundsAt(element.textContent || "", end - 1).start);
   setCursorPosition(element, newPos);
   vim_info.desired_column = newPos - start;
 };
