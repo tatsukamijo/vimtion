@@ -97,8 +97,38 @@ let isoContextId = null;
 let mainFrameId = null;
 const consoleBuf = [];
 
+/**
+ * Chrome persists "disabled" for an unpacked extension whose directory vanished
+ * while it was running (e.g. `npm run build` does `rm -rf dist`). Drop our
+ * extension's saved entry before each launch so --load-extension re-registers
+ * it cleanly; nothing else in the profile is touched.
+ */
+function forgetDistExtensionState() {
+  for (const name of ["Preferences", "Secure Preferences"]) {
+    const f = path.join(PROFILE, "Default", name);
+    if (!fs.existsSync(f)) continue;
+    try {
+      const prefs = JSON.parse(fs.readFileSync(f, "utf8"));
+      const settings = prefs.extensions?.settings || {};
+      const macs = prefs.protection?.macs?.extensions?.settings || {};
+      let changed = false;
+      for (const [id, v] of Object.entries(settings)) {
+        if (v && v.path === DIST) {
+          delete settings[id];
+          delete macs[id];
+          changed = true;
+        }
+      }
+      if (changed) fs.writeFileSync(f, JSON.stringify(prefs));
+    } catch {
+      // Unreadable prefs: leave them to Chrome.
+    }
+  }
+}
+
 async function launch() {
   ensureProfile();
+  forgetDistExtensionState();
   context = await chromium.launchPersistentContext(PROFILE, {
     channel: "chromium",
     headless: HEADLESS,
@@ -706,6 +736,10 @@ const commands = {
    * not re-inject content scripts, so a relaunch is the reliable path.)
    */
   async reload({ nobuild }) {
+    const url = page.url();
+    // Close the browser BEFORE building: the build deletes dist/, and Chrome
+    // disables a running unpacked extension whose files disappear.
+    await context.close().catch(() => {});
     if (!nobuild) {
       try {
         // Parcel's cache intermittently drops entries from the multi-entry
@@ -714,14 +748,17 @@ const commands = {
         fs.rmSync(path.join(ROOT, ".parcel-cache"), { recursive: true, force: true });
         execSync("npm run build", { cwd: ROOT, stdio: "pipe" });
       } catch (e) {
+        await launch();
+        await openUrl(url).catch(() => {});
         return { text: `BUILD FAILED\n${e.stdout}\n${e.stderr}` };
       }
       const required = ["manifest.json", "background.js", "content_scripts/vim.js", "content_scripts/vim.css"];
       const missing = required.filter((f) => !fs.existsSync(path.join(DIST, f)));
-      if (missing.length) return { text: `BUILD INCOMPLETE: dist/ is missing ${missing.join(", ")}` };
+      if (missing.length) {
+        await launch();
+        return { text: `BUILD INCOMPLETE: dist/ is missing ${missing.join(", ")}` };
+      }
     }
-    const url = page.url();
-    await context.close().catch(() => {});
     await launch();
     const s = await openUrl(url);
     return { snapshot: s, text: `reloaded${nobuild ? "" : " (rebuilt)"}\n${render(s)}` };

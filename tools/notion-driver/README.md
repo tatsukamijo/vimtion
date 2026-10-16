@@ -95,6 +95,9 @@ $VT stop && $VT clean
 ```
 
 Rules for parallel agents:
+- Never run `npm run build` (or `vt reload`) while another driver is running.
+  The build deletes `dist/`, and Chrome disables a running unpacked extension whose
+  files disappear. `vt reload` closes its own browser before building for this reason.
 - Keep helper scripts and fixture files in a directory unique to your port.
   The scratchpad is shared, so a generic `./v` or `f1.txt` gets overwritten by another agent.
 - Headed browsers share the macOS clipboard. Before a yank/paste check, write a sentinel
