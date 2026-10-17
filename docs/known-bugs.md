@@ -78,6 +78,7 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 ## BUG-008: I and A (Shift+i / Shift+a) insert at wrong cursor position (automated test only)
 
 - **Detected**: 2026-04-14
+- **Status**: **RESOLVED (test artifact)** on `fix/live-sweep-batch1`. Playwright `press("Shift+i")` / `"Shift+o"` sends `key: "i"` / `"o"` with Shift held, so Vimtion correctly ran `i` / `o`. The specs now send `"Shift+I"` / `"Shift+O"`. Real keyboards send `I` / `O`.
 - **Test**: `navigation.spec.ts` → "I inserts text at beginning of line", "A inserts text at end of line"
 - **Reproduction (automated)**: Navigate to a text block, press `0` then `w` twice (col=10), then `Shift+i`. Type "ZZZ". Text appears at col 10 ("The quick ZZZbrown...") instead of at the beginning ("ZZZThe quick...").
 - **Manual test**: User reports I and A work correctly in headed-mode manual testing.
@@ -99,6 +100,7 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 ## BUG-009: O (Shift+o) creates line below instead of above (automated test only)
 
 - **Detected**: 2026-04-14
+- **Status**: **RESOLVED (test artifact)** on `fix/live-sweep-batch1`. Playwright `press("Shift+i")` / `"Shift+o"` sends `key: "i"` / `"o"` with Shift held, so Vimtion correctly ran `i` / `o`. The specs now send `"Shift+I"` / `"Shift+O"`. Real keyboards send `I` / `O`.
 - **Test**: `navigation.spec.ts` → "O opens new line above and enters insert", "O on numbered list creates line above"
 - **Reproduction**: In automated (headless Playwright) test: navigate to a block, press `Shift+o`, type text. The new line appears below the current block instead of above it.
 - **Manual test**: User reports O works correctly in headed-mode manual testing (line correctly created above).
