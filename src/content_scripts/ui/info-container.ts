@@ -4,6 +4,7 @@
  */
 
 import { updateBlockCursor } from "../cursor";
+import { refreshSearchHighlights, searchStatusText } from "../navigation/search";
 
 /**
  * Bridge: mirror a sanitized snapshot of vim_info to document.body.dataset
@@ -59,7 +60,11 @@ export const updateInfoContainer = () => {
   const { vim_info } = window;
   // A count being typed shows like Vim's showcmd.
   const pendingCount = vim_info.count ? ` | ${vim_info.count}` : "";
-  mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}${pendingCount}`;
+  // The highlighted search and the match under the cursor, e.g. "/foo [2/5]".
+  refreshSearchHighlights();
+  const search = searchStatusText();
+  const searchInfo = search ? ` | ${search}` : "";
+  mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}${searchInfo}${pendingCount}`;
 
   // Update body class for cursor styling
   document.body.classList.remove(

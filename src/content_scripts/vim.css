@@ -122,3 +122,19 @@ body.vim-visual-line-mode [contenteditable="true"]:empty::selection {
   color: inherit;
   font: inherit;
 }
+.vim-search-count {
+  color: #a1a1aa;
+  font-weight: 500;
+}
+.vim-search-bar--miss .vim-search-count {
+  color: #f87171;
+}
+
+/* Search matches (hlsearch); the one under the cursor stands out. */
+::highlight(vimtion-search) {
+  background-color: rgba(250, 204, 21, 0.4);
+}
+::highlight(vimtion-search-current) {
+  background-color: rgba(249, 115, 22, 0.85);
+  color: #fff;
+}

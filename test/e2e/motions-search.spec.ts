@@ -62,6 +62,13 @@ async function body(page: Page): Promise<string[]> {
 
 const settle = (page: Page, ms = 800) => page.waitForTimeout(ms);
 
+/** The text of each range in a search highlight (CSS Custom Highlight API). */
+const highlighted = (page: Page, name: string): Promise<string[]> =>
+  page.evaluate((n) => {
+    const h = (CSS as any).highlights?.get(n);
+    return h ? [...h].map((r: Range) => r.toString()) : [];
+  }, name);
+
 test.describe("; , ~ J >> << % and search", () => {
   test.afterAll(async () => {
     await Promise.all(
@@ -139,5 +146,61 @@ test.describe("; , ~ J >> << % and search", () => {
     await pressKeys(page, "Enter", "x");
     await settle(page);
     expect((await body(page))[0]).toBe("lpha beta");
+  });
+
+  test("search highlights every match and counts the one under the cursor", async ({
+    extensionPage: page,
+  }) => {
+    await openFreshPage(page, ["Foo one foo", "two", "three foo"]);
+    await pressKeys(page, "/");
+    await page.keyboard.type("foo");
+    await settle(page, 300);
+    // incsearch: all matches are painted while typing, the next one marked.
+    expect(await highlighted(page, "vimtion-search")).toEqual(["Foo", "foo", "foo"]);
+    expect(await highlighted(page, "vimtion-search-current")).toEqual(["foo"]);
+    expect(await page.locator(".vim-search-count").textContent()).toBe("[2/3]");
+    await pressKeys(page, "Enter");
+    await settle(page);
+    expect((await getVimState(page)).statusText).toContain("/foo [2/3]");
+    await pressKeys(page, "n");
+    await settle(page);
+    expect((await getVimState(page)).statusText).toContain("/foo [3/3]");
+    await pressKeys(page, "n");
+    await settle(page);
+    expect((await getVimState(page)).statusText).toContain("/foo [1/3]");
+    expect(await highlighted(page, "vimtion-search-current")).toEqual(["Foo"]);
+    // Off a match the count stays, without a current match.
+    await pressKeys(page, "j");
+    await settle(page);
+    expect((await getVimState(page)).statusText).toContain("/foo [-/3]");
+    expect(await highlighted(page, "vimtion-search-current")).toEqual([]);
+    // An edit updates the matches.
+    await pressKeys(page, "k", "0", "x");
+    await settle(page);
+    expect(await highlighted(page, "vimtion-search")).toEqual(["foo", "foo"]);
+    // Esc in normal mode turns the highlighting off (:nohlsearch).
+    await pressKeys(page, "Escape");
+    await settle(page, 300);
+    expect(await highlighted(page, "vimtion-search")).toEqual([]);
+    expect((await getVimState(page)).statusText).not.toContain("/foo");
+  });
+
+  test("cancelling the search bar keeps the previous search highlighted", async ({
+    extensionPage: page,
+  }) => {
+    await openFreshPage(page, ["foo bar", "bar foo"]);
+    await pressKeys(page, "/");
+    await page.keyboard.type("foo");
+    await pressKeys(page, "Enter");
+    await settle(page);
+    await pressKeys(page, "/");
+    await page.keyboard.type("zzz");
+    await settle(page, 300);
+    expect(await page.locator(".vim-search-count").textContent()).toBe("[0/0]");
+    expect(await highlighted(page, "vimtion-search")).toEqual([]);
+    await pressKeys(page, "Escape");
+    await settle(page);
+    expect(await highlighted(page, "vimtion-search")).toEqual(["foo", "foo"]);
+    expect((await getVimState(page)).statusText).toContain("/foo [2/2]");
   });
 });

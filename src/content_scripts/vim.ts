@@ -184,6 +184,7 @@ import {
   openSearch,
   repeatSearch,
   searchWordUnderCursor,
+  clearSearchHighlights,
   SEARCH_BAR_CLASS,
 } from "./navigation/search";
 import {
@@ -4436,6 +4437,8 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 
   if (e.key === "Escape") {
     resetCount();
+    // Like :nohlsearch.
+    clearSearchHighlights();
     return normalReducerBase(e);
   }
 
