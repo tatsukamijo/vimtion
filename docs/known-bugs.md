@@ -364,6 +364,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-052: `$` is not sticky for later `j`/`k`
 
+- **Status**: **RESOLVED** on `feat/counts` (1.9.0): `$` stores an end-of-line column that every vertical move clamps to the line.
+
 - **Repro**: fixture `short / a much longer line here`; on `short`, `$j` lands at col 4 (nvim: end of line, col 22). Going the other way, `$jj` keeps a numeric column instead of "end of line".
 - **Root cause**: `jumpToLineEnd` (`navigation/basic.ts`) stores a numeric `desired_column` with no end-of-line marker.
 - **Severity**: Low.
@@ -506,6 +508,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-069: Missing commands silently swallowed — `S`, `Y`, and README-advertised `de`/`db`/`ce`/`cb`/`ye`/`yb`/`dW`/`dB`/`dE`
 
+- **Status**: **RESOLVED** on `feat/counts` (1.9.0): counts, `S`, `Y`, and `de`/`db`/`ce`/`cb`/`ye`/`yb` (plus `W`/`B`/`E` forms) through a visual selection; `cw` behaves as `ce`.
+
 - README "Operators with Motions" claims they are supported, but the pending-operator switch has no `e`/`b`/`W`/`B`/`E` cases. See MISSING-002/003/004/006. `S` and `Y` are not listed in missing-features.
 - **Severity**: Medium (documentation mismatch).
 
@@ -525,6 +529,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - **Severity**: Medium (held-key users).
 
 ## BUG-072: `Ctrl-u` does not move the cursor; `Ctrl-d` moves only to the first visible line and resets the column
+
+- **Status**: **RESOLVED** on `feat/counts` (1.9.0): `Ctrl-d`/`Ctrl-u` move the cursor the same distance as the half-page scroll and keep the column.
 
 - **Repro**: 40-paragraph fixture, at L6 col 5, `<C-d>` → L11 col 0 (nvim: +half a window, column kept). `<C-u>` scrolls but the cursor stays at L11.
 - **Root cause**: `navigation/scroll.ts` only scrolls. The cursor moves only through the debounced scroll listener, and only when it goes off-screen.
@@ -765,3 +771,11 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
 - `yl` is not implemented, and `yiw`/`viw` on an emoji select nothing (BUG-067/069 family).
 - Vim splits kanji, hiragana and katakana runs into separate words; Vimtion treats a run of any letters as one word.
 - After `/database inline` and `/table`, Notion itself puts the caret in the page title or nowhere.
+
+## BUG-095: In a side peek (database pages), normal-mode keys were typed as text
+
+- **Detected**: 2026-10-17 (user report: daily-log database pages open in a side peek; `j` typed "j").
+- **Status**: **RESOLVED** on `feat/counts` (1.9.0). Regression from BUG-091 in 1.8.0.
+- **Root cause**: BUG-091 limited lines to editables inside `.notion-frame`. A side or centre peek renders in `.notion-peek-renderer`, outside that frame, so none of its lines were Vimtion's and every key went to Notion.
+- **Fix**: Lines come from one page surface: the main frame or a peek. An open peek is the default; focus moving into the other surface switches to it; a closing (empty) peek falls back to the frame. Inside a peek, the overlay/dialog exclusions do not apply (a centre peek lives in Notion's overlay), but comment boxes and the AI prompt are still excluded.
+- **Verified**: peek opens → lines are the peek's (cursor on its title); `j`/`x`/`k` act in the peek; clicking the page behind switches to it and back; closing the peek returns to the page and `j` works.

@@ -174,7 +174,11 @@ import {
   createRefreshLines,
   createSetLines,
   isDocumentEditable,
+  surfaceOf,
+  currentSurface,
+  setActiveSurface,
 } from "./core";
+import { recordKey, repeatLastChange } from "./core/dot-repeat";
 import {
   isBusy,
   beginBusy,
@@ -783,6 +787,28 @@ document.addEventListener(
 // when focus left the page for a popup, and put it back after Esc/Enter there.
 // (A popup closed by clicking elsewhere is left alone: the click placed the
 // caret where the user wanted it.)
+// Focus moving into the other page surface (into a side peek, or back to the
+// page behind it) switches the lines Vimtion works on to that surface.
+// Registered before the popup-return listener, which must then see the new
+// surface's lines as page lines.
+document.addEventListener(
+  "focusin",
+  (e) => {
+    const target = e.target as HTMLElement | null;
+    if (!target || !target.isContentEditable) return;
+    const surface = surfaceOf(target);
+    if (!surface || surface === currentSurface()) return;
+    setActiveSurface(surface);
+    refreshLines();
+    const { vim_info } = window;
+    const leaf = target.closest('[contenteditable="true"]');
+    const idx = vim_info.lines.findIndex((l) => l.element === leaf);
+    if (idx !== -1 && !isWrapperLine(idx)) vim_info.active_line = idx;
+    updateInfoContainer();
+  },
+  true,
+);
+
 let popupReturn: {
   blockId: string | null;
   line: number;
@@ -995,6 +1021,10 @@ document.addEventListener(
   },
   true,
 );
+
+// `.` recording (core/dot-repeat.ts): registered before the typeahead
+// listener below, which stops keys typed during an async edit from going on.
+document.addEventListener("keydown", recordKey, true);
 
 // Typeahead during async edits (see core/busy.ts). Capture phase on the
 // document: during a block cut the caret is often on no line at all, so the
@@ -1712,6 +1742,21 @@ const visualReducer = (e: KeyboardEvent): boolean => {
     case "x":
       deleteVisualSelection();
       return true;
+    case "c":
+    case "s": {
+      // Delete the selection and insert where it was (Vim's v_c).
+      const element = vim_info.lines[vim_info.active_line].element;
+      const start = getCursorIndexInElement(element);
+      const emptyLine = (element.textContent || "").length === 0;
+      deleteVisualSelection();
+      if (!emptyLine && element.isConnected) {
+        setCursorPosition(element, start);
+        vim_info.mode = "insert";
+        vim_info.desired_column = columnInLine(element, start);
+        updateInfoContainer();
+      }
+      return true;
+    }
     case "y":
       yankVisualSelection();
       return true;
@@ -1748,7 +1793,17 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
         setCursorPosition(currentElement, vim_info.visual_start_pos);
       } else {
         // For normal blocks, restore to desired column
-        setCursorPosition(currentElement, vim_info.desired_column);
+        // (Clamped: after a sticky `$` the column is past every line end.)
+        setCursorPosition(
+          currentElement,
+          Math.max(
+            0,
+            Math.min(
+              vim_info.desired_column,
+              (currentElement.textContent || "").length - 1,
+            ),
+          ),
+        );
       }
       updateInfoContainer();
       return true;
@@ -3428,22 +3483,20 @@ const handlePendingOperator = (key: string): boolean => {
   return true;
 };
 
-const normalReducer = (e: KeyboardEvent): boolean => {
+const normalReducerBase = (e: KeyboardEvent): boolean => {
   // Handle specific Ctrl key combinations for page navigation
   if (e.ctrlKey && !e.metaKey && !e.altKey) {
     const key = e.key.toLowerCase();
 
     // Ctrl+d - half page down
     if (key === "d") {
-      scrollAndMoveCursor(0.5);
-      keepCursorOnScreen();
+      scrollHalfPage(1);
       return true;
     }
 
     // Ctrl+u - half page up
     if (key === "u") {
-      scrollAndMoveCursor(-0.5);
-      keepCursorOnScreen();
+      scrollHalfPage(-1);
       return true;
     }
 
@@ -4220,6 +4273,236 @@ const normalReducer = (e: KeyboardEvent): boolean => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Counts (3j, 5x, 2dd, d3w, 3dw, 10G, 2f, ...). Digits accumulate in
+// vim_info.count; the next command runs with the count. normalReducerBase
+// stays count-unaware: repeatable commands are run N times, and the few that
+// mean something different with a count (G, gg, dd/yy/cc, y/c + motion, u, r)
+// are handled here.
+// ---------------------------------------------------------------------------
+const MAX_COUNT = 999;
+// Commands that a count simply repeats.
+const REPEATED = new Set(["h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "{", "}", "x", "X", ";", ","]);
+// Motions after y / c that a count extends (built as a visual selection).
+const VISUAL_MOTIONS = new Set(["w", "b", "e", "W", "B", "E", "h", "l"]);
+
+const resetCount = () => {
+  const { vim_info } = window;
+  vim_info.count = "";
+  vim_info.op_count = 1;
+  vim_info.pending_count = 1;
+};
+
+const key = (k: string) => new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true });
+
+/** Go to line n (1-based, as the status bar numbers lines). */
+const goToLineNumber = (n: number) => {
+  const { vim_info } = window;
+  if (vim_info.lines.length === 0) return;
+  vim_info.desired_column = 0;
+  setActiveLine(Math.max(0, Math.min(n - 1, vim_info.lines.length - 1)));
+  updateInfoContainer();
+};
+
+/**
+ * Visual-mode motions schedule a deferred selection redraw; driven
+ * synchronously (below) it lands after the operator and re-selects the
+ * range in normal mode. Put the caret back where the operator left it.
+ */
+const settleAfterSyntheticVisual = () => {
+  const { vim_info } = window;
+  const element = vim_info.lines[vim_info.active_line]?.element;
+  if (!element) return;
+  const pos = getCursorIndexInElement(element);
+  const mode = vim_info.mode;
+  setTimeout(() => {
+    const sel = window.getSelection();
+    if (vim_info.mode !== mode || !sel || sel.isCollapsed) return;
+    if (mode === "normal" || mode === "insert") setCursorPosition(element, pos);
+  }, 60);
+};
+
+/** Ndd / Nyy / Ncc: the same lines as V + (N-1)j + d / y / c. */
+const linewiseWithCount = (op: string, n: number) => {
+  startVisualLineMode();
+  for (let i = 1; i < n; i++) visualLineReducer(key("j"));
+  visualLineReducer(key(op));
+  settleAfterSyntheticVisual();
+};
+
+/** y / c + count + motion: select the range in visual mode, then operate. */
+const charwiseWithCount = (op: string, motion: string, n: number) => {
+  const { vim_info } = window;
+  const backward = motion === "b" || motion === "B" || motion === "h";
+  // Vim's backward motions exclude the character under the cursor.
+  if (backward) normalReducerBase(key("h"));
+  startVisualMode();
+  // c + w acts like c + e (Vim's cw special case).
+  const m = op === "c" && (motion === "w" || motion === "W") ? (motion === "w" ? "e" : "E") : motion;
+  for (let i = 0; i < n; i++) visualReducer(key(m));
+  // w / W are exclusive: do not take the first character of the next word.
+  if ((m === "w" || m === "W") && vim_info.desired_column > vim_info.visual_start_pos) {
+    visualReducer(key("h"));
+  }
+  visualReducer(key(op));
+  settleAfterSyntheticVisual();
+};
+
+const normalReducer = (e: KeyboardEvent): boolean => {
+  const { vim_info } = window;
+  const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+  const pending = vim_info.pending_operator;
+
+  // Counts never apply to Ctrl/Cmd chords, link selection, or modifier keys.
+  if (!plain || linkSelectionMode || ["Shift", "Control", "Alt", "Meta"].includes(e.key)) {
+    return normalReducerBase(e);
+  }
+
+  // A digit extends the count: before a command, or after d / c / y (d3w).
+  // A leading 0 is the "start of line" motion. After f / t / r / g / z the
+  // digit is that command's argument.
+  if (
+    /^[0-9]$/.test(e.key) &&
+    (e.key !== "0" || vim_info.count !== "") &&
+    (!pending || pending === "d" || pending === "c" || pending === "y")
+  ) {
+    if (vim_info.count.length < 3) vim_info.count += e.key;
+    updateInfoContainer();
+    return true;
+  }
+
+  if (e.key === "Escape") {
+    resetCount();
+    return normalReducerBase(e);
+  }
+
+  const typed = vim_info.count !== "" ? Math.min(parseInt(vim_info.count, 10), MAX_COUNT) : 0;
+  vim_info.count = "";
+  const n = Math.min((pending ? vim_info.pending_count : 1) * (typed || 1), MAX_COUNT);
+  const explicit = typed > 0 || (pending !== null && vim_info.pending_count > 1);
+
+  // --- a pending command completes with the count ---
+  if (pending) {
+    vim_info.pending_count = 1;
+    // Operator + word motion through a visual selection: gives Vim's cw (= ce)
+    // and the missing ce / cb / de / db / ye / yb (and their WORD forms).
+    // dw / dW keep their own path, which also handles line ends.
+    const viaVisual =
+      (pending === "c" || pending === "y" || pending === "d") &&
+      ["w", "W", "e", "E", "b", "B"].includes(e.key) &&
+      !(pending === "d" && (e.key === "w" || e.key === "W"));
+    const lineText =
+      vim_info.lines[vim_info.active_line]?.element.textContent || "";
+    if (viaVisual && lineText.length > 0) {
+      vim_info.pending_operator = null;
+      vim_info.yank_type = "char";
+      charwiseWithCount(pending, e.key, n);
+      return true;
+    }
+    if (n <= 1) return normalReducerBase(e);
+    if (pending === "f" || pending === "F" || pending === "t" || pending === "T") {
+      for (let i = 0; i < n; i++) {
+        vim_info.pending_operator = pending;
+        normalReducerBase(e);
+      }
+      return true;
+    }
+    if (pending === "g" && e.key === "g") {
+      vim_info.pending_operator = null;
+      goToLineNumber(n);
+      return true;
+    }
+    if ((pending === "d" || pending === "y" || pending === "c") && e.key === pending) {
+      vim_info.pending_operator = null;
+      vim_info.yank_type = "line";
+      linewiseWithCount(pending, n);
+      return true;
+    }
+    // dNj / dNk: the current line and N lines below / above.
+    if ((pending === "d" || pending === "y" || pending === "c") && (e.key === "j" || e.key === "k")) {
+      vim_info.pending_operator = null;
+      vim_info.yank_type = "line";
+      if (e.key === "k") {
+        const up = Math.min(n, vim_info.active_line);
+        for (let i = 0; i < up; i++) normalReducerBase(key("k"));
+        linewiseWithCount(pending, up + 1);
+      } else {
+        linewiseWithCount(pending, n + 1);
+      }
+      return true;
+    }
+    if (pending === "d" && REPEATED.has(e.key)) {
+      for (let i = 0; i < n && vim_info.mode === "normal"; i++) {
+        vim_info.pending_operator = "d";
+        normalReducerBase(e);
+      }
+      return true;
+    }
+    if ((pending === "y" || pending === "c") && VISUAL_MOTIONS.has(e.key)) {
+      vim_info.pending_operator = null;
+      vim_info.yank_type = "char";
+      charwiseWithCount(pending, e.key, n);
+      return true;
+    }
+    return normalReducerBase(e);
+  }
+
+  // . repeats the last change.
+  if (e.key === ".") {
+    repeatLastChange();
+    return true;
+  }
+
+  // S = cc, Y = yy (with counts: NS, NY).
+  if (e.key === "S" || e.key === "Y") {
+    const op = e.key === "S" ? "c" : "y";
+    vim_info.pending_operator = op;
+    vim_info.pending_count = n;
+    return normalReducer(key(op));
+  }
+
+  // --- a command that waits for more keys keeps the count ---
+  if (["f", "F", "t", "T", "g"].includes(e.key)) {
+    const handled = normalReducerBase(e);
+    vim_info.pending_count = n;
+    return handled;
+  }
+  if (e.key === "d" || e.key === "c" || e.key === "y") {
+    const handled = normalReducerBase(e);
+    vim_info.pending_count = n;
+    return handled;
+  }
+
+  if (n <= 1 && !explicit) return normalReducerBase(e);
+
+  if (e.key === "G") {
+    goToLineNumber(n);
+    return true;
+  }
+  if (e.key === "u" || e.key === "r") {
+    // undo()/redo() replay Notion's undo undo_count times.
+    vim_info.undo_count = Math.max(1, vim_info.undo_count || 1) * n;
+    return normalReducerBase(e);
+  }
+  if (e.key === "x") {
+    // Nx deletes up to the end of the line; once x had to step back onto the
+    // new last character, the line end was reached.
+    for (let i = 0; i < n; i++) {
+      const el = vim_info.lines[vim_info.active_line]?.element;
+      if (!el) break;
+      const before = getCursorIndexInElement(el);
+      normalReducerBase(e);
+      if (getCursorIndexInElement(el) < before) break;
+    }
+    return true;
+  }
+  if (REPEATED.has(e.key)) {
+    for (let i = 0; i < n && vim_info.mode === "normal"; i++) normalReducerBase(e);
+    return true;
+  }
+  return normalReducerBase(e);
+};
+
 // Get the first visible line in the viewport
 // After a deliberate page scroll (Ctrl-d/u/f/b), move the cursor onto the
 // screen right away. Leaving it to the debounced scroll listener lost a key
@@ -4235,6 +4518,45 @@ const keepCursorOnScreen = () => {
   if (firstVisibleLine === vim_info.active_line) return;
   vim_info.desired_column = 0;
   setActiveLine(firstVisibleLine);
+  updateInfoContainer();
+};
+
+/**
+ * Ctrl-d / Ctrl-u (Vim): scroll half a screen and move the cursor by the same
+ * distance, so it keeps its place on screen and its column. Near the end of
+ * the page, where the scroll stops short, the cursor still moves the full
+ * half screen.
+ */
+const scrollHalfPage = (direction: 1 | -1) => {
+  const { vim_info } = window;
+  const current = vim_info.lines[vim_info.active_line]?.element;
+  if (!current) {
+    scrollAndMoveCursor(direction * 0.5);
+    return;
+  }
+  const scroller = findScrollableContainer();
+  const scrollTop = () =>
+    scroller === document.documentElement ? window.scrollY : scroller.scrollTop;
+  const requested = Math.round(window.innerHeight / 2) * direction;
+  const y0 = current.getBoundingClientRect().top;
+  const before = scrollTop();
+  scrollAndMoveCursor(direction * 0.5);
+  const actual = scrollTop() - before;
+  const targetY = y0 + requested - actual;
+
+  // The line whose top is nearest that screen position, in the travel direction.
+  let best = vim_info.active_line;
+  let bestDist = Infinity;
+  vim_info.lines.forEach((line, i) => {
+    if (isWrapperLine(i)) return;
+    if (direction > 0 ? i < vim_info.active_line : i > vim_info.active_line) return;
+    const d = Math.abs(line.element.getBoundingClientRect().top - targetY);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  });
+  if (best !== vim_info.active_line) setActiveLine(best);
   updateInfoContainer();
 };
 

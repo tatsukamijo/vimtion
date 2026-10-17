@@ -5,6 +5,23 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-10-17
+
+### Added
+- **Counts**: prefix motions and commands with a number, as in Vim: `3j`, `5w`, `4x`, `2dd`, `3yy`, `d3w`, `3dw`, `d2j`, `y2b`, `c2w`, `10G`, `3fx`, `2u`. The count being typed shows in the status bar.
+- **`.` repeats the last change**: `x`, `dw`, `cw` + text, `A` + text, `o` + text, `dd`, `3x` and other changes can be repeated with `.`.
+- **`S` and `Y`**: change the whole line / yank the whole line (with counts: `2S`, `3Y`).
+- **`ce`, `cb`, `de`, `db`, `ye`, `yb`** and their `E`/`B` forms now work, and `cw` changes to the end of the word like Vim (it used to eat the following space).
+- **Visual `c` / `s`**: change the selected text.
+
+### Changed
+- **`Ctrl-d` / `Ctrl-u`** now move the cursor along with the half-page scroll and keep its column, like Vim. Before, `Ctrl-u` left the cursor where it was and `Ctrl-d` only moved it once it scrolled off screen.
+- **`$` is sticky**: after `$`, `j` and `k` keep going to the end of each line until a horizontal motion.
+
+### Fixed
+- **Side peek**: in a page opened in side peek (e.g. a database's daily-log pages), normal-mode keys were typed as text instead of acting as Vim commands (a regression in 1.8.0).
+- **Visual-line yank** (`Vjy`, `2yy`) no longer leaves the text selected afterwards.
+
 ## [1.8.0] - 2026-10-17
 
 ### Added

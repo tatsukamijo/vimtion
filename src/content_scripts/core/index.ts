@@ -9,6 +9,9 @@ export {
   deleteMultipleLinesAtomically,
   isDocumentEditable,
   documentEditables,
+  surfaceOf,
+  currentSurface,
+  setActiveSurface,
 } from "./dom-utils";
 
 export {

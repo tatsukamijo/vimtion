@@ -57,7 +57,9 @@ export const createInfoContainer = () => {
 export const updateInfoContainer = () => {
   const mode = document.querySelector(".vim-mode") as HTMLDivElement;
   const { vim_info } = window;
-  mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}`;
+  // A count being typed shows like Vim's showcmd.
+  const pendingCount = vim_info.count ? ` | ${vim_info.count}` : "";
+  mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}${pendingCount}`;
 
   // Update body class for cursor styling
   document.body.classList.remove(

@@ -44,6 +44,7 @@ This fork has been extensively rebuilt with:
 - **Enhanced motions**: Cross-line navigation (h/l/w/b wrap to previous/next lines), paragraph navigation (`{`/`}`)
 - **Line jumping**: `gg` (first line) and `G` (last line) support
 - **Page navigation**: `Ctrl+d/u` (half page), `Ctrl+f/b` (full page) with smooth scrolling
+- **Counts and repeat**: `3j`, `2dd`, `d3w`, `10G` and the rest of Vim's counts, plus `.` to repeat the last change
 - **Visual modes**: Character-wise (`v`) and line-wise (`V`) visual selection with full operator and text object support
 - **Operators with motions**: Comprehensive support for d/c/y with all motions (w/W/b/B/e/E/$0/{/}/iw/ip/ap)
 - **Text objects**: Full support for `i`(inner) and `a`(around) in both normal and visual modes with brackets, quotes, paragraphs, and more (e.g., `ci(`, `da"`, `yi{`, `vi(`, `va'`, `cip`, `dap`)
@@ -91,6 +92,7 @@ To access the Options page:
 **History**: `H` (back) • `L` (forward)
 **Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character)
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
+**Counts**: prefix motions and commands with a number: `3j` `5w` `4x` `2dd` `d3w` `3dw` `y2b` `c2w` `10G` `3fx` `2u`
 
 ### Link Navigation
 
@@ -140,7 +142,7 @@ Faster in-document navigation:
 **Insert**: `i` `I` `a` `A` `o` `O` • **Visual**: `v` (char) `V` (line) • **Normal**: `Esc` or `jk` (in insert mode)
 
 ### Editing
-**Delete**: `x` `X` `s` `D` `dd` (delete line with block) • **Undo/Redo**: `u` `r` (grouped undo for multi-line operations) • **Paste**: `p` `P`
+**Delete**: `x` `X` `s` `D` `dd` (delete line with block) • **Change/Yank line**: `S` `Y` • **Repeat**: `.` (repeat the last change) • **Undo/Redo**: `u` `r` (grouped undo for multi-line operations) • **Paste**: `p` `P`
 
 ### Operators with Motions
 All operators (`d` delete, `c` change, `y` yank) work with all motions:
@@ -241,7 +243,7 @@ The following Vim features are not implemented:
 - [x] **Line movement**: `Shift+J` / `Shift+K` in visual-line mode to move selected blocks down/up
 - [ ] **Visual-line performance**: Optimize `Shift+V` for better performance, currently a bit slow
 - [ ] **Table navigation**: Vim-like navigation within Notion tables (similar to page link handling)
-- [ ] **Repeat command** (`.`): Repeat the last command
+- [x] **Repeat command** (`.`): Repeat the last command
 
 Contributions and feature requests are welcome! Please open an issue on [GitHub](https://github.com/tatsukamijo/vimtion/issues).
 
