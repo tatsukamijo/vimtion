@@ -9,6 +9,9 @@ import {
   charBoundsAt,
 } from "../cursor";
 
+/** desired_column after `$`: "the end of whatever line we move to". */
+export const END_OF_LINE_COLUMN = 1_000_000;
+
 export const moveCursorBackwards = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -69,7 +72,10 @@ export const jumpToLineEnd = () => {
   // Empty line: clamp to the line start.
   const newPos = Math.max(start, charBoundsAt(element.textContent || "", end - 1).start);
   setCursorPosition(element, newPos);
-  vim_info.desired_column = newPos - start;
+  // Vim's $ is sticky: later j / k keep going to the end of each line until a
+  // horizontal motion. Every vertical move clamps the column to the line, so a
+  // column past any line end means exactly that.
+  vim_info.desired_column = END_OF_LINE_COLUMN;
 };
 
 // Move the cursor to the first non-whitespace character of the active line

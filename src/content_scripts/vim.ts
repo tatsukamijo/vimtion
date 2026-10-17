@@ -1763,7 +1763,17 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
         setCursorPosition(currentElement, vim_info.visual_start_pos);
       } else {
         // For normal blocks, restore to desired column
-        setCursorPosition(currentElement, vim_info.desired_column);
+        // (Clamped: after a sticky `$` the column is past every line end.)
+        setCursorPosition(
+          currentElement,
+          Math.max(
+            0,
+            Math.min(
+              vim_info.desired_column,
+              (currentElement.textContent || "").length - 1,
+            ),
+          ),
+        );
       }
       updateInfoContainer();
       return true;
@@ -3450,15 +3460,13 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
 
     // Ctrl+d - half page down
     if (key === "d") {
-      scrollAndMoveCursor(0.5);
-      keepCursorOnScreen();
+      scrollHalfPage(1);
       return true;
     }
 
     // Ctrl+u - half page up
     if (key === "u") {
-      scrollAndMoveCursor(-0.5);
-      keepCursorOnScreen();
+      scrollHalfPage(-1);
       return true;
     }
 
@@ -4394,6 +4402,14 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     return normalReducerBase(e);
   }
 
+  // S = cc, Y = yy (with counts: NS, NY).
+  if (e.key === "S" || e.key === "Y") {
+    const op = e.key === "S" ? "c" : "y";
+    vim_info.pending_operator = op;
+    vim_info.pending_count = n;
+    return normalReducer(key(op));
+  }
+
   // --- a command that waits for more keys keeps the count ---
   if (["f", "F", "t", "T", "g"].includes(e.key)) {
     const handled = normalReducerBase(e);
@@ -4451,6 +4467,45 @@ const keepCursorOnScreen = () => {
   if (firstVisibleLine === vim_info.active_line) return;
   vim_info.desired_column = 0;
   setActiveLine(firstVisibleLine);
+  updateInfoContainer();
+};
+
+/**
+ * Ctrl-d / Ctrl-u (Vim): scroll half a screen and move the cursor by the same
+ * distance, so it keeps its place on screen and its column. Near the end of
+ * the page, where the scroll stops short, the cursor still moves the full
+ * half screen.
+ */
+const scrollHalfPage = (direction: 1 | -1) => {
+  const { vim_info } = window;
+  const current = vim_info.lines[vim_info.active_line]?.element;
+  if (!current) {
+    scrollAndMoveCursor(direction * 0.5);
+    return;
+  }
+  const scroller = findScrollableContainer();
+  const scrollTop = () =>
+    scroller === document.documentElement ? window.scrollY : scroller.scrollTop;
+  const requested = Math.round(window.innerHeight / 2) * direction;
+  const y0 = current.getBoundingClientRect().top;
+  const before = scrollTop();
+  scrollAndMoveCursor(direction * 0.5);
+  const actual = scrollTop() - before;
+  const targetY = y0 + requested - actual;
+
+  // The line whose top is nearest that screen position, in the travel direction.
+  let best = vim_info.active_line;
+  let bestDist = Infinity;
+  vim_info.lines.forEach((line, i) => {
+    if (isWrapperLine(i)) return;
+    if (direction > 0 ? i < vim_info.active_line : i > vim_info.active_line) return;
+    const d = Math.abs(line.element.getBoundingClientRect().top - targetY);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  });
+  if (best !== vim_info.active_line) setActiveLine(best);
   updateInfoContainer();
 };
 
