@@ -733,3 +733,15 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
   - Word motions and text objects use Unicode letters/digits/marks (`text/word-char.ts`), not ASCII `\w`. Before, on "日本語 テキスト です", `dw`/`cw` wiped the line, `yiw` yanked "" and `w` left the line. Vim's further split of kanji/hiragana/katakana runs is not modelled.
   - Grapheme-aware: `a` and charwise `p` go after the whole emoji, `X` deletes the whole emoji before the cursor, visual `h`/`l` and the visual range cover whole emoji, and code-block `h`/`l`/`x` step over and delete whole emoji.
 - Also fixed: a popup closed by clicking outside (Notion's backdrop) left a stale return episode, so a later popup's Esc jumped the cursor back to the old line.
+
+## BUG-093: After closing a database cell editor, `x` or typing went into the database row; Cmd+F returned to the title
+
+- **Detected**: 2026-10-17 (sweep 3, hijack agent). **Critical** (data loss: the row name was erased).
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Root cause**:
+  - After a cell editor closes (Enter or Esc), Notion keeps the grid cell selected and routes typing and `cut` to it. The popup-return restore only moved the DOM caret, so Vimtion looked in sync while Notion edited the cell.
+  - For Cmd+F, Notion moves the caret to the title just before the find input takes focus, and that title caret was recorded as the return spot.
+- **Fix**:
+  - The restore sends a pointer press (pointerdown/mousedown/pointerup/mouseup/click) at the caret inside the line, as a user click would, which clears Notion's own selection. Mouse events alone did not do it, and a press on the line's edge block-selected the line (the next `x` cut the block).
+  - Cmd/Ctrl shortcuts snapshot the page caret on keydown and freeze it for 400ms.
+  - Verified: row "abc" survives `x`, `xx` and `iZy<Esc>` after both Enter and Esc closes; Cmd+F then Esc returns to the line and column; Cmd+/ still restores.

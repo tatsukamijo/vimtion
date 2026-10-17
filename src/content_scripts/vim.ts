@@ -795,7 +795,35 @@ const isPageEditable = (el: Element | null): boolean => {
 // late: Cmd+/ first block-selects the line (moving the selection), then
 // focuses the menu input.
 let lastPageCaret: { element: Element; pos: number } | null = null;
+// Some shortcuts (Cmd+F) make Notion move the caret to the title just before
+// their popup takes focus; that title caret must not become the return spot.
+let freezePageCaretUntil = 0;
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (!e.isTrusted || !(e.metaKey || e.ctrlKey)) return;
+    if (["Meta", "Control", "Shift", "Alt"].includes(e.key)) return;
+    const { vim_info } = window;
+    const line = vim_info.lines[vim_info.active_line];
+    if (!line || !isPageEditable(line.element)) return;
+    const sel = window.getSelection();
+    const caretOnLine =
+      !!sel && sel.rangeCount > 0 && line.element.contains(sel.anchorNode);
+    lastPageCaret = {
+      element: line.element,
+      pos: caretOnLine
+        ? getCursorIndexInElement(line.element)
+        : Math.min(
+            vim_info.desired_column,
+            Math.max(0, (line.element.textContent || "").length - 1),
+          ),
+    };
+    freezePageCaretUntil = Date.now() + 400;
+  },
+  true,
+);
 document.addEventListener("selectionchange", () => {
+  if (Date.now() < freezePageCaretUntil) return;
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
   const node = sel.anchorNode;
@@ -870,6 +898,42 @@ document.addEventListener(
           ? Math.min(saved.pos, length)
           : Math.max(0, Math.min(saved.pos, length - 1));
       vim_info.active_line = idx;
+      // Notion keeps its own selection from the popup (e.g. a database cell
+      // stays selected after its editor closes) and routes typing and cut to
+      // it, whatever the DOM caret says: x then erased the row name. A
+      // pointer press on the line, like the user's click, clears it.
+      // (Notion listens to pointer events; mouse events alone did not do it.)
+      // Press inside the text, at the caret: a press on the line's edge made
+      // Notion select the whole block, and the next x then cut the block.
+      setCursorPosition(element, pos);
+      const sel = window.getSelection();
+      const caretRect =
+        sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null;
+      const rect = element.getBoundingClientRect();
+      const hasCaretRect = !!caretRect && caretRect.height > 0;
+      const down = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX: hasCaretRect
+          ? caretRect!.left + 1
+          : rect.left + Math.min(30, rect.width / 2),
+        clientY: hasCaretRect
+          ? caretRect!.top + caretRect!.height / 2
+          : rect.top + Math.min(rect.height / 2, 10),
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+      };
+      const up = { ...down, buttons: 0 };
+      element.dispatchEvent(new PointerEvent("pointerdown", down));
+      element.dispatchEvent(new MouseEvent("mousedown", down));
+      element.dispatchEvent(new PointerEvent("pointerup", up));
+      element.dispatchEvent(new MouseEvent("mouseup", up));
+      element.dispatchEvent(new MouseEvent("click", up));
       element.focus({ preventScroll: true });
       setCursorPosition(element, pos);
       vim_info.desired_column = columnInLine(element, pos);
