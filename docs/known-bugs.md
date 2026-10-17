@@ -364,6 +364,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-052: `$` is not sticky for later `j`/`k`
 
+- **Status**: **RESOLVED** on `feat/counts` (1.9.0): `$` stores an end-of-line column that every vertical move clamps to the line.
+
 - **Repro**: fixture `short / a much longer line here`; on `short`, `$j` lands at col 4 (nvim: end of line, col 22). Going the other way, `$jj` keeps a numeric column instead of "end of line".
 - **Root cause**: `jumpToLineEnd` (`navigation/basic.ts`) stores a numeric `desired_column` with no end-of-line marker.
 - **Severity**: Low.
@@ -506,6 +508,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 
 ## BUG-069: Missing commands silently swallowed — `S`, `Y`, and README-advertised `de`/`db`/`ce`/`cb`/`ye`/`yb`/`dW`/`dB`/`dE`
 
+- **Status**: **RESOLVED** on `feat/counts` (1.9.0): counts, `S`, `Y`, and `de`/`db`/`ce`/`cb`/`ye`/`yb` (plus `W`/`B`/`E` forms) through a visual selection; `cw` behaves as `ce`.
+
 - README "Operators with Motions" claims they are supported, but the pending-operator switch has no `e`/`b`/`W`/`B`/`E` cases. See MISSING-002/003/004/006. `S` and `Y` are not listed in missing-features.
 - **Severity**: Medium (documentation mismatch).
 
@@ -525,6 +529,8 @@ One root idea (normal-mode column must be clamped to `len-1`) behind several tri
 - **Severity**: Medium (held-key users).
 
 ## BUG-072: `Ctrl-u` does not move the cursor; `Ctrl-d` moves only to the first visible line and resets the column
+
+- **Status**: **RESOLVED** on `feat/counts` (1.9.0): `Ctrl-d`/`Ctrl-u` move the cursor the same distance as the half-page scroll and keep the column.
 
 - **Repro**: 40-paragraph fixture, at L6 col 5, `<C-d>` → L11 col 0 (nvim: +half a window, column kept). `<C-u>` scrolls but the cursor stays at L11.
 - **Root cause**: `navigation/scroll.ts` only scrolls. The cursor moves only through the debounced scroll listener, and only when it goes off-screen.
