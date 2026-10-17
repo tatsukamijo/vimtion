@@ -24,7 +24,7 @@
   </a>
 </p>
 
-https://github.com/user-attachments/assets/b4f2f922-dfe6-40ca-a4aa-6f7a3f89ebb3
+https://github.com/user-attachments/assets/80ab6bcd-8fd1-494b-a142-148036deef88
 
 
 ## 📖 About This Project
