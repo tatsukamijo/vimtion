@@ -54,6 +54,14 @@ import {
 import {
   getCursorIndex,
   getCursorIndexInElement,
+  selectCharRange,
+  deleteCharRange,
+  lineBoundsAt,
+  charBoundsAt,
+  columnInLine,
+  clearNavigationGuard,
+  msSinceNavigation,
+  msSinceUserScroll,
   setCursorPosition,
   createBlockCursor,
   updateBlockCursor,
@@ -152,7 +160,6 @@ import {
   removeAllHintOverlays,
   filterHintsByInput,
   navigateToLink,
-  detectAllLinks,
   generateHints,
 } from "./links";
 
@@ -163,9 +170,20 @@ import {
   deleteCodeBlockWithKeyboardEvents,
   deleteMultipleLinesAtomically,
   setActiveLine,
+  isWrapperLine,
   createRefreshLines,
   createSetLines,
+  isDocumentEditable,
 } from "./core";
+import {
+  isBusy,
+  beginBusy,
+  endBusy,
+  busyDepth,
+  deferInput,
+  setBusyFlush,
+  Deferred,
+} from "./core/busy";
 
 // Import visual mode helpers
 import {
@@ -195,7 +213,7 @@ import {
 } from "./visual/helpers";
 
 // Import reducer factories
-import { createInsertReducer } from "./reducers/insert";
+import { createInsertReducer, isJPending } from "./reducers/insert";
 import { createLinkHintReducer } from "./reducers/link-hint";
 
 // safeAddRange now imported from visual/helpers
@@ -235,12 +253,19 @@ const getBlockType = (element: HTMLElement): string => {
 // Without this, on a nested bullet child "Nested bullet child 1" the
 // dispatched Enter from o split the leaf at offset 20, producing
 // "Nested bullet child " + "1" instead of an empty new sibling.
+// Inside a code block "the line" is the current code line: going to the end
+// of the whole leaf put the caret after Notion's trailing "\n" placeholder,
+// outside the code block, so A + Enter split the block above instead.
 const setCursorPastLineEnd = () => {
   const { vim_info } = window;
   const currentElement = vim_info.lines[vim_info.active_line].element;
-  const lineLength = currentElement.textContent?.length || 0;
-  setCursorPosition(currentElement, lineLength);
-  vim_info.desired_column = lineLength;
+  const text = currentElement.textContent || "";
+  const { start, end } = lineBoundsAt(
+    text,
+    getCursorIndexInElement(currentElement),
+  );
+  setCursorPosition(currentElement, end);
+  vim_info.desired_column = end - start;
 };
 
 const insertAtLineEnd = () => {
@@ -250,7 +275,8 @@ const insertAtLineEnd = () => {
 };
 
 const insertAtLineStart = () => {
-  jumpToLineStart();
+  // Vim's I inserts before the first non-blank of the (code) line.
+  jumpToFirstNonBlank();
   window.vim_info.mode = "insert";
   updateInfoContainer();
 };
@@ -264,6 +290,9 @@ const openLineBelow = () => {
   // Switch to insert mode first
   vim_info.mode = "insert";
   updateInfoContainer();
+
+  // Text typed before Notion has made the new block went into this line.
+  beginBusy(0);
 
   // Then simulate Enter key (in insert mode, so it won't be blocked)
   setTimeout(() => {
@@ -281,6 +310,7 @@ const openLineBelow = () => {
     // Wait for new line to be created, then refresh
     setTimeout(() => {
       refreshLines();
+      endBusy();
     }, 100);
   }, 0);
 };
@@ -288,6 +318,21 @@ const openLineBelow = () => {
 const openLineAbove = () => {
   const { vim_info } = window;
   const currentLine = vim_info.active_line;
+  const currentElement = vim_info.lines[currentLine].element;
+
+  // Nothing can sit above the page title in Notion, and Enter at the title's
+  // start splits the title (renaming the page). Open the first body line
+  // instead — the closest Notion equivalent of Vim's O on line 1.
+  if (
+    currentElement
+      .closest("[data-block-id]")
+      ?.classList.contains("notion-page-block")
+  ) {
+    openLineBelow();
+    return;
+  }
+
+  const blockIdsBefore = new Set(vim_info.lines.map((line) => line.block_id));
 
   // Move to beginning of current line
   jumpToLineStart();
@@ -296,36 +341,66 @@ const openLineAbove = () => {
   vim_info.mode = "insert";
   updateInfoContainer();
 
-  // Simulate Enter key
-  setTimeout(() => {
-    const currentElement = vim_info.lines[currentLine].element;
-    const enterEvent = new KeyboardEvent("keydown", {
-      key: "Enter",
-      code: "Enter",
-      keyCode: 13,
-      which: 13,
-      bubbles: true,
-      cancelable: true,
-    });
-    currentElement.dispatchEvent(enterEvent);
+  // Text typed before the caret reaches the new block went into this one;
+  // hold it until the caret has moved (core/busy.ts).
+  beginBusy(0);
 
-    // After Enter, cursor is on the new line below
-    // We need to move the cursor back up to the empty line we just created
-    setTimeout(() => {
-      const arrowUpEvent = new KeyboardEvent("keydown", {
-        key: "ArrowUp",
-        code: "ArrowUp",
-        keyCode: 38,
-        which: 38,
+  // Enter at column 0 makes Notion insert an empty block ABOVE this one and
+  // keep the caret in this (now lower) block.
+  setTimeout(() => {
+    currentElement.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        keyCode: 13,
+        which: 13,
         bubbles: true,
         cancelable: true,
-      });
-      document.activeElement?.dispatchEvent(arrowUpEvent);
+      }),
+    );
 
-      // Wait for arrow up to take effect, then refresh
-      setTimeout(() => {
-        refreshLines();
-      }, 50);
+    // Put the caret into the new block. Find it as the block that was not
+    // there before, rather than sending ArrowUp: a synthetic ArrowUp does not
+    // leave a callout (typed text went into the callout), and it depends on
+    // Notion's caret being where we expect.
+    setTimeout(() => {
+      refreshLines();
+      const ownIdx = vim_info.lines.findIndex(
+        (line) => line.element === currentElement,
+      );
+      let newIdx = -1;
+      for (let i = (ownIdx === -1 ? vim_info.lines.length : ownIdx) - 1; i >= 0; i--) {
+        if (!blockIdsBefore.has(vim_info.lines[i].block_id)) {
+          newIdx = i;
+          break;
+        }
+      }
+      if (newIdx === -1) {
+        // Fallback: the old behaviour.
+        document.activeElement?.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "ArrowUp",
+            code: "ArrowUp",
+            keyCode: 38,
+            which: 38,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        setTimeout(() => {
+          refreshLines();
+          endBusy();
+        }, 50);
+        return;
+      }
+      const newElement = vim_info.lines[newIdx].element;
+      vim_info.active_line = newIdx;
+      vim_info.desired_column = 0;
+      newElement.click();
+      newElement.focus({ preventScroll: true });
+      setCursorPosition(newElement, 0);
+      updateInfoContainer();
+      endBusy();
     }, 50);
   }, 0);
 };
@@ -336,9 +411,13 @@ const insertAfterCursor = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const lineLength = currentElement.textContent?.length || 0;
 
-  // Move cursor one position forward (unless at end of line)
+  // Move cursor one character forward (unless at end of line)
   if (currentCursorPosition < lineLength) {
-    setCursorPosition(currentElement, currentCursorPosition + 1);
+    const after = charBoundsAt(
+      currentElement.textContent || "",
+      currentCursorPosition,
+    ).end;
+    setCursorPosition(currentElement, after);
     vim_info.desired_column = currentCursorPosition + 1;
   }
 
@@ -361,25 +440,37 @@ const deleteCharacter = () => {
   // `x` keystroke bubbles through and is inserted as the literal letter.
   if (isInsideCodeBlock(currentElement)) {
     deleteCharacterInCodeBlock(currentElement, currentCursorPosition);
-    vim_info.desired_column = currentCursorPosition;
+    // Rest on the code line's new last char after deleting at its end.
+    const { start, end } = lineBoundsAt(
+      currentElement.textContent || "",
+      currentCursorPosition,
+    );
+    const rest = Math.max(start, Math.min(currentCursorPosition, end - 1));
+    if (rest !== currentCursorPosition) setCursorPosition(currentElement, rest);
+    vim_info.desired_column = rest - start;
     return;
   }
 
-  // Select the character at cursor position
-  setCursorPosition(currentElement, currentCursorPosition);
-  const sel = window.getSelection();
-  if (sel && sel.rangeCount > 0) {
-    const r = sel.getRangeAt(0);
-    r.setStart(r.startContainer, r.startOffset);
-    r.setEnd(r.startContainer, r.startOffset + 1);
-    sel.removeAllRanges();
-    safeAddRange(sel, r);
-
+  // Select the character at the cursor. selectCharRange resolves the start
+  // into the text node that holds the character, so this also works at a
+  // formatting boundary (caret at the end of plain text, char in a bold span).
+  if (
+    selectCharRange(
+      currentElement,
+      currentCursorPosition,
+      currentCursorPosition + 1,
+    )
+  ) {
     // Cut to clipboard like vim's 'x' command
     document.execCommand("cut");
   }
 
-  vim_info.desired_column = currentCursorPosition;
+  // Normal mode never rests past the last character: after deleting the last
+  // char, step back onto the new last one (so repeated x keeps deleting).
+  const newLength = (currentElement.textContent || "").length;
+  const newPosition = Math.max(0, Math.min(currentCursorPosition, newLength - 1));
+  setCursorPosition(currentElement, newPosition);
+  vim_info.desired_column = newPosition;
 };
 
 const deleteCharacterBefore = () => {
@@ -388,19 +479,20 @@ const deleteCharacterBefore = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const text = currentElement.textContent || "";
 
-  // Don't delete if at beginning of line
-  if (currentCursorPosition <= 0) return;
+  // Don't delete across the start of the (code) line
+  const { start } = lineBoundsAt(text, currentCursorPosition);
+  if (currentCursorPosition <= start) return;
 
-  // Delete the character before cursor position
-  const newText =
-    text.slice(0, currentCursorPosition - 1) +
-    text.slice(currentCursorPosition);
-  currentElement.textContent = newText;
+  // Delete the character before the cursor through the editing pipeline so
+  // Notion persists it (inside code blocks a textContent write was DOM-only).
+  // The whole character before the cursor (an emoji is 2+ code units).
+  const before = charBoundsAt(text, currentCursorPosition - 1).start;
+  deleteCharRange(currentElement, before, currentCursorPosition);
 
-  // Move cursor back one position
-  const newCursorPosition = currentCursorPosition - 1;
+  // Move cursor back one character
+  const newCursorPosition = before;
   setCursorPosition(currentElement, newCursorPosition);
-  vim_info.desired_column = newCursorPosition;
+  vim_info.desired_column = columnInLine(currentElement, newCursorPosition);
 };
 
 const substituteCharacter = () => {
@@ -417,17 +509,14 @@ const substituteCharacter = () => {
     return;
   }
 
-  // Select the character at cursor position
-  setCursorPosition(currentElement, currentCursorPosition);
-  const sel = window.getSelection();
-  if (sel && sel.rangeCount > 0) {
-    const r = sel.getRangeAt(0);
-    r.setStart(r.startContainer, r.startOffset);
-    r.setEnd(r.startContainer, r.startOffset + 1);
-    sel.removeAllRanges();
-    safeAddRange(sel, r);
-
-    // Delete the selection using execCommand
+  // Select the character at the cursor (boundary-safe, see deleteCharacter)
+  if (
+    selectCharRange(
+      currentElement,
+      currentCursorPosition,
+      currentCursorPosition + 1,
+    )
+  ) {
     document.execCommand("delete");
   }
 
@@ -462,8 +551,10 @@ const handleClick = (e: MouseEvent) => {
     return;
   }
 
-  // Only handle clicks in normal mode
-  if (vim_info.mode !== "normal") {
+  // Clicks in normal and visual modes move the cursor; insert mode is left to
+  // the browser (the insert reducer follows the caret).
+  const { mode } = vim_info;
+  if (mode !== "normal" && mode !== "visual" && mode !== "visual-line") {
     return;
   }
 
@@ -482,42 +573,141 @@ const handleClick = (e: MouseEvent) => {
     (line: any) => line.element === clickedElement,
   );
 
-  if (lineIndex === -1) {
+  // A click outside every line bubbles up to the page wrapper: a control
+  // (to-do checkbox, toggle triangle), which must not move the cursor —
+  // adopting the wrapper put active_line on 0 and the next j on the title —
+  // or the overlay Notion draws over a text selection (the first click after
+  // `v`), which is resolved from the click point.
+  if (lineIndex === -1 || isWrapperLine(lineIndex)) {
+    followClickAtPoint(e);
     return;
+  }
+
+  followClick(clickedElement, lineIndex, e.clientX, e.clientY);
+};
+
+/** Resolve a click on no line (see handleClick) from the click point. */
+const followClickAtPoint = (e: MouseEvent) => {
+  const { vim_info } = window;
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+  // Controls do their own thing (and never move Vim's cursor). A click still
+  // ends visual mode, as in Vim; leaving the mode set made the next key run
+  // in normal mode while the status bar said VISUAL.
+  if (target.closest("input, button, a, [role=button], [role=checkbox]")) {
+    if (vim_info.mode === "visual" || vim_info.mode === "visual-line") {
+      clearAllBackgroundColors();
+      vim_info.mode = "normal";
+      vim_info.pending_operator = null;
+      delete vim_info.visual_end_pos;
+      window.getSelection()?.removeAllRanges();
+      updateInfoContainer();
+    }
+    return;
+  }
+  if (typeof document.caretRangeFromPoint !== "function") return;
+  const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+  const node = range?.startContainer;
+  const el = node instanceof Element ? node : node?.parentElement;
+  const leaf = el?.closest(
+    '[data-content-editable-leaf="true"]',
+  ) as HTMLDivElement | null;
+  if (!leaf) return;
+  const lineIndex = vim_info.lines.findIndex((line) => line.element === leaf);
+  if (lineIndex === -1 || isWrapperLine(lineIndex)) return;
+  followClick(leaf, lineIndex, e.clientX, e.clientY);
+};
+
+const followClick = (
+  clickedElement: HTMLDivElement,
+  lineIndex: number,
+  clientX: number,
+  clientY: number,
+) => {
+  const { vim_info } = window;
+  const { mode } = vim_info;
+
+  // Vim (mouse=a): a click ends visual mode and puts the cursor there.
+  if (mode !== "normal") {
+    clearAllBackgroundColors();
+    vim_info.mode = "normal";
+    vim_info.pending_operator = null;
+    delete vim_info.visual_end_pos;
   }
 
   // Let the browser handle the click to position the cursor, then update our state
   setTimeout(() => {
     const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0);
-
-      // Get cursor position in the element
-      let cursorPos = 0;
-      const walker = document.createTreeWalker(
-        clickedElement,
-        NodeFilter.SHOW_TEXT,
-        null,
-      );
-
-      let node;
-      let found = false;
-      while ((node = walker.nextNode())) {
-        if (node === range.startContainer) {
-          cursorPos += range.startOffset;
-          found = true;
-          break;
+    // A drag, double-click or Shift+click made a range: keep it (replacing it
+    // with a caret at the mouseup point lost cross-block mouse selections).
+    // Follow the line where the range ends.
+    if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+      const focus = selection.focusNode;
+      const focusEl =
+        focus instanceof Element ? focus : focus?.parentElement ?? null;
+      const focusLeaf = focusEl?.closest('[contenteditable="true"]');
+      const idx = vim_info.lines.findIndex((l) => l.element === focusLeaf);
+      if (idx === -1 || isWrapperLine(idx)) return;
+      vim_info.active_line = idx;
+      // Vim (mouse=a): a mouse selection within one line is a visual
+      // selection, so x / d / y / c act on it. (Vimtion's charwise visual
+      // mode is single-line; a cross-line range is left as Notion's.)
+      const anchorNode = selection.anchorNode;
+      const leaf = focusLeaf as HTMLElement;
+      if (anchorNode && leaf.contains(anchorNode) && focus) {
+        const offsetOf = (node: Node, offset: number) => {
+          const r = document.createRange();
+          r.selectNodeContents(leaf);
+          r.setEnd(node, offset);
+          return r.toString().length;
+        };
+        const a = offsetOf(anchorNode, selection.anchorOffset);
+        const f = offsetOf(focus, selection.focusOffset);
+        if (a !== f) {
+          vim_info.mode = "visual";
+          vim_info.visual_start_line = idx;
+          // Visual ends are inclusive character positions.
+          vim_info.visual_start_pos = f > a ? a : a - 1;
+          vim_info.desired_column = f > a ? f - 1 : f;
+          updateVisualSelection();
         }
-        cursorPos += node.textContent?.length || 0;
       }
-
-      if (found) {
-        // Update active line without moving cursor
-        vim_info.active_line = lineIndex;
-        vim_info.desired_column = cursorPos;
-        updateInfoContainer();
+      updateInfoContainer();
+      return;
+    }
+    let caretHere =
+      !!selection &&
+      selection.rangeCount > 0 &&
+      clickedElement.contains(selection.getRangeAt(0).startContainer);
+    // Notion's first click after a range selection only clears it (and blurs
+    // the editor); place the caret at the click point ourselves.
+    if (!caretHere && typeof document.caretRangeFromPoint === "function") {
+      const range = document.caretRangeFromPoint(clientX, clientY);
+      if (range && clickedElement.contains(range.startContainer)) {
+        clickedElement.focus({ preventScroll: true });
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        caretHere = true;
       }
     }
+    if (!caretHere || !selection) return;
+
+    vim_info.active_line = lineIndex;
+    let cursorPos = getCursorIndexInElement(clickedElement);
+    // A click past the end of a line leaves the caret after the last
+    // character; normal mode rests ON it.
+    if (selection.isCollapsed) {
+      const text = clickedElement.textContent || "";
+      const { start, end } = lineBoundsAt(text, cursorPos);
+      if (cursorPos >= end && end > start) {
+        cursorPos = charBoundsAt(text, end - 1).start;
+        setCursorPosition(clickedElement, cursorPos);
+      }
+    }
+    // A column within the (code) line, as j/k expect.
+    vim_info.desired_column = columnInLine(clickedElement, cursorPos);
+    updateBlockCursor();
+    updateInfoContainer();
   }, 0);
 };
 
@@ -582,6 +772,474 @@ document.addEventListener(
   true,
 );
 
+// ---------------------------------------------------------------------------
+// Notion popups (Cmd+/ block menu, slash menu search, …)
+// ---------------------------------------------------------------------------
+// While a Notion popup's own <input> has focus, keys never reach Vimtion
+// (its keydown listeners sit on the editor's lines). When the popup is closed
+// with Esc — or an action like Duplicate is picked with Enter — Notion does not
+// put the caret back into the page, and line recovery then fell back to the
+// page title, so the next key edited the title. Remember where the cursor was
+// when focus left the page for a popup, and put it back after Esc/Enter there.
+// (A popup closed by clicking elsewhere is left alone: the click placed the
+// caret where the user wanted it.)
+let popupReturn: {
+  blockId: string | null;
+  line: number;
+  pos: number;
+  mode: Window["vim_info"]["mode"];
+} | null = null;
+
+const isPageEditable = (el: Element | null): boolean => {
+  const editable = el?.closest('[contenteditable="true"]');
+  return !!editable && isDocumentEditable(editable);
+};
+
+// Last collapsed caret inside the page. Saved at focusin time it would be too
+// late: Cmd+/ first block-selects the line (moving the selection), then
+// focuses the menu input.
+let lastPageCaret: { element: Element; pos: number } | null = null;
+// Some shortcuts (Cmd+F) make Notion move the caret to the title just before
+// their popup takes focus; that title caret must not become the return spot.
+let freezePageCaretUntil = 0;
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (!e.isTrusted || !(e.metaKey || e.ctrlKey)) return;
+    if (["Meta", "Control", "Shift", "Alt"].includes(e.key)) return;
+    const { vim_info } = window;
+    const line = vim_info.lines[vim_info.active_line];
+    if (!line || !isPageEditable(line.element)) return;
+    const sel = window.getSelection();
+    const caretOnLine =
+      !!sel && sel.rangeCount > 0 && line.element.contains(sel.anchorNode);
+    lastPageCaret = {
+      element: line.element,
+      pos: caretOnLine
+        ? getCursorIndexInElement(line.element)
+        : Math.min(
+            vim_info.desired_column,
+            Math.max(0, (line.element.textContent || "").length - 1),
+          ),
+    };
+    freezePageCaretUntil = Date.now() + 400;
+  },
+  true,
+);
+document.addEventListener("selectionchange", () => {
+  if (Date.now() < freezePageCaretUntil) return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+  const node = sel.anchorNode;
+  const el = node && (node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement);
+  const leaf = el?.closest('[data-content-editable-leaf="true"]');
+  if (!leaf || !isPageEditable(leaf)) return;
+  lastPageCaret = { element: leaf, pos: getCursorIndexInElement(leaf) };
+});
+
+document.addEventListener(
+  "focusin",
+  (e) => {
+    const target = e.target as Element | null;
+    if (!target || isPageEditable(target)) return;
+    const isPopupInput =
+      target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      // Comment box, rename / cell editors: editables that are not lines.
+      (target as HTMLElement).isContentEditable ||
+      !!target.closest('[role="dialog"], [role="menu"], [role="listbox"]');
+    if (!isPopupInput || popupReturn) return;
+    const { vim_info } = window;
+    // Where the caret last was in the page: opening some popups (a comment)
+    // moves Vimtion's line before focus arrives here.
+    const caretLine =
+      lastPageCaret && lastPageCaret.element.isConnected
+        ? vim_info.lines.findIndex((l) => l.element === lastPageCaret?.element)
+        : -1;
+    const lineIndex = caretLine !== -1 ? caretLine : vim_info.active_line;
+    const line = vim_info.lines[lineIndex];
+    if (!line) return;
+    popupReturn = {
+      blockId: line.block_id,
+      line: lineIndex,
+      pos:
+        lastPageCaret && lastPageCaret.element === line.element
+          ? lastPageCaret.pos
+          : getCursorIndexInElement(line.element),
+      mode: vim_info.mode,
+    };
+  },
+  true,
+);
+
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (!popupReturn || (e.key !== "Escape" && e.key !== "Enter")) return;
+    if (isPageEditable(e.target as Element | null)) return;
+    const saved = popupReturn;
+    // Let Notion close the popup / run the action first.
+    setTimeout(() => {
+      const active = document.activeElement;
+      // Popup still open (e.g. Enter opened a submenu): keep waiting.
+      if (
+        active &&
+        !isPageEditable(active) &&
+        (active.tagName === "INPUT" || (active as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+      popupReturn = null;
+      const { vim_info } = window;
+      refreshLines();
+      if (vim_info.lines.length === 0) return;
+      const idx = findLineByBlockId(saved.blockId, saved.line);
+      const element = vim_info.lines[idx].element;
+      vim_info.mode = saved.mode === "insert" ? "insert" : "normal";
+      const length = (element.textContent || "").length;
+      const pos =
+        vim_info.mode === "insert"
+          ? Math.min(saved.pos, length)
+          : Math.max(0, Math.min(saved.pos, length - 1));
+      vim_info.active_line = idx;
+      // Notion keeps its own selection from the popup (e.g. a database cell
+      // stays selected after its editor closes) and routes typing and cut to
+      // it, whatever the DOM caret says: x then erased the row name. A
+      // pointer press on the line, like the user's click, clears it.
+      // (Notion listens to pointer events; mouse events alone did not do it.)
+      // Press inside the text, at the caret: a press on the line's edge made
+      // Notion select the whole block, and the next x then cut the block.
+      setCursorPosition(element, pos);
+      const sel = window.getSelection();
+      const caretRect =
+        sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null;
+      const rect = element.getBoundingClientRect();
+      const hasCaretRect = !!caretRect && caretRect.height > 0;
+      const down = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX: hasCaretRect
+          ? caretRect!.left + 1
+          : rect.left + Math.min(30, rect.width / 2),
+        clientY: hasCaretRect
+          ? caretRect!.top + caretRect!.height / 2
+          : rect.top + Math.min(rect.height / 2, 10),
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+      };
+      const up = { ...down, buttons: 0 };
+      element.dispatchEvent(new PointerEvent("pointerdown", down));
+      element.dispatchEvent(new MouseEvent("mousedown", down));
+      element.dispatchEvent(new PointerEvent("pointerup", up));
+      element.dispatchEvent(new MouseEvent("mouseup", up));
+      element.dispatchEvent(new MouseEvent("click", up));
+      element.focus({ preventScroll: true });
+      setCursorPosition(element, pos);
+      vim_info.desired_column = columnInLine(element, pos);
+      updateInfoContainer();
+    }, 120);
+  },
+  true,
+);
+
+// A click outside the popup (into the page, or on Notion's backdrop that
+// closes it) ends the popup episode without restoring; so does focus coming
+// back to a line. A stale episode made a LATER popup's Esc jump the cursor
+// back to the line the old popup was opened from.
+document.addEventListener(
+  "mousedown",
+  (e) => {
+    if (!popupReturn) return;
+    const t = e.target as Element | null;
+    const inPopup = t?.closest(
+      'input, textarea, [role="dialog"], [role="menu"], [role="listbox"]',
+    );
+    if (!inPopup || isPageEditable(t)) popupReturn = null;
+  },
+  true,
+);
+document.addEventListener(
+  "focusin",
+  (e) => {
+    if (popupReturn && isPageEditable(e.target as Element | null)) {
+      // Let a pending Esc/Enter restore (it captured the episode) run first.
+      setTimeout(() => {
+        if (document.activeElement && isPageEditable(document.activeElement)) {
+          popupReturn = null;
+        }
+      }, 200);
+    }
+  },
+  true,
+);
+
+// Leaving the page by clicking a link (sidebar, mention, inline link): save
+// the cursor so Back / H can restore it, as gl and Enter already do.
+document.addEventListener(
+  "click",
+  (e) => {
+    if (!e.isTrusted || e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return; // new tab / window
+    const a = (e.target as Element | null)?.closest?.("a[href]") as
+      | HTMLAnchorElement
+      | null;
+    if (!a || a.host !== window.location.host) return;
+    const pageId = (url: string) => url.match(/([a-f0-9]{32})(\?|#|$)/)?.[1] ?? null;
+    if (pageId(a.href) === pageId(window.location.href)) return;
+    if (window.vim_info.lines.length > 0) saveCursorPosition();
+  },
+  true,
+);
+
+// Typeahead during async edits (see core/busy.ts). Capture phase on the
+// document: during a block cut the caret is often on no line at all, so the
+// per-line listeners would not see the key.
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (!e.isTrusted || !isBusy()) return;
+    if (["Shift", "Meta", "Control", "Alt", "CapsLock"].includes(e.key)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    deferInput({ kind: "key", event: e });
+  },
+  true,
+);
+// The browser has placed the caret by mouseup; remember it for replay.
+document.addEventListener(
+  "mouseup",
+  (e) => {
+    if (!e.isTrusted || !isBusy()) return;
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      deferInput({ kind: "click", range: sel.getRangeAt(0).cloneRange() });
+    }
+  },
+  true,
+);
+
+// Focus somewhere that takes no typing and belongs to no popup: <body>, a
+// to-do checkbox or toggle triangle that was just clicked, the top-bar
+// button a closed menu returned focus to.
+const isStrandedFocus = (t: HTMLElement): boolean => {
+  if (t === document.body || t === document.documentElement) return true;
+  if (t.isContentEditable) return false;
+  if (t.closest('[role="dialog"], [role="menu"], [role="listbox"], .notion-overlay-container')) {
+    return false;
+  }
+  if (t.tagName === "TEXTAREA" || t.tagName === "SELECT") return false;
+  if (t.tagName === "INPUT") {
+    const type = (t as HTMLInputElement).type;
+    return type === "checkbox" || type === "radio" || type === "button";
+  }
+  // Database grids: a focused cell starts editing on the next letter.
+  if (t.closest('[role="grid"], [role="gridcell"], .notion-collection_view-block')) {
+    return false;
+  }
+  // The page, or a top-bar button Notion refocused after its menu closed.
+  return !!t.closest(".notion-page-content, .notion-topbar");
+};
+
+// Keys with focus on <body> (after dragging a block, after Notion's click
+// that only clears a range selection, ...) reach none of the per-line
+// listeners, so Vimtion went deaf until the user clicked into a line. Put the
+// caret back on the active line and handle the key there.
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (!e.isTrusted) return;
+    const t = e.target as HTMLElement | null;
+    if (!t || !isStrandedFocus(t)) return;
+    // Enter / Space still activate a focused control.
+    if (t !== document.body && (e.key === "Enter" || e.key === " ")) return;
+    const { vim_info } = window;
+    if (vim_info.mode === "insert") return;
+    // Leave Notion's block-selection shortcuts (Cmd+C, Cmd+D, ...) alone.
+    if (e.metaKey || e.altKey) return;
+    if (["Shift", "Meta", "Control", "Alt", "CapsLock"].includes(e.key)) return;
+    refreshLines();
+    if (vim_info.lines.length === 0) return;
+    vim_info.active_line = Math.max(
+      0,
+      Math.min(vim_info.active_line, vim_info.lines.length - 1),
+    );
+    if (vim_info.mode !== "normal") {
+      clearAllBackgroundColors();
+      vim_info.mode = "normal";
+      vim_info.pending_operator = null;
+    }
+    // Re-places the caret at desired_column (code-line aware) and focuses.
+    setActiveLine(vim_info.active_line);
+    handleKeydown(e);
+  },
+  true,
+);
+
+const replayDeferred = (item: Deferred) => {
+  const { vim_info } = window;
+  if (item.kind === "click") {
+    const { range } = item;
+    const node = range.startContainer;
+    if (!node.isConnected) return;
+    const el = node instanceof Element ? node : node.parentElement;
+    const leaf = el?.closest('[contenteditable="true"]');
+    const idx = vim_info.lines.findIndex((line) => line.element === leaf);
+    if (!leaf || idx === -1) return;
+    clearNavigationGuard();
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    vim_info.active_line = idx;
+    vim_info.desired_column = columnInLine(leaf, getCursorIndexInElement(leaf));
+    updateBlockCursor();
+    updateInfoContainer();
+    return;
+  }
+  const e = item.event;
+  // Text typed after the edit entered insert mode (ddo + typing): the
+  // original event's default action is gone, so insert it ourselves.
+  if (
+    vim_info.mode === "insert" &&
+    e.key.length === 1 &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey
+  ) {
+    // The jk escape: j is held by the insert reducer, a following k escapes.
+    if (e.key === "j" || (e.key === "k" && isJPending())) {
+      handleKeydown(e);
+      return;
+    }
+    // Commits a held j first, keeping the typed order.
+    if (isJPending()) handleKeydown(e);
+    // Notion drops a bare execCommand insert into a freshly created empty
+    // block; announcing it with a beforeinput first makes it stick.
+    const target = document.activeElement || document.body;
+    target.dispatchEvent(
+      new InputEvent("beforeinput", {
+        inputType: "insertText",
+        data: e.key,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    document.execCommand("insertText", false, e.key);
+    return;
+  }
+  // Keys whose effect is the browser's / Notion's default action: that action
+  // was cancelled when the key was queued, so perform it now.
+  if (vim_info.mode === "insert" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const sel = window.getSelection();
+    const arrows: Record<string, [string, string]> = {
+      ArrowLeft: ["backward", "character"],
+      ArrowRight: ["forward", "character"],
+      ArrowUp: ["backward", "line"],
+      ArrowDown: ["forward", "line"],
+    };
+    if (e.key === "Backspace") {
+      document.execCommand("delete");
+      return;
+    }
+    if (e.key === "Delete") {
+      document.execCommand("forwardDelete");
+      return;
+    }
+    if (arrows[e.key] && sel) {
+      const [direction, unit] = arrows[e.key];
+      (sel as Selection & {
+        modify(a: string, d: string, u: string): void;
+      }).modify(e.shiftKey ? "extend" : "move", direction, unit);
+      return;
+    }
+  }
+  if (
+    e.key === "Enter" ||
+    e.key === "Tab" ||
+    e.metaKey ||
+    (e.ctrlKey && vim_info.mode === "insert")
+  ) {
+    // Notion handles these from the keydown itself (split / indent / undo /
+    // its shortcuts); a synthetic copy reaches it, and Vimtion's own line
+    // listener sees it first, as for a real key.
+    (document.activeElement || document.body).dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: e.key,
+        code: e.code,
+        keyCode: e.keyCode,
+        which: e.which,
+        shiftKey: e.shiftKey,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        altKey: e.altKey,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    return;
+  }
+  handleKeydown(e);
+};
+
+// Replay paced like typing: commands such as o / O finish asynchronously, and
+// text typed after them must land in the new line. Replay holds the busy state
+// itself, so input arriving meanwhile queues behind it, and waits whenever a
+// replayed key started another async edit.
+setBusyFlush((items, settle) => {
+  beginBusy(0);
+  let i = 0;
+  const step = () => {
+    if (busyDepth() > 1) {
+      setTimeout(step, 30);
+      return;
+    }
+    if (i >= items.length) {
+      endBusy();
+      return;
+    }
+    const modeBefore = window.vim_info.mode;
+    replayDeferred(items[i]);
+    i++;
+    setTimeout(step, window.vim_info.mode !== modeBefore ? 120 : 10);
+  };
+  // After a block cut Notion is still committing for a moment; an Enter
+  // (o / O) sent straight away was dropped.
+  setTimeout(step, settle);
+});
+
+/**
+ * When a normal-mode command enters insert mode, make sure the active line's
+ * element really has focus. j/k into a code block only moves the selection
+ * (setActiveLine avoids click() there), so Notion still treated the previous
+ * block as focused and an Enter typed next split THAT block. focus() moves
+ * the caret, so the current selection is put back afterwards.
+ */
+const focusActiveLineForInsert = () => {
+  const { vim_info } = window;
+  const element = vim_info.lines[vim_info.active_line]?.element;
+  if (!element) return;
+  const sel = window.getSelection();
+  const saved =
+    sel && sel.rangeCount > 0 && element.contains(sel.anchorNode)
+      ? sel.getRangeAt(0).cloneRange()
+      : null;
+  // Notion decides which block an Enter acts on from a click on the block,
+  // not from focus. setActiveLine skips click() for code blocks (during
+  // navigation it made the cursor jump), so give the code block its click
+  // only now, when typing starts in it.
+  if (isInsideCodeBlock(element)) element.click();
+  element.focus({ preventScroll: true });
+  if (saved && sel) {
+    sel.removeAllRanges();
+    sel.addRange(saved);
+  }
+};
+
 const handleKeydown = (e: KeyboardEvent) => {
   const { vim_info } = window;
 
@@ -637,10 +1295,18 @@ const handleKeydown = (e: KeyboardEvent) => {
   if (vim_info.mode === "normal") {
     // Let normalReducer decide if this key should be handled
     const handled = normalReducer(e);
+    // (cast: TS narrowed mode to "normal" before the reducer ran)
+    if (handled && (vim_info.mode as string) === "insert") {
+      focusActiveLineForInsert();
+    }
     if (handled) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      // Refresh the status bar after every handled normal-mode key: several
+      // motions (e.g. w/b crossing into another block) change active_line
+      // without calling updateInfoContainer(), leaving "Line N" stale.
+      if (vim_info.mode === "normal") updateInfoContainer();
     }
   } else if (vim_info.mode === "visual") {
     const handled = visualReducer(e);
@@ -991,7 +1657,12 @@ const visualReducer = (e: KeyboardEvent): boolean => {
       window.getSelection()?.removeAllRanges();
       // Restore cursor position when exiting visual mode
       const currentElement = vim_info.lines[vim_info.active_line].element;
-      setCursorPosition(currentElement, vim_info.desired_column);
+      const exitPos = vim_info.desired_column;
+      setCursorPosition(currentElement, exitPos);
+      // Back in normal mode desired_column is a column within the (code) line.
+      vim_info.desired_column =
+        exitPos -
+        lineBoundsAt(currentElement.textContent || "", exitPos).start;
       updateInfoContainer();
       return true;
     case "h":
@@ -1555,6 +2226,38 @@ const deleteVisualLineSelection = () => {
   const [firstLine, lastLine] =
     startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
 
+  // V inside a single code block selects code LINES of one Notion block.
+  // Delete just those code lines (like dd does there) instead of cutting the
+  // whole code block.
+  const codeElement = vim_info.lines[firstLine].element;
+  if (firstLine === lastLine && isInsideCodeBlock(codeElement)) {
+    const text = codeElement.textContent || "";
+    const sel = window.getSelection();
+    const selStart = getCursorIndexInElement(codeElement);
+    const selText = sel ? sel.toString() : "";
+    const selEnd = Math.max(selStart, selStart + selText.length - 1);
+    let from = lineBoundsAt(text, selStart).start;
+    let to = lineBoundsAt(text, selEnd).end;
+    const lineText = text.slice(from, to);
+    // Take one line separator with the lines: the following "\n" when there
+    // is a next code line, else the preceding one.
+    const hasNextLine = to < text.length - 1;
+    if (hasNextLine) to += 1;
+    else if (from > 0) from -= 1;
+    navigator.clipboard.writeText(lineText).catch(() => {});
+    vim_info.yank_type = "line";
+    clearAllBackgroundColors();
+    deleteCharRange(codeElement, from, to);
+    vim_info.mode = "normal";
+    const after = codeElement.textContent || "";
+    const landing = Math.min(hasNextLine ? from : from + 1, Math.max(0, after.length - 1));
+    const landStart = lineBoundsAt(after, landing).start;
+    setCursorPosition(codeElement, landStart);
+    vim_info.desired_column = 0;
+    updateInfoContainer();
+    return;
+  }
+
   // Collect text from all lines for clipboard
   const textLines: string[] = [];
   for (let i = firstLine; i <= lastLine; i++) {
@@ -1616,7 +2319,17 @@ const deleteVisualLineSelection = () => {
 
   // Always try atomic deletion first (works for all block types including code blocks)
   const firstElement = vim_info.lines[firstLine].element;
-  deleteMultipleLinesAtomically(firstElement, lineCount).then(() => {
+  beginBusy();
+  deleteMultipleLinesAtomically(firstElement, lineCount).then((cuts) => {
+    // Each block cut is one Notion undo step; u must undo them all together.
+    vim_info.undo_count = Math.max(1, cuts);
+    vim_info.yank_type = "line";
+    // Every cut replaced the clipboard; put the whole deleted range back.
+    if (cuts > 1) {
+      navigator.clipboard.writeText(clipboardText).catch((err) => {
+        console.error("[Vim-Notion] Failed to copy to clipboard:", err);
+      });
+    }
     setTimeout(() => {
       vim_info.mode = "normal";
       vim_info.in_undo_group = false;
@@ -1635,6 +2348,7 @@ const deleteVisualLineSelection = () => {
         setCursorPosition(element, 0);
       }
       updateInfoContainer();
+      endBusy();
     }, 50);
   });
 };
@@ -1896,7 +2610,11 @@ const pasteAfterCursor = async () => {
       const lineLength = currentElement.textContent?.length || 0;
       let pastePosition = currentCursorPosition;
       if (currentCursorPosition < lineLength) {
-        pastePosition = currentCursorPosition + 1;
+        // After the whole character under the cursor (an emoji is 2+ units).
+        pastePosition = charBoundsAt(
+          currentElement.textContent || "",
+          currentCursorPosition,
+        ).end;
       }
 
       setCursorPosition(currentElement, pastePosition);
@@ -1907,6 +2625,16 @@ const pasteAfterCursor = async () => {
 
       setTimeout(() => {
         vim_info.mode = "normal";
+        // Notion leaves the caret after the pasted text; Vim's p rests on
+        // the last pasted character.
+        const element = currentElement.isConnected
+          ? currentElement
+          : vim_info.lines[vim_info.active_line].element;
+        const pos = getCursorIndexInElement(element);
+        if (pos > 0) {
+          setCursorPosition(element, pos - 1);
+          vim_info.desired_column = pos - 1;
+        }
         updateInfoContainer();
       }, 100);
     }
@@ -2019,6 +2747,49 @@ const pasteBeforeCursor = async () => {
   }
 };
 
+// Where the last undo left the cursor — the changed spot. Notion's redo puts
+// the caret back where it was when u was pressed instead; Vim puts it on the
+// change, which is this spot (for a redone dd, the line that took its place).
+let lastUndoSpot: { line: number; pos: number } | null = null;
+
+const pageText = (): string =>
+  document.querySelector(".notion-page-content")?.textContent ?? "";
+
+// Notion's undo/redo often leaves the caret after the last character (undo of
+// an A / o insert, of a markdown conversion). Normal mode rests ON a
+// character, or x does nothing.
+const restOnCharacter = (element: Element): number => {
+  const text = element.textContent || "";
+  let pos = getCursorIndexInElement(element);
+  const { start, end } = lineBoundsAt(text, pos);
+  if (pos >= end && end > start) {
+    pos = charBoundsAt(text, end - 1).start;
+    setCursorPosition(element, pos);
+  }
+  return pos;
+};
+
+// After an edit Notion made itself (Cmd-Z / Cmd-Shift-Z / Cmd-V / Cmd-X in
+// normal mode): it re-selects restored text (typing would overwrite it) and
+// can leave the caret past the end; Vimtion's column memory is stale too.
+const settleAfterNativeEdit = () => {
+  const { vim_info } = window;
+  if (vim_info.mode !== "normal") return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  if (!sel.isCollapsed) sel.collapseToStart();
+  const node = sel.anchorNode;
+  const el = node instanceof Element ? node : node?.parentElement ?? null;
+  const leaf = el?.closest('[contenteditable="true"]');
+  const idx = vim_info.lines.findIndex((l) => l.element === leaf);
+  if (!leaf || idx === -1 || isWrapperLine(idx)) return;
+  vim_info.active_line = idx;
+  const pos = restOnCharacter(leaf);
+  vim_info.desired_column = columnInLine(leaf, pos);
+  updateBlockCursor();
+  updateInfoContainer();
+};
+
 const undo = () => {
   const { vim_info } = window;
 
@@ -2037,6 +2808,13 @@ const undo = () => {
     window as Window & { __vimtionUndoSettleUntil?: number }
   ).__vimtionUndoSettleUntil = Date.now() + 500;
 
+  // Notion's caret placement after undo is the truth; don't guard against it.
+  clearNavigationGuard();
+
+  // Line the cursor is on before undo. Undoing a line deletion re-inserts the
+  // lines at this spot, so it is also where Vim puts the cursor afterwards.
+  const lineBeforeUndo = vim_info.active_line;
+
   // Perform undo operations
   performUndoOperations(count);
 
@@ -2046,11 +2824,38 @@ const undo = () => {
       vim_info.undo_count = 0;
 
       setTimeout(() => {
+        // Notion restores deleted blocks without a caret in any line, which
+        // made line recovery fall back to the page title. Re-anchor on the
+        // pre-undo line when the caret is not inside a content line.
+        refreshLines();
+        const sel = window.getSelection();
+        const anchor = sel && sel.rangeCount > 0 ? sel.anchorNode : null;
+        const anchorEl =
+          anchor && anchor.nodeType === Node.ELEMENT_NODE
+            ? (anchor as Element)
+            : anchor?.parentElement ?? null;
+        const caretLine = vim_info.lines.findIndex(
+          (line) =>
+            !!anchorEl &&
+            (line.element === anchorEl || line.element.contains(anchorEl)) &&
+            !isWrapperLine(vim_info.lines.indexOf(line)),
+        );
+        if (lineBeforeUndo > 1 && caretLine <= 1 && vim_info.lines.length > 1) {
+          vim_info.desired_column = 0;
+          setActiveLine(Math.min(lineBeforeUndo, vim_info.lines.length - 1));
+        }
         const currentElement = vim_info.lines[vim_info.active_line]?.element;
         if (currentElement) {
-          const cursorIndex = getCursorIndexInElement(currentElement);
-          vim_info.desired_column = cursorIndex;
+          // Notion re-selects restored text after undo; normal mode has a
+          // caret, not a selection (typing would overwrite the restored text).
+          const after = window.getSelection();
+          if (after && after.rangeCount > 0 && !after.isCollapsed) {
+            after.collapseToStart();
+          }
+          const cursorIndex = restOnCharacter(currentElement);
+          vim_info.desired_column = columnInLine(currentElement, cursorIndex);
           updateBlockCursor();
+          lastUndoSpot = { line: vim_info.active_line, pos: cursorIndex };
         }
       }, 50);
       return;
@@ -2079,7 +2884,10 @@ const undo = () => {
 };
 
 const redo = () => {
+  clearNavigationGuard();
   const { vim_info } = window;
+  const textBeforeRedo = pageText();
+  const spot = lastUndoSpot;
 
   // Check if we need to redo multiple operations (from grouped deletions)
   const count = vim_info.undo_count > 0 ? vim_info.undo_count : 1;
@@ -2093,10 +2901,28 @@ const redo = () => {
       vim_info.undo_count = 0;
 
       setTimeout(() => {
+        refreshLines();
+        if (spot && pageText() !== textBeforeRedo && vim_info.lines.length > 0) {
+          const line = Math.min(spot.line, vim_info.lines.length - 1);
+          const el = vim_info.lines[line].element;
+          const text = el.textContent || "";
+          const pos = Math.min(spot.pos, Math.max(0, text.length - 1));
+          vim_info.desired_column = columnInLine(el, pos);
+          setActiveLine(line);
+          // Exact offset (setActiveLine picks a code block's first/last line).
+          setCursorPosition(el, pos);
+          lastUndoSpot = null;
+        }
         const currentElement = vim_info.lines[vim_info.active_line]?.element;
         if (currentElement) {
-          const cursorIndex = getCursorIndexInElement(currentElement);
-          vim_info.desired_column = cursorIndex;
+          // Notion re-selects restored text after undo; normal mode has a
+          // caret, not a selection (typing would overwrite the restored text).
+          const after = window.getSelection();
+          if (after && after.rangeCount > 0 && !after.isCollapsed) {
+            after.collapseToStart();
+          }
+          const cursorIndex = restOnCharacter(currentElement);
+          vim_info.desired_column = columnInLine(currentElement, cursorIndex);
           updateBlockCursor();
         }
       }, 50);
@@ -2141,6 +2967,19 @@ const handlePendingOperator = (key: string): boolean => {
 
   // Clear pending operator
   vim_info.pending_operator = null;
+
+  // Register type for a later p/P: the doubled operators (yy/dd/cc) and
+  // paragraph motions are linewise, every other motion or text object is
+  // charwise. Without resetting it, a `yw` after a `yy` pasted as a new line.
+  if (operator === "y" || operator === "d" || operator === "c") {
+    if (key === operator || key === "{" || key === "}") {
+      vim_info.yank_type = "line";
+    } else if (key !== "i" && key !== "a") {
+      vim_info.yank_type = "char";
+    }
+  } else if (operator && /^[ydc][ia]$/.test(operator)) {
+    vim_info.yank_type = key === "p" ? "line" : "char";
+  }
 
   if (operator === "f") {
     // Handle f{char} - find character forward
@@ -2597,33 +3436,47 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     // Ctrl+d - half page down
     if (key === "d") {
       scrollAndMoveCursor(0.5);
+      keepCursorOnScreen();
       return true;
     }
 
     // Ctrl+u - half page up
     if (key === "u") {
       scrollAndMoveCursor(-0.5);
+      keepCursorOnScreen();
       return true;
     }
 
     // Ctrl+f - full page down
     if (key === "f") {
       scrollAndMoveCursor(1.0);
+      keepCursorOnScreen();
       return true;
     }
 
     // Ctrl+b - full page up
     if (key === "b") {
       scrollAndMoveCursor(-1.0);
+      keepCursorOnScreen();
       return true;
     }
 
     // For other Ctrl combinations, let browser handle them
+    clearNavigationGuard();
     return false;
   }
 
-  // Don't handle keys with modifiers (Command, Alt) - let browser handle them
+  // Don't handle keys with modifiers (Command, Alt) - let browser handle them.
+  // Notion's own edits (Cmd-Z, Cmd-V, ...) place the caret themselves, so the
+  // previous motion's caret must no longer be reasserted over theirs.
   if (e.metaKey || e.altKey) {
+    if (!["Meta", "Alt", "Shift", "Control"].includes(e.key)) {
+      clearNavigationGuard();
+    }
+    // Notion's undo / redo / paste / cut: settle into normal mode afterwards.
+    if (e.metaKey && ["z", "v", "x"].includes(e.key.toLowerCase())) {
+      setTimeout(settleAfterNativeEdit, 80);
+    }
     return false;
   }
 
@@ -3016,30 +3869,32 @@ const normalReducer = (e: KeyboardEvent): boolean => {
         const linkInCurrentLine = currentLineElement.querySelector("a[href]");
 
         if (linkInCurrentLine) {
-          // Current line has a link - use detectAllLinks() to find closest link
-          const allLinks = detectAllLinks();
-
-          if (allLinks.length === 0) {
-            return true;
-          }
-
-          const currentRect = currentLineElement.getBoundingClientRect();
-          const currentY = currentRect.top + currentRect.height / 2;
-
-          // Find the closest link to cursor position
+          // Pick among this line's own links (the page-wide list includes the
+          // sidebar, whose rows can be closer in Y than a link on a tall
+          // wrapped line): the one under the cursor, else the next one after
+          // it, else the last one before it.
+          const lineLinks = Array.from(
+            currentLineElement.querySelectorAll("a[href]"),
+          ) as HTMLAnchorElement[];
+          const caret = getCursorIndexInElement(currentLineElement);
+          const offsetOf = (node: Node, atEnd: boolean): number => {
+            const r = document.createRange();
+            r.selectNodeContents(currentLineElement);
+            if (atEnd) r.setEndAfter(node);
+            else r.setEndBefore(node);
+            return r.toString().length;
+          };
           let closestLink: HTMLAnchorElement | null = null;
-          let minDistance = Infinity;
-
-          for (const link of allLinks) {
-            const linkRect = link.getBoundingClientRect();
-            const linkY = linkRect.top + linkRect.height / 2;
-            const distance = Math.abs(linkY - currentY);
-
-            if (distance < minDistance) {
-              minDistance = distance;
+          for (const link of lineLinks) {
+            const from = offsetOf(link, false);
+            const to = offsetOf(link, true);
+            if (caret >= from && caret < to) {
               closestLink = link;
+              break;
             }
+            if (!closestLink && from > caret) closestLink = link;
           }
+          if (!closestLink) closestLink = lineLinks[lineLinks.length - 1] ?? null;
 
           if (closestLink) {
             // Helper to extract page ID (using regex like navigateToLink)
@@ -3047,6 +3902,16 @@ const normalReducer = (e: KeyboardEvent): boolean => {
               const match = url.match(/([a-f0-9]{32})(\?|#|$)/);
               return match ? match[1] : null;
             };
+
+            // Leaving for another page: remember where we were so Back / H
+            // can restore it (block links stay on this page; Shift+Enter
+            // opens a new tab).
+            const leavesPage =
+              !e.shiftKey &&
+              closestLink.host === window.location.host &&
+              extractPageId(closestLink.href) !==
+                extractPageId(window.location.href);
+            if (leavesPage) saveCursorPosition();
 
             // Use navigateToLink to handle all link types consistently
             // Shift+Enter opens in new tab
@@ -3249,6 +4114,9 @@ const normalReducer = (e: KeyboardEvent): boolean => {
     case "0":
       jumpToLineStart();
       return true;
+    case "^":
+      jumpToFirstNonBlank();
+      return true;
     case "$":
       jumpToLineEnd();
       return true;
@@ -3353,6 +4221,23 @@ const normalReducer = (e: KeyboardEvent): boolean => {
 };
 
 // Get the first visible line in the viewport
+// After a deliberate page scroll (Ctrl-d/u/f/b), move the cursor onto the
+// screen right away. Leaving it to the debounced scroll listener lost a key
+// typed within ~100ms: j moved from the old line (and the guard then pulled
+// the page back to it), x edited the old line.
+const keepCursorOnScreen = () => {
+  const { vim_info } = window;
+  const element = vim_info.lines[vim_info.active_line]?.element;
+  if (!element) return;
+  const rect = element.getBoundingClientRect();
+  if (rect.bottom > 0 && rect.top < window.innerHeight) return;
+  const firstVisibleLine = getFirstVisibleLine();
+  if (firstVisibleLine === vim_info.active_line) return;
+  vim_info.desired_column = 0;
+  setActiveLine(firstVisibleLine);
+  updateInfoContainer();
+};
+
 const getFirstVisibleLine = (): number => {
   const { vim_info } = window;
 
@@ -3435,7 +4320,7 @@ const deleteCurrentLine = createDeleteCurrentLine({
   refreshLines,
   updateInfoContainer,
 });
-const deleteToNextWord = createDeleteToNextWord();
+const deleteToNextWord = createDeleteToNextWord({ refreshLines });
 const deleteToEndOfLine = createDeleteToEndOfLine();
 const deleteToBeginningOfLine = createDeleteToBeginningOfLine();
 const deleteToPreviousParagraph = createDeleteToPreviousParagraph({
@@ -3512,7 +4397,10 @@ const visualSelectAroundParagraph = createVisualSelectAroundParagraph(
   updateVisualLineSelection,
   updateInfoContainer,
 );
-const deleteVisualSelection = createDeleteVisualSelection(updateInfoContainer);
+const deleteVisualSelection = createDeleteVisualSelection(
+  updateInfoContainer,
+  refreshLines,
+);
 const yankVisualSelection = createYankVisualSelection(updateInfoContainer);
 const yankVisualLineSelection =
   createYankVisualLineSelection(updateInfoContainer);
@@ -3595,15 +4483,23 @@ const openLineAboveInCodeBlockWrapped = () => {
 
   // Function to reinitialize Vimtion after navigation
   let isReinitializing = false;
-  const reinitializeAfterNavigation = () => {
+  const reinitializeAfterNavigation = (isRetry = false) => {
     if (isReinitializing) {
       return;
     }
 
     isReinitializing = true;
 
-    // Reset active_line to prevent old page state from leaking
-    window.vim_info.active_line = 0;
+    // Reset active_line to prevent old page state from leaking. Only on the
+    // first attempt: retries happen while the user may already be typing on
+    // the new page.
+    if (!isRetry) {
+      window.vim_info.active_line = 0;
+      // A new page starts at column 0 (Vim's startofline), not at the
+      // previous page's column.
+      window.vim_info.desired_column = 0;
+      window.vim_info.cursor_position = 0;
+    }
 
     // Exit link selection mode if active (old page's link references)
     if (linkSelectionMode) {
@@ -3624,10 +4520,18 @@ const openLineAboveInCodeBlockWrapped = () => {
         document.querySelectorAll("[contenteditable=true]"),
       ) as HTMLDivElement[];
 
-      // Wait for at least 3 elements to ensure page is fully loaded
-      // (Notion pages typically have multiple editable blocks)
-      if (editableElements.length >= 3) {
+      // Ready once the page's own content leaves exist (at least the title).
+      // Requiring 3 editables never succeeded on a brand-new page (wrapper +
+      // title only), so Vimtion kept retrying — not listening to the title —
+      // until the first Enter added a body line, then reset the cursor.
+      // Later blocks are picked up by the MutationObserver → refreshLines.
+      const hasContentLeaf = editableElements.some((el) =>
+        el.matches('[data-content-editable-leaf="true"]'),
+      );
+      if (hasContentLeaf) {
         setLines(editableElements);
+        // setLines moves active_line without redrawing the status bar.
+        updateInfoContainer();
 
         // Restore cursor position after navigation (if available)
         // Only restore if this is an intentional navigation (gl, Shift+H/L), not a reload
@@ -3639,6 +4543,8 @@ const openLineAboveInCodeBlockWrapped = () => {
           // Clear the flag immediately after reading it
           sessionStorage.removeItem("vimtion_intentional_navigation");
           restoreCursorPosition();
+          // The restore re-places the caret once more after 100ms.
+          setTimeout(updateInfoContainer, 150);
         } else {
           // Clear saved position for current URL since it's a reload
           try {
@@ -3668,11 +4574,11 @@ const openLineAboveInCodeBlockWrapped = () => {
       } else if (editableElements.length > 0) {
         // Page is still loading, wait a bit longer
         isReinitializing = false;
-        setTimeout(reinitializeAfterNavigation, 200);
+        setTimeout(() => reinitializeAfterNavigation(true), 200);
       } else {
         // Retry after a longer delay if elements not found yet
         isReinitializing = false;
-        setTimeout(reinitializeAfterNavigation, 500);
+        setTimeout(() => reinitializeAfterNavigation(true), 500);
       }
     }, 300);
   };
@@ -3702,8 +4608,23 @@ const openLineAboveInCodeBlockWrapped = () => {
       const rect = activeElement.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
 
-      // If active line is off-screen, move cursor to first visible line
-      if (rect.top < 0 || rect.bottom > viewportHeight) {
+      // A scroll right after a Vimtion motion is Notion catching up with the
+      // caret (it lags during held j/k), not the user scrolling away. Relocating
+      // the cursor to the first visible line there made held k overshoot to the
+      // title. Keep the cursor and bring its line into view instead.
+      if (msSinceNavigation() < 600 && msSinceUserScroll() > 1000) {
+        if (rect.bottom <= 0 || rect.top >= viewportHeight) {
+          activeElement.scrollIntoView({ block: "nearest" });
+        }
+        updateBlockCursor();
+        return;
+      }
+
+      // If the active line has left the screen entirely, move the cursor to
+      // the first visible line. (Checking "any part outside" made z- / zb,
+      // which put the line flush with the bottom edge, bounce the cursor up
+      // to the top line on a sub-pixel overhang.)
+      if (rect.bottom <= 0 || rect.top >= viewportHeight) {
         const firstVisibleLine = getFirstVisibleLine();
 
         // Only update if we found a different visible line
@@ -3730,6 +4651,15 @@ const openLineAboveInCodeBlockWrapped = () => {
 
   // Listen for browser history navigation (back/forward buttons, H/L keys)
   window.addEventListener("popstate", () => {
+    // Back/forward returns to a page the user left: restore its cursor
+    // (the flag from saving was consumed when the next page loaded).
+    try {
+      sessionStorage.setItem("vimtion_intentional_navigation", "true");
+    } catch (e) {
+      // Ignore storage errors
+    }
+    // Keep the URL poller from starting a second, cursor-resetting reinit.
+    lastPageId = extractPageId(window.location.href);
     reinitializeAfterNavigation();
   });
 

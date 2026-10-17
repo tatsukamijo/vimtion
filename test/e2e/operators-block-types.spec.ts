@@ -26,7 +26,7 @@ async function goToBlock(
 async function deleteCurrentLineVd(
   page: import("@playwright/test").Page,
 ): Promise<void> {
-  await pressKeys(page, "Shift+v");
+  await pressKeys(page, "Shift+V");
   await page.waitForTimeout(500);
   await pressKeys(page, "d");
   await page.waitForTimeout(800);

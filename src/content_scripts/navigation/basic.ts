@@ -2,7 +2,12 @@
  * Basic cursor movement functions (h, j, k, l, 0, $)
  */
 
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  lineBoundsAt,
+  charBoundsAt,
+} from "../cursor";
 
 export const moveCursorBackwards = () => {
   const { vim_info } = window;
@@ -12,7 +17,8 @@ export const moveCursorBackwards = () => {
   // Vim semantics: h at col 0 is a no-op (no wrap to previous line).
   if (currentCursorPosition <= 0) return;
 
-  const newPosition = currentCursorPosition - 1;
+  const text = currentElement.textContent || "";
+  const newPosition = charBoundsAt(text, currentCursorPosition - 1).start;
   setCursorPosition(currentElement, newPosition);
   vim_info.desired_column = newPosition; // Remember this column
 };
@@ -23,46 +29,58 @@ export const moveCursorForwards = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const lineLength = currentElement.textContent?.length || 0;
   // Vim's normal-mode cursor sits ON a character; max valid column is len-1.
-  const maxCol = Math.max(0, lineLength - 1);
+  const text = currentElement.textContent || "";
+  const maxCol = charBoundsAt(text, Math.max(0, lineLength - 1)).start;
 
   // Vim semantics: l at last char is a no-op (no wrap to next line).
   if (currentCursorPosition >= maxCol) return;
 
-  const newPosition = currentCursorPosition + 1;
+  const newPosition = charBoundsAt(text, currentCursorPosition).end;
   setCursorPosition(currentElement, newPosition);
   vim_info.desired_column = newPosition; // Remember this column
 };
 
+// 0 / $ / ^ act on the current line: the whole block for normal blocks, the
+// current "\n"-delimited line inside a code block.
+const currentLineBounds = () => {
+  const { vim_info } = window;
+  const element = vim_info.lines[vim_info.active_line].element;
+  const text = element.textContent || "";
+  return {
+    element,
+    text,
+    ...lineBoundsAt(text, getCursorIndexInElement(element)),
+  };
+};
+
 export const jumpToLineStart = () => {
   const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
+  const { element, start } = currentLineBounds();
 
-  setCursorPosition(currentElement, 0);
+  setCursorPosition(element, start);
   vim_info.desired_column = 0;
 };
 
 export const jumpToLineEnd = () => {
   const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const lineLength = currentElement.textContent?.length || 0;
+  const { element, start, end } = currentLineBounds();
 
   // Vim semantics: $ lands ON the last character (col = len - 1), not past it.
-  // Empty line: clamp to 0.
-  const newPos = Math.max(0, lineLength - 1);
-  setCursorPosition(currentElement, newPos);
-  vim_info.desired_column = newPos;
+  // Empty line: clamp to the line start.
+  const newPos = Math.max(start, charBoundsAt(element.textContent || "", end - 1).start);
+  setCursorPosition(element, newPos);
+  vim_info.desired_column = newPos - start;
 };
 
 // Move the cursor to the first non-whitespace character of the active line
 // (Vim's `^`). Used by the cursor-moving `z` reposition variants
-// (z. / z<CR> / z-). Falls back to column 0 when the line is blank.
+// (z. / z<CR> / z-). Falls back to the line start when the line is blank.
 export const jumpToFirstNonBlank = () => {
   const { vim_info } = window;
-  const currentElement = vim_info.lines[vim_info.active_line].element;
-  const text = currentElement.textContent || "";
-  const match = text.match(/\S/);
-  const newPos = match ? (match.index ?? 0) : 0;
+  const { element, text, start, end } = currentLineBounds();
+  const match = text.slice(start, end).match(/\S/);
+  const newPos = start + (match ? (match.index ?? 0) : 0);
 
-  setCursorPosition(currentElement, newPos);
-  vim_info.desired_column = newPos;
+  setCursorPosition(element, newPos);
+  vim_info.desired_column = newPos - start;
 };

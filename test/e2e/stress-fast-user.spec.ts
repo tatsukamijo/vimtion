@@ -94,7 +94,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     const startState = await getVimState(page);
 
     for (let i = 0; i < 3; i++) {
-      await fastKeys(page, "Shift+i");
+      await fastKeys(page, "Shift+I");
       await typeText(page, "x");
       await fastKeys(page, "Escape");
       await page.waitForTimeout(50);
@@ -125,7 +125,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     const blockIdx = await getActualCursorBlockIndex(page);
     const state = await getVimState(page);
 
-    const entries = ["i", "a", "Shift+i", "Shift+a"];
+    const entries = ["i", "a", "Shift+I", "Shift+A"];
     for (const key of entries) {
       await fastKeys(page, key);
       await page.waitForTimeout(30);
@@ -192,7 +192,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
       const blockIdx = await getActualCursorBlockIndex(page);
       const state = await getVimState(page);
 
-      await fastKeys(page, "Shift+a");
+      await fastKeys(page, "Shift+A");
       await typeText(page, " edited");
       await fastKeys(page, "Escape");
       await page.waitForTimeout(50);
@@ -225,7 +225,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     const blockIdx = await getActualCursorBlockIndex(page);
     const state = await getVimState(page);
 
-    await fastKeys(page, "Shift+i");
+    await fastKeys(page, "Shift+I");
     await typeText(page, "Z");
     await fastKeys(page, "Escape");
     await page.waitForTimeout(50);
@@ -251,7 +251,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     await goToBlock(page, "Before divider");
     const beforeIdx = await getActualCursorBlockIndex(page);
 
-    await fastKeys(page, "Shift+a");
+    await fastKeys(page, "Shift+A");
     await typeText(page, "!");
     await fastKeys(page, "Escape");
     await page.waitForTimeout(50);
@@ -264,7 +264,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     const afterDividerText = await getActualCursorBlockText(page);
     expect(afterDividerText, "crossed divider").toContain("After divider");
 
-    await fastKeys(page, "Shift+a");
+    await fastKeys(page, "Shift+A");
     await typeText(page, "!");
     await fastKeys(page, "Escape");
     await page.waitForTimeout(50);
@@ -306,7 +306,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     const startState = await getVimState(page);
 
     for (let i = 0; i < 10; i++) {
-      await fastKeys(page, "Shift+i");
+      await fastKeys(page, "Shift+I");
       await page.waitForTimeout(10);
       await fastKeys(page, "Escape");
       await page.waitForTimeout(10);
@@ -322,7 +322,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     const startState = await getVimState(page);
 
     for (let i = 0; i < 10; i++) {
-      await fastKeys(page, "Shift+a");
+      await fastKeys(page, "Shift+A");
       await page.waitForTimeout(10);
       await fastKeys(page, "Escape");
       await page.waitForTimeout(10);
@@ -338,7 +338,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     await goToBlock(page, "Plain text line 4");
     const plainIdx = await getActualCursorBlockIndex(page);
 
-    await fastKeys(page, "Shift+a");
+    await fastKeys(page, "Shift+A");
     await typeText(page, " [1]");
     await fastKeys(page, "Escape");
     await page.waitForTimeout(30);
@@ -348,7 +348,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     const bulletIdx = await getActualCursorBlockIndex(page);
     const bulletState = await getVimState(page);
 
-    await fastKeys(page, "Shift+a");
+    await fastKeys(page, "Shift+A");
     await typeText(page, " [2]");
     await fastKeys(page, "Escape");
     await page.waitForTimeout(30);
@@ -424,7 +424,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
       const state = await getVimState(page);
 
       // Alternate between i, a, I, A
-      const entryKeys = ["i", "a", "Shift+i", "Shift+a"];
+      const entryKeys = ["i", "a", "Shift+I", "Shift+A"];
       const key = entryKeys[i % entryKeys.length];
 
       await fastKeys(page, key);
@@ -470,7 +470,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     await page.waitForTimeout(30);
 
     // Now I → type → Escape
-    await fastKeys(page, "Shift+i");
+    await fastKeys(page, "Shift+I");
     await typeText(page, "V");
     await fastKeys(page, "Escape");
     await page.waitForTimeout(30);
@@ -536,7 +536,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
       const expectedIdx = startIdx + i;
       expect(await getActualCursorBlockIndex(page), `rapid chain step ${i}: before edit`).toBe(expectedIdx);
 
-      await fastKeys(page, "Shift+i");
+      await fastKeys(page, "Shift+I");
       await page.keyboard.press("KeyZ");
       await fastKeys(page, "Escape");
       await page.waitForTimeout(20);
@@ -590,7 +590,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
     const headingIdx = await getActualCursorBlockIndex(page);
     const headingState = await getVimState(page);
 
-    await fastKeys(page, "Shift+i");
+    await fastKeys(page, "Shift+I");
     await typeText(page, "X");
     await fastKeys(page, "Escape");
     await page.waitForTimeout(50);
@@ -615,7 +615,7 @@ test.describe.serial("Stress: fast user session (no reload)", () => {
       return editables.findIndex(
         (l) =>
           !editables.some((other) => other !== l && l.contains(other)) &&
-          (l.textContent || "").includes("Section 8: Code blockX"),
+          (l.textContent || "").includes("XSection 8: Code block"),
       );
     });
     const vimActive = (await getVimState(page)).activeLine - 1;

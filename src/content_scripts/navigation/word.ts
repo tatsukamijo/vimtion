@@ -2,8 +2,13 @@
  * Word navigation functions (w, b, e, W, B, E)
  */
 
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  columnInLine,
+} from "../cursor";
 import { isWrapperLine } from "../core";
+import { WORD_CHAR } from "../text/word-char";
 
 export const jumpToNextWord = () => {
   const { vim_info } = window;
@@ -14,12 +19,12 @@ export const jumpToNextWord = () => {
   let pos = currentCursorPosition;
 
   // Skip current word (alphanumeric characters)
-  while (pos < text.length && /\w/.test(text[pos])) {
+  while (pos < text.length && WORD_CHAR.test(text[pos])) {
     pos++;
   }
 
   // Skip non-word characters (spaces, punctuation)
-  while (pos < text.length && !/\w/.test(text[pos])) {
+  while (pos < text.length && !WORD_CHAR.test(text[pos])) {
     pos++;
   }
 
@@ -33,7 +38,7 @@ export const jumpToNextWord = () => {
   }
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToPreviousWord = () => {
@@ -60,27 +65,27 @@ export const jumpToPreviousWord = () => {
     // Find the start of the last word: walk back over trailing non-word
     // characters, then back over the word itself.
     let p = prevText.length;
-    while (p > 0 && !/\w/.test(prevText[p - 1])) p--;
-    while (p > 0 && /\w/.test(prevText[p - 1])) p--;
+    while (p > 0 && !WORD_CHAR.test(prevText[p - 1])) p--;
+    while (p > 0 && WORD_CHAR.test(prevText[p - 1])) p--;
     setCursorPosition(prevElement, p);
-    vim_info.desired_column = p;
+    vim_info.desired_column = columnInLine(prevElement, p);
     return;
   }
 
   let pos = currentCursorPosition - 1;
 
   // Skip non-word characters (spaces, punctuation) backwards
-  while (pos > 0 && !/\w/.test(text[pos])) {
+  while (pos > 0 && !WORD_CHAR.test(text[pos])) {
     pos--;
   }
 
   // Skip current word backwards
-  while (pos > 0 && /\w/.test(text[pos - 1])) {
+  while (pos > 0 && WORD_CHAR.test(text[pos - 1])) {
     pos--;
   }
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToEndOfWord = () => {
@@ -95,12 +100,12 @@ export const jumpToEndOfWord = () => {
   pos++;
 
   // Skip non-word characters
-  while (pos < text.length && !/\w/.test(text[pos])) {
+  while (pos < text.length && !WORD_CHAR.test(text[pos])) {
     pos++;
   }
 
   // Skip to end of next word
-  while (pos < text.length && /\w/.test(text[pos])) {
+  while (pos < text.length && WORD_CHAR.test(text[pos])) {
     pos++;
   }
 
@@ -110,7 +115,7 @@ export const jumpToEndOfWord = () => {
   if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToEndOfWORD = () => {
@@ -140,7 +145,7 @@ export const jumpToEndOfWORD = () => {
   if (pos < currentCursorPosition) pos = currentCursorPosition; // Don't move backward
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToNextWORD = () => {
@@ -162,7 +167,7 @@ export const jumpToNextWORD = () => {
   }
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };
 
 export const jumpToPreviousWORD = () => {
@@ -186,5 +191,5 @@ export const jumpToPreviousWORD = () => {
   }
 
   setCursorPosition(currentElement, pos);
-  vim_info.desired_column = pos;
+  vim_info.desired_column = columnInLine(currentElement, pos);
 };

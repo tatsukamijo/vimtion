@@ -4,6 +4,8 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 
 ## BUG-001: Rapid j/k round-trip causes DOM cursor desync
 
+- **Status**: Likely resolved together with BUG-071 (same root cause); not re-run against the original spec.
+
 - **Detected**: 2026-04-14
 - **Test**: `stress-fast-user.spec.ts` → "rapid 20j then 20k returns to start"
 - **Reproduction**: From "Plain text line 1" (block index 2), press j 20 times with no delay, then k 20 times with no delay. DOM cursor ends up on block index 1 instead of 2.
@@ -76,6 +78,7 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 ## BUG-008: I and A (Shift+i / Shift+a) insert at wrong cursor position (automated test only)
 
 - **Detected**: 2026-04-14
+- **Status**: **RESOLVED (test artifact)** on `fix/live-sweep-batch1`. Playwright `press("Shift+i")` / `"Shift+o"` sends `key: "i"` / `"o"` with Shift held, so Vimtion correctly ran `i` / `o`. The specs now send `"Shift+I"` / `"Shift+O"`. Real keyboards send `I` / `O`.
 - **Test**: `navigation.spec.ts` → "I inserts text at beginning of line", "A inserts text at end of line"
 - **Reproduction (automated)**: Navigate to a text block, press `0` then `w` twice (col=10), then `Shift+i`. Type "ZZZ". Text appears at col 10 ("The quick ZZZbrown...") instead of at the beginning ("ZZZThe quick...").
 - **Manual test**: User reports I and A work correctly in headed-mode manual testing.
@@ -97,6 +100,7 @@ Bugs detected during E2E test development. Kept separate from test refinement wo
 ## BUG-009: O (Shift+o) creates line below instead of above (automated test only)
 
 - **Detected**: 2026-04-14
+- **Status**: **RESOLVED (test artifact)** on `fix/live-sweep-batch1`. Playwright `press("Shift+i")` / `"Shift+o"` sends `key: "i"` / `"o"` with Shift held, so Vimtion correctly ran `i` / `o`. The specs now send `"Shift+I"` / `"Shift+O"`. Real keyboards send `I` / `O`.
 - **Test**: `navigation.spec.ts` → "O opens new line above and enters insert", "O on numbered list creates line above"
 - **Reproduction**: In automated (headless Playwright) test: navigate to a block, press `Shift+o`, type text. The new line appears below the current block instead of above it.
 - **Manual test**: User reports O works correctly in headed-mode manual testing (line correctly created above).
@@ -308,3 +312,456 @@ violation naming the exact shortcut that broke (`## conversion + Esc`,
 - **Suspected root cause**: The `selectionchange` listener and `characterData`-watching MutationObserver added in `c0b111c` likely accumulate state or fire mid-teardown across spec boundaries, contaminating the next spec's setup. Specifically: `selectionchange` listeners attached across page navigations may not be detached cleanly when Playwright reuses contexts, and the broadened observer fires on mid-teardown text mutations that wouldn't happen in a real session.
 - **Severity**: Low — only triggers under cumulative cross-spec state in CI-like full-suite runs. Real users with single-page sessions are not affected. Net trade was +23 reliable passes for these 2 intermittents (PR #12).
 - **Possible fix directions**: Detach `selectionchange` on page unload; rate-limit or debounce `reconcileFromSelection`; narrow the `characterData` observer to specific subtree roots; or re-architect the reconciliation so it doesn't need either listener.
+
+---
+
+# Live-driver sweep — 2026-10-15
+
+Found with `tools/notion-driver` (`vt`) against real Notion (now served from `app.notion.com` with a rewritten, atomic-CSS DOM). Six agents each covered one command family on fresh fixture pages and diffed the results against `nvim -u NONE`. Each finding was then re-run from scratch in a **headed** browser by a separate verifier that tried to refute it: 67 of 68 survived. Duplicates are merged below and grouped by likely root cause.
+
+Repro notation: `fixture` lines use the `vt fixture` spec (see `tools/notion-driver/README.md`). Line numbers are driver lines: L1 = page title, content starts at L2. Keys are Vim notation, sent with the 30ms default gap unless noted.
+
+## BUG-048: Line/block deletion (`dd`, `Vd`, `Vjd`) deletes nothing on current Notion
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Each block is now removed with a collapsed `execCommand('cut')` (Notion's real cut path) instead of synthetic drag/key events. Undo counts one step per Notion edit.
+
+- **Detected**: 2026-10-15 (live driver, headed + headless)
+- **Repro**: fixture `alpha one / bravo two / charlie three`; `jjj` (on `bravo two`) then `dd`, or `Vjd`. Nothing is deleted. The mode reads `insert` for about 800ms, then returns to normal. Reproduced on heading, paragraph, todo, quote, callout, toggle, last line, and a top-level bullet with children. (`2dd` also deletes one line, but that is the missing count prefix, MISSING-001, not this bug.)
+- **Root cause**: `deleteMultipleLinesAtomically` (`core/dom-utils.ts`) selects blocks with a synthetic `mousedown`/`mousemove`/`mouseup` drag, then dispatches a synthetic `Backspace`. Current Notion does not react to the synthetic drag (no `[data-block-selected]`), and the per-block keyboard fallback also fails.
+- **Severity**: **Critical**. Every line-wise delete is broken. Visual-line delete and the stashed WIP fix `WIP: visual-line delete cursor sync` both sit on top of this.
+
+## BUG-049: `dd` on a nested bullet child deletes the whole parent subtree
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Deletion now matches Vim: only the deleted lines go. Surviving children are lifted one level first (synthetic Shift+Tab, last child first) and take the deleted line's place. Undo restores the original tree.
+
+- **Repro**: fixture `top / - parent /   - child a /   - child b / tail`; cursor on `child a` → `dd`. Result: `top / tail`. Parent and both children are deleted, and a reload confirms it. `u` restores the blocks but leaves the cursor on `tail`.
+- **Root cause**: Same synthetic drag as BUG-048. On a nested block it selects the top-level ancestor.
+- **Severity**: **High**. Data loss.
+
+## BUG-050: Cursor jumps to the page title after yank / visual-delete / `dw` on an empty line
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` for `yy`, visual `d`/`y`, `Vy`, and `dw` on an empty line: the caret is restored instead of cleared. The `dw`-on-empty-line case still flashes the title for one frame (about 0–50ms).
+
+- **Repro**:
+  - `yy`: fixture `alpha one / beta two / gamma three`; on `gamma three`, `yy` → `--series` shows `@0ms dom=L0`, then `@100ms vim=L1` (the title). `yyp` pastes under the title.
+  - Visual: `wved`, `wviwd`, `Vy`, `vlly`. The cursor ends on L1 (or the caret is detached). The next `x` deletes from the title (`vt fixture` → `t fixture`), and `Vy` then `p` pastes **into** the title.
+  - `dw` on an empty line removes the line correctly, but the cursor goes to the title.
+- **Root cause**: `createYankCurrentLine` (`operators/motion-yank.ts`), `createDeleteVisualSelection` / `createYankVisualSelection` / `createYankVisualLineSelection` (`visual/helpers.ts`), and `createDeleteToNextWord` on an empty line all end with `getSelection().removeAllRanges()` and never restore the caret. Selection reconciliation then resolves the active line to the title. `Vy` also leaves `yank_type` null, so the paste is character-wise.
+- **Severity**: **High**. The very next edit silently modifies the page title.
+
+## BUG-051: Normal-mode caret ends up past the last character (no Vim "step back")
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` for Esc/`jk`, `x` at EOL, `p`, and `j`/`k` clamping. `W`/`w` at the end of a line and `D`/`d$` are still open.
+
+One root idea (normal-mode column must be clamped to `len-1`) behind several triggers:
+- **Esc / `jk` from insert** never moves the caret one left: `AZ<Esc>` leaves col = len, and `x` then does nothing. `wiXY<Esc>` should end on `Y`. This hits almost every edit (`reducers/insert.ts`).
+- **`x` at end of line**: `$xxx` deletes only once. The caret stays at the old len and later `x` presses are no-ops.
+- **`p`** leaves the caret one past the pasted text (`ywp` → col 12, nvim 11; `y$p` at EOL → caret past end). `P` is correct.
+- **`j`/`k` onto a shorter line** (and `}` at end of document, and `j` in code blocks) clamp to `len` instead of `len-1` (`setActiveLine`: `Math.min(desired_column, lineLength)`).
+- **`W`** on the last WORD (never wraps to the next line) and **`w`** on the last word of the document stop at `len`.
+- **Deletions at end of line** (`D`, `d$`) set the caret to `pos` instead of `pos-1`.
+- **Severity**: **Medium–High**. The block cursor renders after the text, and the next keystroke is silently lost.
+
+## BUG-052: `$` is not sticky for later `j`/`k`
+
+- **Repro**: fixture `short / a much longer line here`; on `short`, `$j` lands at col 4 (nvim: end of line, col 22). Going the other way, `$jj` keeps a numeric column instead of "end of line".
+- **Root cause**: `jumpToLineEnd` (`navigation/basic.ts`) stores a numeric `desired_column` with no end-of-line marker.
+- **Severity**: Low.
+
+## BUG-053: `desired_column` is stale after leaving insert mode
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` (Esc syncs `desired_column`).
+
+- **Repro**: `iabcdef<Esc>j` lands at C0 (nvim: col 5). After `A<CR>two<Esc>k`, `k` lands past the end of the previous line.
+- **Root cause**: The insert-mode Escape handler does not sync `desired_column` from the DOM selection.
+- **Severity**: Medium.
+
+## BUG-054: Code-block operators act on the whole block, not the current code line (data loss, not undoable)
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: edits go through `deleteCharRange` (execCommand delete), scoped to the current code line. They persist after reload and undo works.
+
+- **Repro**: fixture `top / ```python / x = 1 / y = 2 / z = 3 / ``` / end`.
+  - `cc` on `y = 2` empties the **entire** code block.
+  - `D` / `C` / `d$` / `c$` truncate everything after the cursor across all code lines. `d0` deletes from the block start, and `y$` yanks to the block end.
+  - `u` cannot restore any of it: the edit is DOM-only (`textContent = …`) and reverts on reload if nothing else was typed.
+- **Root cause**: `createChangeCurrentLine` (`operators/motion-change.ts`) and `createDeleteToEndOfLine` (`operators/motion-delete.ts`) write `element.textContent` directly. They have no code-block line scoping and dispatch no input event. This is the BUG-047 follow-up, still open.
+- **Severity**: **High**. Data loss.
+
+## BUG-055: Code-block motions and inserts use the whole block instead of the current code line
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` for `0`/`$`/`^`/`f`/`t`/`I`/`A`/`X` verified. `yy`+`p` inside a code block and normal-mode `h`/`l` crossing code lines were not re-checked.
+
+- `0` → block offset 0; `$` → the trailing `⏎` after the last line; `f(`/`F`/`t`/`T` search across code lines (`navigation/basic.ts`, `navigation/char-find.ts`).
+- `I` on the 2nd code line inserts at the start of the 1st (`insertAtLineStart`).
+- `h`/`l` cross code-line boundaries and stop on the newline position (`code-block.ts` `moveCursor{Forwards,Backwards}InCodeBlock`).
+- `X` changes only the DOM and drops syntax highlighting; the change reverts on reload (`deleteCharacterBefore` sets `textContent`; BUG-047 follow-up).
+- `yy` in a code block copies the whole block and moves the caret to col 0. `p` then pastes nothing and leaves the block.
+- `O` in a code block inserts the newline but leaves the caret on the original line (related to BUG-011).
+- **Severity**: Medium (X / yy+p: High).
+
+## BUG-056: `A` + `Enter` in a code block splits the block *above* and types there
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: the caret goes to the end of the code line, and entering insert mode clicks the code block so Notion's Enter acts on it, including after `j`/`k` entry.
+
+- **Repro**: fixture `para above / ```python / x = 1 / y = 2 / ``` / after code`; on `x = 1`: `A<CR>`, then type `z = 3` → `z = 3para above`. The code block is unchanged.
+- **Root cause**: `setCursorPastLineEnd` (`vim.ts`) uses the full `textContent.length` of the code leaf, including Notion's trailing `\n` placeholder, so the caret leaves the block.
+- **Severity**: **High**.
+
+## BUG-057: `k` out of the first code line jumps *below* the code block; `j` out loses the column
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` by the navigation guard (cursor/position.ts): for 400ms after a Vimtion navigation, a selection that drifts elsewhere with no mouse press since is put back instead of followed. Any Vimtion caret placement re-targets the guard; undo/redo clear it. k from the first code line lands on the line above 5/5, and j out keeps the column. The click handler also stores a code-line column.
+
+- **Repro**: fixture `line above / ```python / a = 1 / b = 2 / ``` / line B after / line C after`; on code line 1, col 4, press `k` → the cursor ends on `line B after` col 0 (4 of 5 trials). For `j` out of the block, the column resets to 0 in 30–60% of trials.
+- **Root cause**: When the caret leaves a code block, Notion asynchronously moves the selection to the start of the block after it, about one macrotask after `setActiveLine`, and reconciliation follows it.
+- **Severity**: **High**.
+
+## BUG-058: `j` on the last line of a code block at the end of the page wraps to the block's first line
+
+- **Repro**: fixture `first para / ```python / def f(): /  /     return 1 / ``` ` → on the last code line, `j` jumps to `def f():`. A held `j` cycles, and `G` lands on the first code line.
+- **Root cause**: `moveCursorDownInCodeBlock` → `setActiveLine(active_line+1)` clamps back to the same block and enters it from the top.
+- **Severity**: Medium.
+
+## BUG-059: `x` at column 0 loses the cursor
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: `getCursorIndexInElement` is Range-based, so element-anchored selections are read correctly.
+
+- **Repro**: fixture `alpha beta gamma delta / second line`; on L2, `xxx` → only the first `x` deletes. After that, `w` jumps to the next line, `h` jumps to the end of the line, and `l` is a no-op. Same on heading, bullet and todo.
+- **Root cause**: After `execCommand('cut')` the selection is anchored on the leaf element (`DIV`, offset 0), not on a text node. `getCursorIndexInElement` (`cursor/position.ts`) only resolves text-node anchors.
+- **Severity**: **High**. The most basic edit is broken.
+
+## BUG-060: `x` / `s` / `dw` / `cw` at a formatted-span or syntax-token boundary type the letter instead of deleting
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` for `x`/`s`/`dw` (`selectCharRange` resolves offsets at formatting boundaries). `cw` and code-block tokens still need re-verification.
+
+- **Repro**: make `beta` bold in `alpha beta gamma delta` (`jwviw<D-b><Esc>`); `0w` then `x` → `alpha x**beta**…` (a literal `x` is inserted). `s` inserts `s` and stays in normal mode. `dw`/`cw` at the boundary throw `IndexSizeError`. The same happens on code-block syntax tokens.
+- **Root cause**: `deleteCharacter` / `substituteCharacter` (`vim.ts`) do `r.setEnd(r.startContainer, r.startOffset + 1)`. When the caret sits at the end of the previous text node, that offset is out of range.
+- **Severity**: **High**. Breaks on any page with formatting or code.
+
+## BUG-061: Visual `v` + operator with no motion deletes/yanks the whole block
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: `v` draws its one-char selection immediately and starts from the real caret.
+
+- **Repro**: fixture `hello world foo bar / second line here`; on L2, `wvd` → the whole block is deleted and the cursor goes to the title (nvim: `hello orld foo bar`). `wvx` does the same, and `wvy` yanks the whole line.
+- **Same mechanism**: `v` after `j` onto a shorter line. Visual motions use the stale `desired_column` instead of the real caret, so the selection collapses, and `vhd` then deletes the whole `abc def` block.
+- **Root cause**: `createStartVisualMode` (`visual/helpers.ts`) never calls `updateVisualSelection()`. `execCommand('cut')` on a collapsed selection cuts the whole block.
+- **Severity**: **High**. Data loss.
+
+## BUG-062: Visual `v` inside a code block operates on the paragraph *above* the block
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`: `setRangeInElement` resolves endpoints inside nested tokens. Visual delete in a code block deletes only the selection; `Vd` deletes only the code line.
+
+- **Repro**: fixture `para QQQ above / ```python / alpha = 1 / beta = two / gamma / ``` / after code`; on `beta = two`, `vlld` → `para QQQ above` is deleted and the code block is untouched. `v$y` yanks `para QQQ above`. A bold span inside a `v` selection sometimes yanks the whole line the same way.
+- **Root cause**: `setRangeInElement` (`visual/helpers.ts`) recurses into the element that contains the start and returns without setting the end.
+- **Severity**: **High**. Data loss.
+
+## BUG-063: Visual-line yank in a code block leaves the line selected; the next insert overwrites it
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+
+- **Repro**: same fixture as BUG-062; on `beta = two`, `VyiZ<Esc>` → `alpha = 1\nZ\ngamma`.
+- **Root cause**: `removeAllRanges()` after `Vy` does not stick for the code-block range.
+- **Severity**: **High**.
+
+## BUG-064: Visual-mode gaps
+
+- `c` in character-visual does nothing, and typed text then runs as visual motions (MISSING-005, but the README documents `c`).
+- `j`/`k`, `o`, `p` and counts are swallowed in `v`, and with no other motion `vjy` yanks the whole line.
+- `Vgg` / `Vkkk` reach line 0, the page wrapper: the whole page turns pink and `y` yanks the title.
+- Fast `VjJ<Esc>` (Shift+J move, then Esc right away) leaves vim on the moved block and the DOM caret on the old line (the 50ms re-anchor `setTimeout` races Esc).
+- Fast `Vc` + type + `<Esc>`: about 500ms after Esc, the mode flips back to INSERT with the caret at col 0 (the trailing `setTimeout` in `changeVisualLineSelection` unconditionally sets insert).
+- **Severity**: Medium.
+
+## BUG-065: Paste behaviour
+
+- `yy` then `P` pastes **inline** at col 0 instead of opening a line above (`pasteBeforeCursor` checks `endsWith('\n')`; `pasteAfterCursor` uses `yank_type`).
+- `yank_type` stays `'line'` after a later charwise yank, so `yy … yw p` opens a new line.
+- Linewise `p` on a bullet with children pastes after the subtree but puts the cursor on the first child (`setActiveLine(active_line+1)` is hard-coded).
+- `yy`/`p` drops the block type: heading, todo and bullet paste as plain text.
+- `yy` on an empty line, then `p`, pastes nothing.
+- **Severity**: Medium (P inline: High).
+
+## BUG-066: `O` on a callout types into the callout; `O` on the page title renames the page
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. After Enter at col 0, `O` finds the newly inserted block (the block id not present before) and puts the caret there, instead of sending a synthetic ArrowUp (which never left a callout). On the page title, `O` opens the first body line, because nothing can sit above the title.
+
+- **Repro**: fixture `alpha / ! callout here / omega`; on the callout, `ONEW<Esc>` → `NEWcallout here`. On a fresh fixture with the cursor on the title, `ONEW<Esc>` → the title becomes `NEW` and the old title moves into a paragraph.
+- **Root cause**: `openLineAbove` (Enter at pos 0, then ArrowUp) does not leave a callout's inner editable and has no title guard.
+- **Severity**: Medium.
+
+## BUG-067: Word motions and `cw` deviate from Vim
+
+- `w`/`b`/`e` treat punctuation as whitespace: `foo.bar` is one word. `dw` on `foo.bar baz` deletes `foo.bar ` (nvim deletes `foo`), and `w` in code skips `=` (`navigation/word.ts` uses only `\w` / non-`\w`).
+- `cw` behaves like `dw` and eats the trailing space (`cwX` on `one two` → `Xtwo`; nvim: `X two`).
+- `e`/`E` at end of line do not wrap to the next line, and `B` at col 0 does not wrap back (`b` does).
+- **Severity**: Low–Medium.
+
+## BUG-068: Text-object edge cases
+
+- **Status**: **PARTIAL** on `fix/live-sweep-batch1`: `ci(`/`ci"` with no pair now abort, and `diw`/`daw` at line end keep the caret on a char. The inner-closing-bracket pair choice and the `da"` double space are still open.
+
+- With the cursor on an inner closing bracket, the outer pair is used: `call(foo(bar), baz)` with the cursor on the first `)`, then `di(` → `call() end` (nvim: `call(foo(), baz) end`). Same for `[]` and `{}` (`text-objects/bracket.ts` counts the bracket under the cursor as depth+1).
+- `da"` / `ca'` leave a double space (trailing whitespace is not consumed).
+- `ci(` / `ci"` on a line with no pair still enters insert mode, so the user's next keys are typed into the line (nvim aborts).
+- **Severity**: Medium (`ci(` no-pair: High in practice, because it types text).
+
+## BUG-069: Missing commands silently swallowed — `S`, `Y`, and README-advertised `de`/`db`/`ce`/`cb`/`ye`/`yb`/`dW`/`dB`/`dE`
+
+- README "Operators with Motions" claims they are supported, but the pending-operator switch has no `e`/`b`/`W`/`B`/`E` cases. See MISSING-002/003/004/006. `S` and `Y` are not listed in missing-features.
+- **Severity**: Medium (documentation mismatch).
+
+## BUG-070: `j`/`k` in a Notion table move only every other press
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` by the navigation guard (cursor/position.ts): for 400ms after a Vimtion navigation, a selection that drifts elsewhere with no mouse press since is put back instead of followed. Any Vimtion caret placement re-targets the guard; undo/redo clear it. Table j/k now move one cell per press in both directions.
+
+- **Repro**: shared test page, Section 20 table: `kkkkkk` (150ms or 500ms gap) moves 3 cells. A trace shows the reducer moving 91→90, then `reconcileFromSelection` moving it back 90→91.
+- **Related**: BUG-045. **Severity**: **High** for table users.
+
+## BUG-071: Fast key repeat drops `j`/`k` presses (BUG-001 still open)
+
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1` by the navigation guard (cursor/position.ts): for 400ms after a Vimtion navigation, a selection that drifts elsewhere with no mouse press since is put back instead of followed. Any Vimtion caret placement re-targets the guard; undo/redo clear it. Held j/k (30 repeats at 16–60ms) land exactly. The scroll listener no longer relocates the cursor for scrolls that follow a Vimtion motion.
+
+- **Repro**: 40-paragraph fixture, `vt hold j 30 --interval 16` → L20–21 instead of L31. Results by repeat interval: 25ms → L28, 33ms → L31 (correct). A burst of 5 `j` with zero gap moves 4.
+- **Root cause**: An async `selectionchange` reports the previous leaf after the next `j` has already moved, and `reconcileFromSelection` reverts it.
+- **Severity**: Medium (held-key users).
+
+## BUG-072: `Ctrl-u` does not move the cursor; `Ctrl-d` moves only to the first visible line and resets the column
+
+- **Repro**: 40-paragraph fixture, at L6 col 5, `<C-d>` → L11 col 0 (nvim: +half a window, column kept). `<C-u>` scrolls but the cursor stays at L11.
+- **Root cause**: `navigation/scroll.ts` only scrolls. The cursor moves only through the debounced scroll listener, and only when it goes off-screen.
+- **Severity**: Medium.
+
+## BUG-073: Insert-mode and undo granularity details
+
+- `aTaj<Esc>` drops the trailing `j` (the Escape path calls `cancelPendingJ()` instead of committing it).
+- A change op (`C`, `ciw`), a pause, then typing takes two `u` to undo; `o` + type also takes two `u`.
+- Machine-speed `oxyz<Esc>` (0–5ms gaps) puts the first character into the original line: the synthetic Enter is dispatched in `setTimeout(0)`.
+- Notion merges edits made within about 1s into one undo step: `dw dw u` (400ms apart) undoes both words. With a gap of 1.2s or more, each `u` undoes one `dw`. On `main` this was masked because the second `dw` lost the cursor to the title, and that selection jump split the undo group. Test: `undo-redo.spec.ts` "multiple u undoes consecutive dw one by one". It is left failing on purpose.
+- After undoing a multi-line `Vjd`, the cursor lands on the second restored line instead of the first (Notion leaves the caret there).
+- **Severity**: Low.
+
+## Harness / environment notes from the sweep
+
+- Notion renders a copy of a block, with the same `data-block-id`, inside its hover menu while the mouse is over the block. `querySelector('[data-block-id="…"]')` can then return the copy, which has no editable leaf. Block deletion now picks the block that owns an editable leaf. The block-link navigation lookups in `vim.ts` (~2733, ~3104) and `links/link-hints.ts` (~204) still use plain `querySelector` and are likely affected.
+
+- The "Using Vimium?" warning tells users to exclude `https://www.notion.com/*`, but pages are now on `app.notion.com`.
+- `test/helpers.ts` `navigateToTestPage` short-circuits on `url.includes("notion.so")`, which no longer matches.
+- `npm run build` silently produced no `dist/` until `.parcel-cache` was deleted.
+
+## BUG-074: Closing Notion's Cmd+/ block menu sends the cursor to the page title
+
+- **Detected**: 2026-10-16 (user report, then reproduced with the live driver)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Repro**: fixture `alpha one / bravo two / charlie three / delta four`; on `charlie three` col 2: `<D-/>`, optionally type into the menu's search, then `<Esc>`. The cursor lands on L1 (title). This happens in normal and insert mode. Picking **Duplicate** with Enter leaves no caret at all, so the next key acts on the title too.
+- **Root cause**: Keys typed in Notion's popup inputs never reach Vimtion (its keydown listeners sit on the editor lines). When the popup closes, Notion does not restore the caret, and line recovery falls back to the title.
+- **Fix**: When focus moves from the page into a popup input, remember the block, the caret column (the last collapsed page caret, since Cmd+/ block-selects the line first) and the mode. After Esc/Enter in the popup, restore them. A popup closed by clicking back into the page is left alone.
+
+## BUG-075: `z-` / `zb` bounce the cursor to the top visible line
+
+- **Detected**: 2026-10-16 (full suite: `z-scroll.spec.ts` "z. / z<CR> / z- run without leaving normal mode")
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Root cause**: `z-`/`zb` put the line flush with the bottom edge. The debounced scroll listener treated any sub-pixel overhang (`rect.bottom > innerHeight`) as off-screen and moved the cursor to the first visible line.
+- **Fix**: Only move the cursor when the active line has left the viewport entirely.
+
+## BUG-076: New page — type the title, press Enter, and the cursor jumps back to the start of the title
+
+- **Detected**: 2026-10-16 (user report; reproduced with the live driver by creating the page through Notion's UI: sidebar new-page button → Page)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Repro**: Create a page from the UI. Notion focuses the empty title. Type a title, then Enter. The caret goes to the new body line, then about 600ms later jumps to column 0 of the title. Also, Vimtion was not listening to the title at all on the new page: an `i` typed as a command ended up in the title text.
+- **Root cause**: `reinitializeAfterNavigation` waited for at least 3 editable elements. A brand-new page has only the page wrapper and the title, so it retried every 200ms, resetting `active_line = 0` each time and never calling `setLines`. When Enter created the first body block, the count reached 3, `setLines` ran, and its `setActiveLine(0)` moved the caret to the title start.
+- **Fix**: The page counts as ready once a content leaf (the title) exists. `active_line` is reset only on the first attempt, not on retries. `setLines` adopts the line the caret is already in, instead of moving it. A new page whose caret Notion put in the title (empty title, or the `showMoveTo=true` new-page URL) starts in insert mode, so typing the title is text, not Vim commands.
+
+## Pre-ship sweep (2026-10-16)
+
+Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, old bugs ×2, timing), then one adversarial verifier per finding. 32 of 39 findings were confirmed. Not confirmed:
+- Cmd+Shift+Up/Down losing the caret. Notion does this without the extension too.
+- ```` ``` ```` sending the caret to the title (not reproduced by 3 of 4 verifiers; see BUG-041).
+
+## BUG-077: The navigation guard undid deliberate scrolls and Notion's own edits
+
+- **Detected**: 2026-10-16 (pre-ship sweep, timing agent). Regression from the BUG-070/057/071 guard.
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Repro**: 40-line page.
+  - `jj<C-f>`, `j<C-d>`, or `G` then `k<C-b>`: the page scrolls, then snaps back, and the cursor does not move.
+  - A wheel/trackpad flick within ~600ms of `j`: snaps back the same way.
+  - `jj<D-z>` after an earlier `x`, or `j<D-v>`: the text changes, but the caret is put back on the `j` target.
+- **Root cause**: The scroll listener's "Notion is catching up with the caret" branch (`msSinceNavigation() < 600`) also caught Vimtion's own page scrolls and user scrolls. Meta-key edits passed through to Notion left the caret guard armed, so Notion's caret was treated as stray.
+- **Fix**: Ctrl-d/u/f/b clear the guard. A wheel or touch scroll after the motion ends the guard window. Any Ctrl/Meta/Alt key that normal mode passes through to Notion clears the guard.
+- **Follow-up (post-fix sweep)**: a key within ~100ms after Ctrl-d/u/f/b still acted on the old line, and `j` re-armed the guard, which pulled the page back. Ctrl-d/u/f/b now move the cursor on screen synchronously (`keepCursorOnScreen`). The scroll listener does not pull the page back within 1s of a wheel/touch scroll. Verified: `<C-d>j`, `G` then `<C-u>k`, `gg` then `<C-f>x`, and held `k` afterwards.
+
+## BUG-078: `H` / browser back never restored the cursor
+
+- **Detected**: 2026-10-16 (pre-ship sweep, pages agent)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Repro**: `jjjjll`, `gl` + a hint to another page, then `H` (or Cmd+[ / `history.back()`). The cursor lands on the title.
+- **Root cause**:
+  - `restoreCursorPosition` set `active_line` but moved the DOM caret only 100ms later, re-reading `active_line`. The title caret's queued `selectionchange` had already reconciled `active_line` back to the title by then.
+  - Native back had no "intentional navigation" flag, because it was consumed on the previous page load, so the saved position was deleted as if on reload.
+  - The saved column was the stale `vim_info.cursor_position`.
+- **Fix**: Restore places the caret synchronously and marks it as a navigation, then re-places it after 100ms. `popstate` sets the intentional-navigation flag and syncs the URL poller. The saved column comes from the DOM caret.
+
+## BUG-079: `x` on the second half of an emoji deletes the whole line
+
+- **Detected**: 2026-10-16 (pre-ship sweep, menus agent). **Critical** (data loss).
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Caret placement and edited/selected ranges snap to grapheme boundaries (`charBoundsAt`, `Intl.Segmenter`); `h`/`l`/`$` step by whole characters. Verified with 😃, 👍🏽 and 🇯🇵.
+- **Repro**: `ab😃cd`, `$hh`, then `x`. The whole block is removed. `h`/`l` also take two presses to cross an emoji.
+- **Root cause**: Columns are UTF-16 code units, so the cursor can sit between a surrogate pair. `x` then cuts a lone low surrogate, and Notion's cut handler removes the whole block. This happens even when Vimtion is not involved.
+
+## BUG-080: Clicking another line in `v` / `V` mode
+
+- **Detected**: 2026-10-16 (pre-ship sweep, mouse agent)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. A click in visual modes ends visual mode and moves the cursor there (Vim `mouse=a`). Clicks that land on Notion's selection overlay (no line under the target) are resolved with `caretRangeFromPoint`. Note: in headless runs Notion's selection toolbar can cover the click point, and that click is then a toolbar click.
+- **Repro**: `v` (or `V`), then click a different line. `v` stays in VISUAL with focus on `body`, and Esc/`x` do nothing. In `V`, the click is ignored; Esc returns to the old line, and the next edit hits it.
+
+## BUG-081: Clicking a to-do checkbox or toggle triangle puts the cursor on line 0
+
+- **Detected**: 2026-10-16 (pre-ship sweep, mouse + structure agents)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+  - Clicks that bubble to the page wrapper are no longer adopted as a line.
+  - Selection recovery (`refreshLines` tier 1, `reconcileFromSelection`) ignores a caret that resolves to the wrapper.
+  - When the active line disappears (a toggle closed around it), the cursor moves to the closest earlier surviving line, which is the toggle head.
+- **Repro**: Click a to-do checkbox or toggle triangle on another line. `active_line` becomes 0 (the page wrapper), and the next `j` goes to the title.
+
+## BUG-082: After dragging a block by its handle, keys do nothing until a click
+
+- **Detected**: 2026-10-16 (pre-ship sweep, structure agent)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. A document-level keydown fallback covers focus left on `<body>`, a checkbox or a toggle button inside the page (not text fields or popups): it puts the caret back on the active line and handles the key there. Enter/Space on a focused control still activate it.
+
+## BUG-083: A key or click within ~150ms after `dd` is dropped
+
+- **Detected**: 2026-10-16 (pre-ship sweep, mouse + timing agents)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. `dd` and `Vd` mark themselves busy (`core/busy.ts`). Real keys and clicks that arrive meanwhile are queued, then replayed in order, paced so that `o`/`O` finish before the typed text. Insert-mode text is replayed with `beforeinput` + `execCommand("insertText")`, because Notion drops a bare `execCommand` insert into a freshly created empty block. Verified: `ddj`, `ddx`, `ddk`, `ddjdd`, `Vjdj`, `ddohey<Esc>`, `ddiXY<Esc>`, `ddOab<Esc>`, `ddAz<Esc>j`, and a click within 0ms of `dd` (3/3).
+- **Repro**: `jjj`, then `ddj` (or `ddx`, `ddk`) at typing speed. The second command is lost.
+- **Root cause**: `createDeleteCurrentLine` sets `mode = "insert"` while the async block cut runs (~150ms). Keys go to the insert reducer (the `j` is eaten as a pending `jk`), and clicks are ignored. The `.then` then resets the line.
+
+## BUG-084: Normal-mode Enter on a line with a link can open a sidebar link
+
+- **Detected**: 2026-10-16 (pre-ship sweep, pages agent)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Enter now picks among the line's own links: the one under the cursor, else the next one after it, else the last one before it.
+- **Root cause**: The link is picked from `detectAllLinks()` (which includes the sidebar) by vertical distance to the line's centre, not from the line's own anchors.
+
+## BUG-085: Code-block edge cases
+
+- **Detected**: 2026-10-16 (pre-ship sweep, core + timing + old-bugs agents)
+- **Status**: **PARTIAL** on `fix/live-sweep-batch1`.
+  - Fixed: `j`/`k` clamp to the last character.
+  - Fixed: `dd` on the last code line treats Notion's trailing placeholder `\n` as the end; the cursor goes to the start of the line that took the deleted line's place.
+  - Fixed: `r` lands on the redone change (BUG-090).
+  - Still open: linewise `p` into a code block (also the unresolved part of BUG-055).
+- **Repro**:
+  - `j`/`k` onto a shorter code line puts the caret on the line's `\n` (column = length), so `x` does nothing (`navigation/code-block.ts` clamps to `len`, not `len-1`).
+  - `dd` on the last code line leaves an empty code line.
+  - Linewise `p` into a code block pastes nothing and moves the cursor below.
+  - `r` after `u` of a `dd` next to a code block lands below the block or on line 0.
+
+## BUG-086: `O` followed by fast typing sends the first characters into the original line
+
+- **Detected**: 2026-10-16 (pre-ship sweep, core + old-bugs agents)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. `O` holds typeahead (`core/busy.ts`) until the caret is in the new block. Verified at 30ms key gaps on a paragraph, a quote, a code line and the line after a code block. Seen with quote, toggle and nested bullet, at fast human typing speed.
+
+## BUG-087: `/table` and multi-line Cmd+V lose the caret
+
+- **Detected**: 2026-10-16 (pre-ship sweep, core, structure and old-bugs agents)
+- **Status**: **PARTIAL** on `fix/live-sweep-batch1`. The wrapper is no longer adopted as a line, so Esc and `j` no longer go to line 0 or the title.
+  - After `/table` + Esc, the cursor sits on the line above the table.
+  - After a multi-line paste + Esc, it sits on the line before the pasted block, not on its last character.
+- **Repro**: Create a table with `/table` + Enter, then Esc. Or paste multi-line text with Cmd+V in insert mode, then Esc. Vimtion is left on line 0 with no caret, and the next `j` goes to the title.
+
+## BUG-088: Notion `@` / `:` menus and chips
+
+- **Detected**: 2026-10-16 (pre-ship sweep, menus agent)
+- **Status**: **PARTIAL** on `fix/live-sweep-batch1`.
+  - Fixed: with a Notion menu open in the page overlay, insert-mode Esc reaches Notion, so the menu closes, and Vimtion then leaves insert mode.
+  - Still open: `w`/`h`/`b` over a mention chip.
+- **Repro**:
+  - Esc does not close the `@` mention or `:` emoji menu. It stays open in normal mode, and a later `x` edits its search text.
+  - `w` skips over an `@mention` chip, and `h`/`b` cannot cross it.
+
+## BUG-089: More ways to end up with the normal-mode caret past the last character (BUG-051 triggers)
+
+- **Detected**: 2026-10-16 (pre-ship sweep)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. After undo/redo and after a click, the caret steps back onto the last character of the (code) line.
+- **Repro**: `u` of an `A`/`o` insert or of a markdown conversion, or a click past the end of a line. Afterwards `x` does nothing.
+
+## BUG-090: `r` (redo) puts the cursor where it was when `u` was pressed
+
+- **Detected**: 2026-10-16 (pre-ship sweep, timing agent)
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`. Undo remembers where it left the cursor (the changed spot). If the redo changed the page, the cursor goes back there. Notion's redo restores the selection from undo time, and `redo()` adopts it.
+
+## BUG-091: Typing in Notion's non-page editables ran Vim commands (sidebar Rename, comment box, database cell editor)
+
+- **Detected**: 2026-10-16 (post-fix sweep, focus agent). **Critical**: renaming a page from the sidebar and typing `kdd` deleted a block of the open page.
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Root cause**: `refreshLines`/`setLines` took every `[contenteditable=true]` in the document as a line, including the sidebar Rename popover, the comment box (`.discussion-input-text-block`) and the database cell editor. Their keydowns went to the normal-mode reducer. This predates today's branch.
+- **Fix**:
+  - Lines are only editables that belong to the page (`isDocumentEditable`: inside `.notion-frame`, not in a dialog, overlay, sidebar, top bar or discussion).
+  - Focus moving into one of the other editables saves the page position (from the last page caret) like the popup-return episode, and Esc/Enter there restores it.
+  - Verified: Cmd+Shift+M, type `hello` + `o` → the comment holds `helloo`. Esc returns to the same line and column, and `x` edits there.
+
+## Open from the post-fix sweep (2026-10-16, stopped before it finished)
+
+Confirmed, not yet fixed:
+- ~~Regression (ed2bb05): a mouse drag across blocks in normal mode is collapsed.~~ **RESOLVED**: `followClick` keeps a range made by a drag, double-click or Shift+click and only follows its end line.
+- ~~Regression (ed2bb05): a checkbox or toggle click in `v`/`V` mode silently drops visual mode on the next key.~~ **RESOLVED**: a click on a control ends visual mode right away, and the status bar shows it.
+- ~~A mouse range selection in normal mode is not used by `x`/`d`/`y`~~ **RESOLVED** for single-line selections: a drag, double-click or Shift+click within one line enters visual mode, as in Vim with `mouse=a`. A cross-line mouse range stays Notion's selection, because Vimtion's charwise visual mode is single-line.
+- ~~Normal-mode Enter on a link does not save the cursor~~ **RESOLVED**: Enter saves before leaving for another page.
+- ~~Status bar stale after navigation/restore; a new page opens at the previous page's column~~ **RESOLVED**: a new page resets the column, and the status bar redraws after `setLines` and after a restore.
+- ~~After navigating away by a sidebar click, `H` does not restore~~ **RESOLVED**: a click on a same-host link to another page saves the cursor.
+- **Test harness**: Playwright's `press("Shift+i")` sends `key: "i"` with Shift, not `"I"`, so 51 presses across 9 specs were testing `a`/`i`/`o`/`v`/`w`/`b`/`e` instead of `A`/`I`/`O`/`V`/`W`/`B`/`E`. This is the "automated test only" cause of BUG-008/009. The specs now send the uppercase key. Exposed by the click-past-end clamp: the stress test's stray `x` (typed by `i`, not `I`) now lands before the last character and broke later specs' text lookups.
+- The block cursor is drawn at column 0 while focus is outside the page.
+
+Unverified sweep claims (re-check):
+- ~~Esc from the top-bar `...` menu leaves Vimtion deaf~~ **RESOLVED**: Notion refocuses the top-bar button. The keydown fallback now covers focused top-bar buttons and excludes database grids. Stale `popupReturn` after a click-outside close: not yet checked.
+- ~~Cmd-z in normal mode leaves the restored text selected; `desired_column` stale after Cmd-v~~ **RESOLVED**: after Cmd-z/Cmd-Shift-z/Cmd-v/Cmd-x in normal mode, the selection collapses, the caret rests on a character, and the line and column are re-read. Cmd-Shift-z landing on the pre-undo position: still Notion's placement.
+- `z<CR>`/`z-` leave the line 70px from the window edge.
+- ~~Esc does not close the AI prompt or the `:` emoji picker~~ **RESOLVED**: the AI prompt (`.notion-agent-writer-ui`) is not a line, so Esc reaches Notion and the cursor returns to the line, still in insert mode. The emoji picker is a dialog/grid in the overlay, now recognised as an inline menu. ~~A code block made with ```` ``` ```` puts the caret on the title~~ **Not Vimtion**: the same steps in a Chromium without the extension (fresh fixture, click, End, Enter, type ```` ``` ```` then `abc`) also leave the caret outside the new code block, and `abc` is lost, both headless and headed. Notion currently drops the caret after this conversion.
+- `j`/`k` skip the rows of a soft-line-break text block. A column inside an emoji after Esc.
+- Text typed into a table cell is not saved. `W` on the last WORD. `;` after `t`/`T` next to the target.
+- The refix-a/refix-b areas (emoji edges, undo/redo chains, typeahead edges) did not finish. Their browsers also lost the extension mid-run when `dist-dev` was rebuilt.
+
+Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes (code-block-nav:416, operators:81, undo-redo:132, markdown-chaos). To investigate:
+- navigation:485 `{`
+- operators-block-types:61 `V+d`
+- scenario-ime:184
+- scenario-speed-typist:82 (`holdKey j×30`)
+- stress-fast-user:91
+- ui-sync:80/98/111/139/161: timeouts, "page closed"; possibly infrastructure
+
+## BUG-092: Japanese/CJK lines had no "words"; emoji edges in visual mode, code blocks, `a`, `X`, `p`
+
+- **Detected**: 2026-10-17 (sweep 3, refix-a agent).
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+  - Word motions and text objects use Unicode letters/digits/marks (`text/word-char.ts`), not ASCII `\w`. Before, on "日本語 テキスト です", `dw`/`cw` wiped the line, `yiw` yanked "" and `w` left the line. Vim's further split of kanji/hiragana/katakana runs is not modelled.
+  - Grapheme-aware: `a` and charwise `p` go after the whole emoji, `X` deletes the whole emoji before the cursor, visual `h`/`l` and the visual range cover whole emoji, and code-block `h`/`l`/`x` step over and delete whole emoji.
+- Also fixed: a popup closed by clicking outside (Notion's backdrop) left a stale return episode, so a later popup's Esc jumped the cursor back to the old line.
+
+## BUG-093: After closing a database cell editor, `x` or typing went into the database row; Cmd+F returned to the title
+
+- **Detected**: 2026-10-17 (sweep 3, hijack agent). **Critical** (data loss: the row name was erased).
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Root cause**:
+  - After a cell editor closes (Enter or Esc), Notion keeps the grid cell selected and routes typing and `cut` to it. The popup-return restore only moved the DOM caret, so Vimtion looked in sync while Notion edited the cell.
+  - For Cmd+F, Notion moves the caret to the title just before the find input takes focus, and that title caret was recorded as the return spot.
+- **Fix**:
+  - The restore sends a pointer press (pointerdown/mousedown/pointerup/mouseup/click) at the caret inside the line, as a user click would, which clears Notion's own selection. Mouse events alone did not do it, and a press on the line's edge block-selected the line (the next `x` cut the block).
+  - Cmd/Ctrl shortcuts snapshot the page caret on keydown and freeze it for 400ms.
+  - Verified: row "abc" survives `x`, `xx` and `iZy<Esc>` after both Enter and Esc closes; Cmd+F then Esc returns to the line and column; Cmd+/ still restores.
+
+## BUG-094: Typeahead replay dropped Backspace/Enter/arrows/Cmd-z, broke `jk`; `o` and `G`/`gg` did not hold typeahead
+
+- **Detected**: 2026-10-17 (sweep 3, refix-b agent).
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Fix**:
+  - Replayed keys whose effect is a default action are performed explicitly: Backspace/Delete through `execCommand`, arrows through `Selection.modify`, and Enter/Tab/Cmd-combos as a synthetic keydown, which Notion and Vimtion's line listener handle like a real key.
+  - Queued `j`/`k` go through the insert reducer's jk logic (`isJPending`).
+  - `o` and `G`/`gg` hold typeahead until the cursor has moved. Each operation sets its own replay delay (100ms after a block cut, 0 otherwise).
+  - Verified at 30ms gaps: `Oab<BS>c` → "ac", `Oab<CR>cd` → "ab"/"cd", `Oab<Left>X` → "aXb", `Oabjk` and `ddoabjk` → normal mode, `Ojjx` → "jjx", `oxy` at 0ms → new line "xy", `Gx` at 0ms deletes on the last line.
+- Not fixed (minor): a 0ms burst of `j` into a code block followed by `dd` can delete in the wrong code line.
+
+## Open after sweep 3 (2026-10-17), not release-blocking
+
+- `j`/`k` inside a text block with soft line breaks (Shift+Enter) skip its rows and land at an absolute offset. This predates the branch.
+- Esc right after typing an emoji in insert mode stores `desired_column` inside the emoji, so the next `j` lands one column too far right.
+- `r` (redo) of a multi-line `Vjd` lands one line below the change.
+- `yl` is not implemented, and `yiw`/`viw` on an emoji select nothing (BUG-067/069 family).
+- Vim splits kanji, hiragana and katakana runs into separate words; Vimtion treats a run of any letters as one word.
+- After `/database inline` and `/table`, Notion itself puts the caret in the page title or nowhere.

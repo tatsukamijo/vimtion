@@ -6,6 +6,19 @@ export {
   getCursorIndex,
   getCursorIndexInElement,
   setCursorPosition,
+  resolveTextPosition,
+  selectCharRange,
+  deleteCharRange,
+  lineBoundsAt,
+  charBoundsAt,
+  columnInLine,
+  cutCharRange,
+  markNavigation,
+  clearNavigationGuard,
+  msSinceNavigation,
+  msSinceUserScroll,
+  isStrayCaret,
+  reassertNavigation,
 } from "./position";
 
 export { createBlockCursor, updateBlockCursor } from "./block-cursor";

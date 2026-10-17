@@ -2,8 +2,9 @@
  * Scroll and viewport navigation (Ctrl+d, Ctrl+u, Ctrl+f, Ctrl+b, gg, G)
  */
 
-import { setCursorPosition } from "../cursor";
+import { setCursorPosition, clearNavigationGuard } from "../cursor";
 import { setActiveLine } from "../core/line-management";
+import { beginBusy, endBusy } from "../core/busy";
 
 export const findScrollableContainer = (): HTMLElement => {
   // The main content scroller is inside .notion-frame
@@ -58,6 +59,9 @@ export const scrollActiveLineTo = (
 // Scroll by a fraction of the viewport height
 // Cursor position will be automatically updated by scroll event listener
 export const scrollAndMoveCursor = (pageAmount: number) => {
+  // This scroll is deliberate: the scroll listener must relocate the cursor,
+  // not pull the previous motion's line back into view.
+  clearNavigationGuard();
   const scrollContainer = findScrollableContainer();
   const scrollAmount = window.innerHeight * pageAmount;
   const currentScroll =
@@ -105,10 +109,14 @@ export function createJumpToTop(updateInfoContainer: () => void) {
     // Route through setActiveLine so its wrapper-skip handles the case where
     // lines[0] is the page-title editor wrapper — without it, gg would set
     // active_line=0 (wrapper) while the DOM cursor lands on the H1 leaf.
+    // A key typed in the 10ms before the cursor moves must act on the new
+    // line (Gx deleted a title character): hold it (core/busy.ts).
+    beginBusy(0);
     setTimeout(() => {
       vim_info.desired_column = 0;
       setActiveLine(0);
       updateInfoContainer();
+      endBusy();
     }, 10);
   };
 }
@@ -142,6 +150,7 @@ export function createJumpToBottom(
     }
 
     // Explicitly set cursor to last line (don't rely on scroll event listener)
+    beginBusy(0);
     setTimeout(() => {
       refreshLines();
       const lastLine = vim_info.lines.length - 1;
@@ -154,6 +163,7 @@ export function createJumpToBottom(
         targetElement.focus({ preventScroll: true });
         updateInfoContainer();
       }
+      endBusy();
     }, 10);
   };
 }

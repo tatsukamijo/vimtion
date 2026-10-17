@@ -7,7 +7,11 @@ import {
   findMatchingQuotes,
   findMatchingBrackets,
 } from "../text-objects/bracket";
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  deleteCharRange,
+} from "../cursor";
 
 /**
  * Dependencies injected from vim.ts
@@ -91,7 +95,7 @@ export const createBracketOperators = (deps: OperatorDeps) => {
   /**
    * Delete inner bracket/quote
    */
-  const deleteInnerBracket = (openChar: string, closeChar: string): void => {
+  const deleteInnerBracket = (openChar: string, closeChar: string): number => {
     const { vim_info } = window;
     const currentElement = vim_info.lines[vim_info.active_line].element;
     const currentCursorPosition = getCursorIndexInElement(currentElement);
@@ -111,7 +115,7 @@ export const createBracketOperators = (deps: OperatorDeps) => {
     if (!result) {
       vim_info.pending_operator = null;
       updateInfoContainer();
-      return;
+      return -1;
     }
 
     const [openIndex, closeIndex] = result;
@@ -122,19 +126,24 @@ export const createBracketOperators = (deps: OperatorDeps) => {
       console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
-    const newText = text.slice(0, openIndex + 1) + text.slice(closeIndex);
-    currentElement.textContent = newText;
+    deleteCharRange(currentElement, openIndex + 1, closeIndex);
 
-    setCursorPosition(currentElement, openIndex + 1);
-    vim_info.desired_column = openIndex + 1;
+    // Normal mode rests ON a character: clamp after deleting the line's tail.
+    const restAt = Math.max(
+      0,
+      Math.min(openIndex + 1, (currentElement.textContent || "").length - 1),
+    );
+    setCursorPosition(currentElement, restAt);
+    vim_info.desired_column = restAt;
     vim_info.pending_operator = null;
     updateInfoContainer();
+    return openIndex + 1;
   };
 
   /**
    * Delete around bracket/quote
    */
-  const deleteAroundBracket = (openChar: string, closeChar: string): void => {
+  const deleteAroundBracket = (openChar: string, closeChar: string): number => {
     const { vim_info } = window;
     const currentElement = vim_info.lines[vim_info.active_line].element;
     const currentCursorPosition = getCursorIndexInElement(currentElement);
@@ -154,7 +163,7 @@ export const createBracketOperators = (deps: OperatorDeps) => {
     if (!result) {
       vim_info.pending_operator = null;
       updateInfoContainer();
-      return;
+      return -1;
     }
 
     const [openIndex, closeIndex] = result;
@@ -165,21 +174,31 @@ export const createBracketOperators = (deps: OperatorDeps) => {
       console.error("[Vim-Notion] Failed to copy to clipboard:", err);
     });
 
-    const newText = text.slice(0, openIndex) + text.slice(closeIndex + 1);
-    currentElement.textContent = newText;
+    deleteCharRange(currentElement, openIndex, closeIndex + 1);
 
-    setCursorPosition(currentElement, openIndex);
-    vim_info.desired_column = openIndex;
+    // Normal mode rests ON a character: clamp after deleting the line's tail.
+    const restAt = Math.max(
+      0,
+      Math.min(openIndex, (currentElement.textContent || "").length - 1),
+    );
+    setCursorPosition(currentElement, restAt);
+    vim_info.desired_column = restAt;
     vim_info.pending_operator = null;
     updateInfoContainer();
+    return openIndex;
   };
 
   /**
    * Change inner bracket/quote (delete and enter insert mode)
    */
   const changeInnerBracket = (openChar: string, closeChar: string): void => {
-    deleteInnerBracket(openChar, closeChar);
-    window.vim_info.mode = "insert";
+    const start = deleteInnerBracket(openChar, closeChar);
+    // No matching pair: Vim aborts and stays in normal mode.
+    if (start < 0) return;
+    const { vim_info } = window;
+    // Insert at the deletion point (the delete clamped the normal-mode caret).
+    setCursorPosition(vim_info.lines[vim_info.active_line].element, start);
+    vim_info.mode = "insert";
     updateInfoContainer();
   };
 
@@ -187,8 +206,13 @@ export const createBracketOperators = (deps: OperatorDeps) => {
    * Change around bracket/quote (delete and enter insert mode)
    */
   const changeAroundBracket = (openChar: string, closeChar: string): void => {
-    deleteAroundBracket(openChar, closeChar);
-    window.vim_info.mode = "insert";
+    const start = deleteAroundBracket(openChar, closeChar);
+    // No matching pair: Vim aborts and stays in normal mode.
+    if (start < 0) return;
+    const { vim_info } = window;
+    // Insert at the deletion point (the delete clamped the normal-mode caret).
+    setCursorPosition(vim_info.lines[vim_info.active_line].element, start);
+    vim_info.mode = "insert";
     updateInfoContainer();
   };
 

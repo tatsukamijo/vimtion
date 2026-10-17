@@ -1,0 +1,205 @@
+#!/usr/bin/env node
+/**
+ * vt — CLI for the Vimtion live driver (see README.md in this directory).
+ *
+ *   vt start [--headless]        launch browser + driver server (background)
+ *   vt stop
+ *   vt clean [--all]             delete profiles/state of stopped ports (keeps 9333 login seed)
+ *   vt open [url]                open url (default: NOTION_TEST_PAGE_URL)
+ *   vt fixture <file|-> [--title T]  create a fresh Notion page from a spec and open it
+ *                                (empty spec + --title "" = a brand-new blank page)
+ *   vt refixture                 re-create the last fixture (clean slate)
+ *   vt keys <seq> [--delay ms] [--each] [--series 0,50,200,700] [--settle ms] [--all]
+ *   vt hold <key> <n> [--interval ms] [--series ...]
+ *   vt click <target> [--mod Shift]   real mouse click; target = "x,y" or "text@offset"
+ *   vt dblclick|move <target>
+ *   vt drag <from> <to>          real mouse drag (e.g. drag 'bravo@0' 'charlie@3')
+ *   vt type <text>               insert literal text
+ *   vt state [--all]             vim_info vs DOM snapshot
+ *   vt shot [file] [--full]      screenshot → prints path
+ *   vt eval [--iso] <js>         evaluate in page (or Vimtion's isolated world)
+ *   vt console [regex] [--clear]
+ *   vt clip                      read clipboard
+ *   vt reload [--nobuild]        npm run build + hot-reload extension + reload page
+ * Add --json to any command for the raw JSON response.
+ */
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const PORT = Number(process.env.VT_PORT || 9333);
+const HERE = __dirname;
+
+const argv = process.argv.slice(2);
+const flags = {};
+const pos = [];
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  if (a.startsWith("--")) {
+    const k = a.slice(2);
+    const next = argv[i + 1];
+    if (["delay", "series", "settle", "interval", "mod", "title"].includes(k)) {
+      flags[k] = next;
+      i++;
+    } else flags[k] = true;
+  } else pos.push(a);
+}
+const [cmd, ...rest] = pos;
+
+async function send(payload, retries = 3) {
+  for (let i = 0; ; i++) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${PORT}/cmd`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      return await res.json();
+    } catch (e) {
+      // Transient connection failures happen under load; only a refused
+      // connection after retries means the driver is really down.
+      if (i >= retries) throw e;
+      await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+    }
+  }
+}
+
+async function alive() {
+  try {
+    await send({ cmd: "ping" }, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const num = (v) => (v === undefined ? undefined : Number(v));
+const series = (v) => (v ? String(v).split(",").map(Number) : undefined);
+
+async function main() {
+  if (!cmd || cmd === "help") {
+    console.log(fs.readFileSync(__filename, "utf8").split("*/")[0]);
+    return;
+  }
+  if (cmd === "start") {
+    if (await alive()) {
+      console.log("driver already running");
+      return;
+    }
+    const outDir = path.join(HERE, "out", String(PORT));
+    fs.mkdirSync(outDir, { recursive: true });
+    const log = fs.openSync(path.join(outDir, "server.log"), "a");
+    const child = spawn(
+      process.execPath,
+      [path.join(HERE, "server.mjs"), ...(flags.headless ? ["--headless"] : [])],
+      { detached: true, stdio: ["ignore", log, log], cwd: path.resolve(HERE, "..", "..") },
+    );
+    child.unref();
+    for (let i = 0; i < 180; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (await alive()) {
+        console.log(`driver started (pid ${child.pid})`);
+        return;
+      }
+    }
+    console.error(`driver failed to start; see ${path.join(HERE, "out", String(PORT), "server.log")}`);
+    process.exit(1);
+  }
+  if (cmd === "clean") {
+    // Remove driver profiles/state for ports whose driver is not running.
+    // Keeps the default port's profile (the login seed) unless --all.
+    for (const name of fs.readdirSync(HERE)) {
+      const m = name.match(/^\.(profile|state)-(\d+)(\.json)?$/);
+      if (!m) continue;
+      const port = Number(m[2]);
+      if (port === 9333 && !flags.all) continue;
+      const running = await fetch(`http://127.0.0.1:${port}/cmd`, { method: "POST", body: '{"cmd":"ping"}' })
+        .then(() => true)
+        .catch(() => false);
+      if (running) continue;
+      fs.rmSync(path.join(HERE, name), { recursive: true, force: true });
+      console.log(`removed ${name}`);
+    }
+    return;
+  }
+  if (cmd === "stop") {
+    if (await alive()) await send({ cmd: "shutdown" }).catch(() => {});
+    console.log("stopped");
+    return;
+  }
+
+  let payload;
+  switch (cmd) {
+    case "open":
+      payload = { cmd, url: rest[0] };
+      break;
+    case "fixture": {
+      const src = rest[0] && rest[0] !== "-" ? fs.readFileSync(rest[0], "utf8") : fs.readFileSync(0, "utf8");
+      payload = { cmd, spec: src, title: flags.title === undefined ? undefined : String(flags.title) };
+      break;
+    }
+    case "keys":
+      payload = {
+        cmd,
+        keys: rest.join(" "),
+        delay: num(flags.delay),
+        series: series(flags.series),
+        settle: num(flags.settle),
+        each: !!flags.each,
+        all: !!flags.all,
+      };
+      break;
+    case "hold":
+      payload = { cmd, key: rest[0], count: Number(rest[1] || 10), interval: num(flags.interval), series: series(flags.series) };
+      break;
+    case "click":
+    case "dblclick":
+    case "move":
+      payload = { cmd: "mouse", action: cmd, from: rest[0], modifiers: flags.mod };
+      break;
+    case "drag":
+      payload = { cmd: "mouse", action: "drag", from: rest[0], to: rest[1], modifiers: flags.mod };
+      break;
+    case "type":
+      payload = { cmd, text: rest.join(" ") };
+      break;
+    case "state":
+      payload = { cmd, all: !!flags.all };
+      break;
+    case "shot":
+      payload = { cmd, file: rest[0] && path.resolve(rest[0]), full: !!flags.full };
+      break;
+    case "eval":
+      payload = { cmd, js: rest.join(" "), world: flags.iso ? "iso" : "main" };
+      break;
+    case "console":
+      payload = { cmd, pattern: rest[0], clear: !!flags.clear };
+      break;
+    case "clip":
+      payload = { cmd: "clipboard" };
+      break;
+    case "reload":
+      payload = { cmd, nobuild: !!flags.nobuild };
+      break;
+    case "refixture":
+      payload = { cmd };
+      break;
+    default:
+      console.error(`unknown command: ${cmd}`);
+      process.exit(2);
+  }
+
+  let out;
+  try {
+    out = await send(payload);
+  } catch {
+    console.error("driver not running — `vt start` first");
+    process.exit(1);
+  }
+  if (flags.json) console.log(JSON.stringify(out, null, 2));
+  else if (out.error) {
+    console.error(out.error);
+    process.exit(1);
+  } else console.log(out.text);
+}
+
+main();

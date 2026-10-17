@@ -418,7 +418,7 @@ test.describe("Code block navigation", () => {
     await goToBlock(page, "Plain text line 5");
 
     // Enter insert mode and go to end of line
-    await pressKeys(page, "Shift+a");
+    await pressKeys(page, "Shift+A");
     await page.waitForTimeout(200);
 
     // Press Enter to create a new empty line below
@@ -486,7 +486,7 @@ test.describe("Code block navigation", () => {
     await pressKeys(page, "j"); // line 1
     await page.waitForTimeout(200);
 
-    await pressKeys(page, "Shift+a"); // insert at end
+    await pressKeys(page, "Shift+A"); // insert at end
     await page.waitForTimeout(200);
     await page.keyboard.type("_EDIT");
     await page.waitForTimeout(100);

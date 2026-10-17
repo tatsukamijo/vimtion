@@ -4,7 +4,14 @@
  */
 
 import { isInsideCodeBlock } from "../notion";
-import { setCursorPosition } from "../cursor";
+import { documentEditables, isDocumentEditable } from "./dom-utils";
+import {
+  setCursorPosition,
+  getCursorIndexInElement,
+  markNavigation,
+  isStrayCaret,
+  reassertNavigation,
+} from "../cursor";
 import { updateInfoContainer } from "../ui/info-container";
 
 /**
@@ -50,6 +57,14 @@ export const isWrapperLine = (idx: number): boolean => {
  *
  * @param idx - Line index to activate
  */
+/**
+ * Highest column the caret may rest on for a line of `length` characters:
+ * in normal/visual mode it sits ON the last character (length - 1), in insert
+ * mode it may sit after it.
+ */
+const lastColumn = (length: number): number =>
+  window.vim_info.mode === "insert" ? length : Math.max(0, length - 1);
+
 export const setActiveLine = (idx: number): void => {
   const {
     vim_info: { lines, desired_column },
@@ -106,14 +121,15 @@ export const setActiveLine = (idx: number): void => {
       }
       // Add desired column on the last line
       const lastLineLength = codeLines[codeLines.length - 1].length;
-      cursorPosition += Math.min(desired_column, lastLineLength);
+      cursorPosition += Math.min(desired_column, lastColumn(lastLineLength));
     } else {
       // Moving down: go to the first line at desired column
       const firstLineLength = codeLines[0].length;
-      cursorPosition = Math.min(desired_column, firstLineLength);
+      cursorPosition = Math.min(desired_column, lastColumn(firstLineLength));
     }
 
     setCursorPosition(targetElement, cursorPosition);
+    markNavigation(targetElement, cursorPosition);
   } else {
     // For normal blocks, click() and focus() with preventScroll to avoid
     // unwanted page jumps. Headings are an exception: Notion's own click
@@ -133,8 +149,9 @@ export const setActiveLine = (idx: number): void => {
 
     // Set cursor to desired column, or end of line if line is shorter
     const lineLength = targetElement.textContent?.length || 0;
-    const targetColumn = Math.min(desired_column, lineLength);
+    const targetColumn = Math.min(desired_column, lastColumn(lineLength));
     setCursorPosition(targetElement, targetColumn);
+    markNavigation(targetElement, targetColumn);
   }
 };
 
@@ -148,14 +165,14 @@ export const setActiveLine = (idx: number): void => {
 export const createRefreshLines = (handlers: EventHandlers) => {
   return (): void => {
     const { vim_info } = window;
-    const allEditableElements = Array.from(
-      document.querySelectorAll("[contenteditable=true]"),
-    ) as HTMLDivElement[];
+    const allEditableElements = documentEditables();
 
     // Snapshot the active line's identity BEFORE rebuilding the lines array.
     // The element reference may become stale (Notion swaps leaf elements during
     // markdown-shortcut conversion); block_id was cached eagerly when the entry
     // was built, so it survives the swap.
+    const previousLines = vim_info.lines;
+    const previousActiveIndex = vim_info.active_line;
     const previousActive = vim_info.lines[vim_info.active_line];
     const previousActiveElement = previousActive?.element ?? null;
     const previousActiveBlockId = previousActive?.block_id ?? null;
@@ -272,11 +289,20 @@ export const createRefreshLines = (handlers: EventHandlers) => {
       }
     }
 
-    if (!tierOneFired && selLeaf && selLeaf !== previousActiveElement) {
+    const strayAfterNav = isStrayCaret(selLeaf);
+    if (strayAfterNav) reassertNavigation();
+    if (
+      !tierOneFired &&
+      !strayAfterNav &&
+      selLeaf &&
+      selLeaf !== previousActiveElement
+    ) {
       const selIndex = vim_info.lines.findIndex(
         (line) => line.element === selLeaf,
       );
-      if (selIndex !== -1) {
+      // A caret Notion left on no line resolves to the page wrapper; that is
+      // not a line to move to (the next j went to the title).
+      if (selIndex !== -1 && !isWrapperLine(selIndex)) {
         vim_info.active_line = selIndex;
         tierOneFired = true;
       }
@@ -291,8 +317,26 @@ export const createRefreshLines = (handlers: EventHandlers) => {
           (line) => line.block_id === previousActiveBlockId,
         );
       }
+      // Tier 4: the active line is gone (its toggle was closed, Notion
+      // removed or replaced the block). Stay near it: the closest earlier
+      // line that survived — for a closed toggle, its head.
+      for (let i = previousActiveIndex - 1; newIndex === -1 && i >= 0; i--) {
+        const survivor = previousLines[i]?.element;
+        const idx = vim_info.lines.findIndex((line) => line.element === survivor);
+        if (idx !== -1 && !isWrapperLine(idx)) newIndex = idx;
+      }
       if (newIndex !== -1) {
         vim_info.active_line = newIndex;
+        if (
+          vim_info.mode === "normal" &&
+          vim_info.lines[newIndex].element !== previousActiveElement &&
+          !vim_info.lines.some(
+            (line, i) => line.element === selLeaf && !isWrapperLine(i),
+          )
+        ) {
+          // The caret went with the removed line; give it a home.
+          setActiveLine(newIndex);
+        }
       }
     }
 
@@ -331,16 +375,53 @@ export const createSetLines = (
   return (elements: HTMLDivElement[]): void => {
     const { vim_info } = window;
 
-    vim_info.lines = elements.map((elem) => ({
+    vim_info.lines = elements.filter(isDocumentEditable).map((elem) => ({
       cursor_position: 0,
       element: elem as HTMLDivElement,
       block_id:
         elem.closest("[data-block-id]")?.getAttribute("data-block-id") ?? null,
     }));
 
-    // Set initial active line to 0 BEFORE adding event listeners
-    // (to prevent Notion's auto-focus from changing it)
-    setActiveLine(0); // Uses the exported setActiveLine from this module
+    // If the user is already typing in one of these lines (e.g. the title of
+    // a brand-new page, which Notion focuses before Vimtion has its lines),
+    // adopt that line and leave the caret alone. Calling setActiveLine(0)
+    // there put the caret back at column 0 of the title in the middle of
+    // typing (observed: type title, Enter → cursor jumps to the title start).
+    const sel = window.getSelection();
+    const anchor = sel && sel.rangeCount > 0 ? sel.anchorNode : null;
+    const anchorEl =
+      anchor &&
+      (anchor.nodeType === Node.ELEMENT_NODE
+        ? (anchor as Element)
+        : anchor.parentElement);
+    const typingLine = anchorEl
+      ? vim_info.lines.findIndex(
+          (line, i) =>
+            !isWrapperLine(i) &&
+            (line.element === anchorEl || line.element.contains(anchorEl)),
+        )
+      : -1;
+    if (typingLine !== -1) {
+      vim_info.active_line = typingLine;
+      // A brand-new page: Notion put the caret in the (empty) title for the
+      // user to type it. Start in insert mode so those keystrokes are text,
+      // not Vim commands. (Notion marks the new-page flow with showMoveTo.)
+      const lineEl = vim_info.lines[typingLine].element;
+      const isTitle = !!lineEl
+        .closest("[data-block-id]")
+        ?.classList.contains("notion-page-block");
+      const isNewPage =
+        (lineEl.textContent || "").length === 0 ||
+        /[?&]showMoveTo=true/.test(window.location.search);
+      if (isTitle && isNewPage && vim_info.mode === "normal") {
+        vim_info.mode = "insert";
+      }
+      updateInfoContainer();
+    } else {
+      // Set initial active line to 0 BEFORE adding event listeners
+      // (to prevent Notion's auto-focus from changing it)
+      setActiveLine(0); // Uses the exported setActiveLine from this module
+    }
 
     // Add event listeners to ALL lines at once
     vim_info.lines.forEach((line) => {
@@ -377,10 +458,21 @@ export const createSetLines = (
           : anchor.parentElement;
       const leaf = el?.closest('[contenteditable="true"]') ?? null;
       if (!leaf) return false;
+      // Notion moved the caret right after a Vimtion navigation (to another
+      // line, or to another column of the right line): put it back.
+      if (
+        isStrayCaret(
+          leaf,
+          sel && sel.isCollapsed ? getCursorIndexInElement(leaf) : undefined,
+        )
+      ) {
+        reassertNavigation();
+        return false;
+      }
       const { lines, active_line } = vim_info;
       if (lines[active_line]?.element === leaf) return false;
       const idx = lines.findIndex((line) => line.element === leaf);
-      if (idx === -1) return false;
+      if (idx === -1 || isWrapperLine(idx)) return false;
       vim_info.active_line = idx;
       updateInfoContainer();
       return true;
