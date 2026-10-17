@@ -177,7 +177,8 @@ test.describe.serial("Operator + Motion", () => {
     await page.waitForTimeout(100);
 
     const text = await getBlockText(page, idx);
-    expect(text).toBe("Aquick brown fox jumps over the lazy dog");
+    // Vim: cw changes to the end of the word (like ce), keeping the space.
+    expect(text).toBe("A quick brown fox jumps over the lazy dog");
 
     await undo(page);
   });
