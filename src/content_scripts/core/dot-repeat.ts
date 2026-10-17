@@ -10,6 +10,7 @@
  */
 
 import { beginBusy, endBusy, deferInput, isBusy } from "./busy";
+import { isDocumentEditable } from "./dom-utils";
 
 // Normal-mode keys that start a change. (u / r are undo / redo here, y only
 // yanks, v / V start a selection: none of these is repeatable.)
@@ -40,6 +41,12 @@ const finishIfIdle = () => {
 /** Watch a real keydown before Vimtion handles it. */
 export const recordKey = (e: KeyboardEvent): void => {
   if (!e.isTrusted || ["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) return;
+  // Only keys typed into the page: not the search bar, a comment box, a
+  // database cell or any other Notion field.
+  const t = e.target as HTMLElement | null;
+  const editable = t?.closest?.('[contenteditable="true"]') ?? null;
+  const onPage = t === document.body || (!!editable && isDocumentEditable(editable));
+  if (!onPage) return;
   const { vim_info } = window;
 
   // `.` itself is never part of a change; it closes the one in progress.

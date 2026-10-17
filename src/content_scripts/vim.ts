@@ -181,6 +181,12 @@ import {
 import { recordKey, repeatLastChange } from "./core/dot-repeat";
 import { repeatLastFind } from "./navigation/char-find";
 import {
+  openSearch,
+  repeatSearch,
+  searchWordUnderCursor,
+  SEARCH_BAR_CLASS,
+} from "./navigation/search";
+import {
   toggleCase,
   joinLines,
   shiftBlock,
@@ -875,6 +881,8 @@ document.addEventListener(
   (e) => {
     const target = e.target as Element | null;
     if (!target || isPageEditable(target)) return;
+    // Vimtion's own search bar returns the cursor itself.
+    if (target.closest(`.${SEARCH_BAR_CLASS}`)) return;
     const isPopupInput =
       target.tagName === "INPUT" ||
       target.tagName === "TEXTAREA" ||
@@ -3823,6 +3831,24 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
     case "%":
       jumpToMatchingBracket();
       return true;
+    case "/":
+      openSearch("forward", updateInfoContainer);
+      return true;
+    case "?":
+      openSearch("backward", updateInfoContainer);
+      return true;
+    case "n":
+      repeatSearch(false, updateInfoContainer);
+      return true;
+    case "N":
+      repeatSearch(true, updateInfoContainer);
+      return true;
+    case "*":
+      searchWordUnderCursor("forward", updateInfoContainer);
+      return true;
+    case "#":
+      searchWordUnderCursor("backward", updateInfoContainer);
+      return true;
     case ">":
     case "<":
       window.vim_info.pending_operator = e.key;
@@ -4319,7 +4345,7 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
 // ---------------------------------------------------------------------------
 const MAX_COUNT = 999;
 // Commands that a count simply repeats.
-const REPEATED = new Set(["h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "{", "}", "x", "X", ";", ",", "~"]);
+const REPEATED = new Set(["h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "{", "}", "x", "X", ";", ",", "~", "n", "N"]);
 // Motions after y / c that a count extends (built as a visual selection).
 const VISUAL_MOTIONS = new Set(["w", "b", "e", "W", "B", "E", "h", "l"]);
 
