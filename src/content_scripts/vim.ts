@@ -1712,6 +1712,21 @@ const visualReducer = (e: KeyboardEvent): boolean => {
     case "x":
       deleteVisualSelection();
       return true;
+    case "c":
+    case "s": {
+      // Delete the selection and insert where it was (Vim's v_c).
+      const element = vim_info.lines[vim_info.active_line].element;
+      const start = getCursorIndexInElement(element);
+      const emptyLine = (element.textContent || "").length === 0;
+      deleteVisualSelection();
+      if (!emptyLine && element.isConnected) {
+        setCursorPosition(element, start);
+        vim_info.mode = "insert";
+        vim_info.desired_column = columnInLine(element, start);
+        updateInfoContainer();
+      }
+      return true;
+    }
     case "y":
       yankVisualSelection();
       return true;
@@ -3428,7 +3443,7 @@ const handlePendingOperator = (key: string): boolean => {
   return true;
 };
 
-const normalReducer = (e: KeyboardEvent): boolean => {
+const normalReducerBase = (e: KeyboardEvent): boolean => {
   // Handle specific Ctrl key combinations for page navigation
   if (e.ctrlKey && !e.metaKey && !e.altKey) {
     const key = e.key.toLowerCase();
@@ -4218,6 +4233,207 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       // Block all other keys in normal mode (including space, numbers, etc.)
       return true;
   }
+};
+
+// ---------------------------------------------------------------------------
+// Counts (3j, 5x, 2dd, d3w, 3dw, 10G, 2f, ...). Digits accumulate in
+// vim_info.count; the next command runs with the count. normalReducerBase
+// stays count-unaware: repeatable commands are run N times, and the few that
+// mean something different with a count (G, gg, dd/yy/cc, y/c + motion, u, r)
+// are handled here.
+// ---------------------------------------------------------------------------
+const MAX_COUNT = 999;
+// Commands that a count simply repeats.
+const REPEATED = new Set(["h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "{", "}", "x", "X", ";", ","]);
+// Motions after y / c that a count extends (built as a visual selection).
+const VISUAL_MOTIONS = new Set(["w", "b", "e", "W", "B", "E", "h", "l"]);
+
+const resetCount = () => {
+  const { vim_info } = window;
+  vim_info.count = "";
+  vim_info.op_count = 1;
+  vim_info.pending_count = 1;
+};
+
+const key = (k: string) => new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true });
+
+/** Go to line n (1-based, as the status bar numbers lines). */
+const goToLineNumber = (n: number) => {
+  const { vim_info } = window;
+  if (vim_info.lines.length === 0) return;
+  vim_info.desired_column = 0;
+  setActiveLine(Math.max(0, Math.min(n - 1, vim_info.lines.length - 1)));
+  updateInfoContainer();
+};
+
+/**
+ * Visual-mode motions schedule a deferred selection redraw; driven
+ * synchronously (below) it lands after the operator and re-selects the
+ * range in normal mode. Put the caret back where the operator left it.
+ */
+const settleAfterSyntheticVisual = () => {
+  const { vim_info } = window;
+  const element = vim_info.lines[vim_info.active_line]?.element;
+  if (!element) return;
+  const pos = getCursorIndexInElement(element);
+  const mode = vim_info.mode;
+  setTimeout(() => {
+    const sel = window.getSelection();
+    if (vim_info.mode !== mode || !sel || sel.isCollapsed) return;
+    if (mode === "normal" || mode === "insert") setCursorPosition(element, pos);
+  }, 60);
+};
+
+/** Ndd / Nyy / Ncc: the same lines as V + (N-1)j + d / y / c. */
+const linewiseWithCount = (op: string, n: number) => {
+  startVisualLineMode();
+  for (let i = 1; i < n; i++) visualLineReducer(key("j"));
+  visualLineReducer(key(op));
+  settleAfterSyntheticVisual();
+};
+
+/** y / c + count + motion: select the range in visual mode, then operate. */
+const charwiseWithCount = (op: string, motion: string, n: number) => {
+  const { vim_info } = window;
+  const backward = motion === "b" || motion === "B" || motion === "h";
+  // Vim's backward motions exclude the character under the cursor.
+  if (backward) normalReducerBase(key("h"));
+  startVisualMode();
+  // c + w acts like c + e (Vim's cw special case).
+  const m = op === "c" && (motion === "w" || motion === "W") ? (motion === "w" ? "e" : "E") : motion;
+  for (let i = 0; i < n; i++) visualReducer(key(m));
+  // w / W are exclusive: do not take the first character of the next word.
+  if ((m === "w" || m === "W") && vim_info.desired_column > vim_info.visual_start_pos) {
+    visualReducer(key("h"));
+  }
+  visualReducer(key(op));
+  settleAfterSyntheticVisual();
+};
+
+const normalReducer = (e: KeyboardEvent): boolean => {
+  const { vim_info } = window;
+  const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+  const pending = vim_info.pending_operator;
+
+  // Counts never apply to Ctrl/Cmd chords, link selection, or modifier keys.
+  if (!plain || linkSelectionMode || ["Shift", "Control", "Alt", "Meta"].includes(e.key)) {
+    return normalReducerBase(e);
+  }
+
+  // A digit extends the count: before a command, or after d / c / y (d3w).
+  // A leading 0 is the "start of line" motion. After f / t / r / g / z the
+  // digit is that command's argument.
+  if (
+    /^[0-9]$/.test(e.key) &&
+    (e.key !== "0" || vim_info.count !== "") &&
+    (!pending || pending === "d" || pending === "c" || pending === "y")
+  ) {
+    if (vim_info.count.length < 3) vim_info.count += e.key;
+    updateInfoContainer();
+    return true;
+  }
+
+  if (e.key === "Escape") {
+    resetCount();
+    return normalReducerBase(e);
+  }
+
+  const typed = vim_info.count !== "" ? Math.min(parseInt(vim_info.count, 10), MAX_COUNT) : 0;
+  vim_info.count = "";
+  const n = Math.min((pending ? vim_info.pending_count : 1) * (typed || 1), MAX_COUNT);
+  const explicit = typed > 0 || (pending !== null && vim_info.pending_count > 1);
+
+  // --- a pending command completes with the count ---
+  if (pending) {
+    vim_info.pending_count = 1;
+    if (n <= 1) return normalReducerBase(e);
+    if (pending === "f" || pending === "F" || pending === "t" || pending === "T") {
+      for (let i = 0; i < n; i++) {
+        vim_info.pending_operator = pending;
+        normalReducerBase(e);
+      }
+      return true;
+    }
+    if (pending === "g" && e.key === "g") {
+      vim_info.pending_operator = null;
+      goToLineNumber(n);
+      return true;
+    }
+    if ((pending === "d" || pending === "y" || pending === "c") && e.key === pending) {
+      vim_info.pending_operator = null;
+      vim_info.yank_type = "line";
+      linewiseWithCount(pending, n);
+      return true;
+    }
+    // dNj / dNk: the current line and N lines below / above.
+    if ((pending === "d" || pending === "y" || pending === "c") && (e.key === "j" || e.key === "k")) {
+      vim_info.pending_operator = null;
+      vim_info.yank_type = "line";
+      if (e.key === "k") {
+        const up = Math.min(n, vim_info.active_line);
+        for (let i = 0; i < up; i++) normalReducerBase(key("k"));
+        linewiseWithCount(pending, up + 1);
+      } else {
+        linewiseWithCount(pending, n + 1);
+      }
+      return true;
+    }
+    if (pending === "d" && REPEATED.has(e.key)) {
+      for (let i = 0; i < n && vim_info.mode === "normal"; i++) {
+        vim_info.pending_operator = "d";
+        normalReducerBase(e);
+      }
+      return true;
+    }
+    if ((pending === "y" || pending === "c") && VISUAL_MOTIONS.has(e.key)) {
+      vim_info.pending_operator = null;
+      vim_info.yank_type = "char";
+      charwiseWithCount(pending, e.key, n);
+      return true;
+    }
+    return normalReducerBase(e);
+  }
+
+  // --- a command that waits for more keys keeps the count ---
+  if (["f", "F", "t", "T", "g"].includes(e.key)) {
+    const handled = normalReducerBase(e);
+    vim_info.pending_count = n;
+    return handled;
+  }
+  if (e.key === "d" || e.key === "c" || e.key === "y") {
+    const handled = normalReducerBase(e);
+    vim_info.pending_count = n;
+    return handled;
+  }
+
+  if (n <= 1 && !explicit) return normalReducerBase(e);
+
+  if (e.key === "G") {
+    goToLineNumber(n);
+    return true;
+  }
+  if (e.key === "u" || e.key === "r") {
+    // undo()/redo() replay Notion's undo undo_count times.
+    vim_info.undo_count = Math.max(1, vim_info.undo_count || 1) * n;
+    return normalReducerBase(e);
+  }
+  if (e.key === "x") {
+    // Nx deletes up to the end of the line; once x had to step back onto the
+    // new last character, the line end was reached.
+    for (let i = 0; i < n; i++) {
+      const el = vim_info.lines[vim_info.active_line]?.element;
+      if (!el) break;
+      const before = getCursorIndexInElement(el);
+      normalReducerBase(e);
+      if (getCursorIndexInElement(el) < before) break;
+    }
+    return true;
+  }
+  if (REPEATED.has(e.key)) {
+    for (let i = 0; i < n && vim_info.mode === "normal"; i++) normalReducerBase(e);
+    return true;
+  }
+  return normalReducerBase(e);
 };
 
 // Get the first visible line in the viewport

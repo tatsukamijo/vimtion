@@ -91,6 +91,11 @@ export interface VimInfo {
     | "cT"
     | null;
   yank_type: "line" | "char" | null;
+  // Vim counts: digits typed so far, the count typed before an operator
+  // (3dw), and the count a pending command (f/t/d/c/y/g) will apply.
+  count: string;
+  op_count: number;
+  pending_count: number;
   undo_count: number;
   in_undo_group: boolean;
   link_hints: LinkHint[];
