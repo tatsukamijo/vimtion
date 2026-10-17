@@ -725,3 +725,11 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
 - scenario-speed-typist:82 (`holdKey j×30`)
 - stress-fast-user:91
 - ui-sync:80/98/111/139/161: timeouts, "page closed"; possibly infrastructure
+
+## BUG-092: Japanese/CJK lines had no "words"; emoji edges in visual mode, code blocks, `a`, `X`, `p`
+
+- **Detected**: 2026-10-17 (sweep 3, refix-a agent).
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+  - Word motions and text objects use Unicode letters/digits/marks (`text/word-char.ts`), not ASCII `\w`. Before, on "日本語 テキスト です", `dw`/`cw` wiped the line, `yiw` yanked "" and `w` left the line. Vim's further split of kanji/hiragana/katakana runs is not modelled.
+  - Grapheme-aware: `a` and charwise `p` go after the whole emoji, `X` deletes the whole emoji before the cursor, visual `h`/`l` and the visual range cover whole emoji, and code-block `h`/`l`/`x` step over and delete whole emoji.
+- Also fixed: a popup closed by clicking outside (Notion's backdrop) left a stale return episode, so a later popup's Esc jumped the cursor back to the old line.

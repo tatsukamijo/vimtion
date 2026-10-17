@@ -1,3 +1,4 @@
+import { WORD_CHAR, WORD_RUN_PREFIX } from "../text/word-char";
 /**
  * Word text object functions
  */
@@ -10,17 +11,17 @@ export const getInnerWordBounds = (
   let end = pos;
 
   // If not on a word character, return empty range
-  if (!/\w/.test(text[pos])) {
+  if (!WORD_CHAR.test(text[pos])) {
     return [pos, pos];
   }
 
   // Find start of word
-  while (start > 0 && /\w/.test(text[start - 1])) {
+  while (start > 0 && WORD_CHAR.test(text[start - 1])) {
     start--;
   }
 
   // Find end of word
-  while (end < text.length && /\w/.test(text[end])) {
+  while (end < text.length && WORD_CHAR.test(text[end])) {
     end++;
   }
 
@@ -35,17 +36,17 @@ export const getAroundWordBounds = (
   let end = pos;
 
   // If not on a word character, return empty range
-  if (!/\w/.test(text[pos])) {
+  if (!WORD_CHAR.test(text[pos])) {
     return [pos, pos];
   }
 
   // Find start of word
-  while (start > 0 && /\w/.test(text[start - 1])) {
+  while (start > 0 && WORD_CHAR.test(text[start - 1])) {
     start--;
   }
 
   // Find end of word
-  while (end < text.length && /\w/.test(text[end])) {
+  while (end < text.length && WORD_CHAR.test(text[end])) {
     end++;
   }
 
@@ -57,7 +58,7 @@ export const getAroundWordBounds = (
   // If no trailing whitespace, include leading whitespace instead
   if (
     end ===
-    start + (pos - start) + (text.slice(pos).match(/^\w+/)?.[0].length || 0)
+    start + (pos - start) + (text.slice(pos).match(WORD_RUN_PREFIX)?.[0].length || 0)
   ) {
     while (start > 0 && /\s/.test(text[start - 1])) {
       start--;

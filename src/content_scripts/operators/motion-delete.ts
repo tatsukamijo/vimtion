@@ -19,6 +19,7 @@ import {
 } from "../core/dom-utils";
 import { setActiveLine } from "../core/line-management";
 import { beginBusy, endBusy } from "../core/busy";
+import { WORD_CHAR } from "../text/word-char";
 
 /**
  * Dependencies for motion delete operators
@@ -210,12 +211,12 @@ export const createDeleteToNextWord =
     let pos = currentCursorPosition;
 
     // Skip current word
-    while (pos < text.length && /\w/.test(text[pos])) {
+    while (pos < text.length && WORD_CHAR.test(text[pos])) {
       pos++;
     }
 
     // Skip non-word characters
-    while (pos < text.length && !/\w/.test(text[pos])) {
+    while (pos < text.length && !WORD_CHAR.test(text[pos])) {
       pos++;
     }
 

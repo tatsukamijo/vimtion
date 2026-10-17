@@ -11,6 +11,7 @@ import {
   findMatchingBrackets,
 } from "../text-objects";
 import { getInnerParagraphBounds, getAroundParagraphBounds } from "./helpers";
+import { WORD_CHAR } from "../text/word-char";
 
 /**
  * Yank inner paragraph (excludes blank lines)
@@ -112,12 +113,12 @@ export const yankToNextWord = async () => {
   let pos = currentCursorPosition;
 
   // Skip current word (alphanumeric characters)
-  while (pos < text.length && /\w/.test(text[pos])) {
+  while (pos < text.length && WORD_CHAR.test(text[pos])) {
     pos++;
   }
 
   // Skip non-word characters (spaces, punctuation)
-  while (pos < text.length && !/\w/.test(text[pos])) {
+  while (pos < text.length && !WORD_CHAR.test(text[pos])) {
     pos++;
   }
 

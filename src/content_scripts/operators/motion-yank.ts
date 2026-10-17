@@ -5,6 +5,7 @@
 
 import { getCursorIndexInElement } from "../cursor";
 import { isParagraphBoundary } from "../notion";
+import { WORD_CHAR } from "../text/word-char";
 
 /**
  * Yank current line
@@ -47,12 +48,12 @@ export const createYankToNextWord = () => async () => {
   let pos = currentCursorPosition;
 
   // Skip current word (alphanumeric characters)
-  while (pos < text.length && /\w/.test(text[pos])) {
+  while (pos < text.length && WORD_CHAR.test(text[pos])) {
     pos++;
   }
 
   // Skip non-word characters (spaces, punctuation)
-  while (pos < text.length && !/\w/.test(text[pos])) {
+  while (pos < text.length && !WORD_CHAR.test(text[pos])) {
     pos++;
   }
 

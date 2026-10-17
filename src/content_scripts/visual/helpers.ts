@@ -13,6 +13,7 @@ import {
   setCursorPosition,
   resolveTextPosition,
   lineBoundsAt,
+  charBoundsAt,
 } from "../cursor";
 import { isInsideCodeBlock } from "../notion";
 import { getInnerWordBounds, getAroundWordBounds } from "../text-objects/word";
@@ -26,6 +27,7 @@ import {
 } from "../operators/helpers";
 import { clearAllBackgroundColors } from "../core/dom-utils";
 import { setActiveLine } from "../core/line-management";
+import { WORD_CHAR } from "../text/word-char";
 
 /**
  * Safely add a range to a selection, handling errors gracefully
@@ -97,10 +99,12 @@ export const updateVisualSelection = () => {
 
   const lineLength = currentElement.textContent?.length || 0;
 
-  const [selStart, selEnd] =
-    startPos <= currentPos
-      ? [startPos, Math.min(currentPos + 1, lineLength)] // Include character under cursor, but don't exceed line length
-      : [currentPos, Math.min(startPos + 1, lineLength)];
+  // Both ends are inclusive characters; an emoji spans 2+ code units.
+  const text = currentElement.textContent || "";
+  const lo = Math.min(startPos, currentPos);
+  const hi = Math.max(startPos, currentPos);
+  const selStart = charBoundsAt(text, lo).start;
+  const selEnd = Math.min(Math.max(charBoundsAt(text, hi).end, hi + 1), lineLength);
 
   setRangeInElement(range, currentElement, selStart, selEnd);
   selection?.removeAllRanges();
@@ -323,7 +327,10 @@ export const visualMoveCursorBackwards = () => {
 
   if (vim_info.desired_column <= start) return;
 
-  vim_info.desired_column--;
+  vim_info.desired_column = charBoundsAt(
+    element.textContent || "",
+    vim_info.desired_column - 1,
+  ).start;
   updateVisualSelection();
 };
 
@@ -342,7 +349,10 @@ export const visualMoveCursorForwards = () => {
 
   if (vim_info.desired_column >= end) return;
 
-  vim_info.desired_column++;
+  vim_info.desired_column = Math.min(
+    end,
+    charBoundsAt(currentElement.textContent || "", vim_info.desired_column).end,
+  );
   updateVisualSelection();
 };
 
@@ -356,12 +366,12 @@ export const visualJumpToNextWord = () => {
   let pos = vim_info.desired_column;
 
   // Skip current word (alphanumeric characters)
-  while (pos < text.length && /\w/.test(text[pos])) {
+  while (pos < text.length && WORD_CHAR.test(text[pos])) {
     pos++;
   }
 
   // Skip non-word characters (spaces, punctuation)
-  while (pos < text.length && !/\w/.test(text[pos])) {
+  while (pos < text.length && !WORD_CHAR.test(text[pos])) {
     pos++;
   }
 
@@ -382,12 +392,12 @@ export const visualJumpToPreviousWord = () => {
   let pos = vim_info.desired_column - 1;
 
   // Skip non-word characters (spaces, punctuation) backwards
-  while (pos > 0 && !/\w/.test(text[pos])) {
+  while (pos > 0 && !WORD_CHAR.test(text[pos])) {
     pos--;
   }
 
   // Skip current word backwards
-  while (pos > 0 && /\w/.test(text[pos - 1])) {
+  while (pos > 0 && WORD_CHAR.test(text[pos - 1])) {
     pos--;
   }
 
@@ -408,12 +418,12 @@ export const visualJumpToEndOfWord = () => {
   pos++;
 
   // Skip non-word characters
-  while (pos < text.length && !/\w/.test(text[pos])) {
+  while (pos < text.length && !WORD_CHAR.test(text[pos])) {
     pos++;
   }
 
   // Skip to end of next word
-  while (pos < text.length && /\w/.test(text[pos])) {
+  while (pos < text.length && WORD_CHAR.test(text[pos])) {
     pos++;
   }
 

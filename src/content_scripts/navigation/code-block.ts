@@ -2,7 +2,11 @@
  * Code block navigation - handles multi-line code blocks in Notion
  */
 
-import { getCursorIndexInElement, setCursorPosition } from "../cursor";
+import {
+  getCursorIndexInElement,
+  setCursorPosition,
+  charBoundsAt,
+} from "../cursor";
 import { setActiveLine } from "../core/line-management";
 import { updateInfoContainer } from "../ui/info-container";
 
@@ -115,8 +119,8 @@ export const moveCursorBackwardsInCodeBlock = () => {
     return;
   }
 
-  // Just move back one character
-  const newPos = currentPos - 1;
+  // Just move back one character (a whole emoji counts as one)
+  const newPos = charBoundsAt(text, currentPos - 1).start;
   setCursorPosition(currentElement, newPos);
   vim_info.desired_column = codeBlockVisualColumn(text, newPos);
 };
@@ -134,8 +138,8 @@ export const moveCursorForwardsInCodeBlock = () => {
     return;
   }
 
-  // Just move forward one character
-  const newPos = currentPos + 1;
+  // Just move forward one character (a whole emoji counts as one)
+  const newPos = charBoundsAt(text, currentPos).end;
   setCursorPosition(currentElement, newPos);
   vim_info.desired_column = codeBlockVisualColumn(text, newPos);
 };
@@ -193,6 +197,9 @@ export const deleteCharacterInCodeBlock = (
 ): boolean => {
   const text = element.textContent || "";
   if (offset >= text.length) return false;
+  // The whole character under the cursor (an emoji is 2+ code units).
+  const { start: charStart, end: charEnd } = charBoundsAt(text, offset);
+  offset = charStart;
   // Vim: `x` does not cross line boundaries. Inside a code block the
   // visual line break is a literal "\n" inside textContent, so refuse
   // to delete it — that would join lines, which is not `x` semantics.
@@ -210,7 +217,7 @@ export const deleteCharacterInCodeBlock = (
   const startContainer = startRange.startContainer;
   const startOffset = startRange.startOffset;
 
-  setCursorPosition(element, offset + 1);
+  setCursorPosition(element, charEnd);
   if (selection.rangeCount === 0) return false;
   const endRange = selection.getRangeAt(0);
   const endContainer = endRange.startContainer;

@@ -407,9 +407,13 @@ const insertAfterCursor = () => {
   const currentCursorPosition = getCursorIndexInElement(currentElement);
   const lineLength = currentElement.textContent?.length || 0;
 
-  // Move cursor one position forward (unless at end of line)
+  // Move cursor one character forward (unless at end of line)
   if (currentCursorPosition < lineLength) {
-    setCursorPosition(currentElement, currentCursorPosition + 1);
+    const after = charBoundsAt(
+      currentElement.textContent || "",
+      currentCursorPosition,
+    ).end;
+    setCursorPosition(currentElement, after);
     vim_info.desired_column = currentCursorPosition + 1;
   }
 
@@ -477,14 +481,12 @@ const deleteCharacterBefore = () => {
 
   // Delete the character before the cursor through the editing pipeline so
   // Notion persists it (inside code blocks a textContent write was DOM-only).
-  deleteCharRange(
-    currentElement,
-    currentCursorPosition - 1,
-    currentCursorPosition,
-  );
+  // The whole character before the cursor (an emoji is 2+ code units).
+  const before = charBoundsAt(text, currentCursorPosition - 1).start;
+  deleteCharRange(currentElement, before, currentCursorPosition);
 
-  // Move cursor back one position
-  const newCursorPosition = currentCursorPosition - 1;
+  // Move cursor back one character
+  const newCursorPosition = before;
   setCursorPosition(currentElement, newCursorPosition);
   vim_info.desired_column = columnInLine(currentElement, newCursorPosition);
 };
@@ -877,11 +879,33 @@ document.addEventListener(
   true,
 );
 
-// A click back into the page ends the popup episode without restoring.
+// A click outside the popup (into the page, or on Notion's backdrop that
+// closes it) ends the popup episode without restoring; so does focus coming
+// back to a line. A stale episode made a LATER popup's Esc jump the cursor
+// back to the line the old popup was opened from.
 document.addEventListener(
   "mousedown",
   (e) => {
-    if (popupReturn && isPageEditable(e.target as Element | null)) popupReturn = null;
+    if (!popupReturn) return;
+    const t = e.target as Element | null;
+    const inPopup = t?.closest(
+      'input, textarea, [role="dialog"], [role="menu"], [role="listbox"]',
+    );
+    if (!inPopup || isPageEditable(t)) popupReturn = null;
+  },
+  true,
+);
+document.addEventListener(
+  "focusin",
+  (e) => {
+    if (popupReturn && isPageEditable(e.target as Element | null)) {
+      // Let a pending Esc/Enter restore (it captured the episode) run first.
+      setTimeout(() => {
+        if (document.activeElement && isPageEditable(document.activeElement)) {
+          popupReturn = null;
+        }
+      }, 200);
+    }
   },
   true,
 );
@@ -2460,7 +2484,11 @@ const pasteAfterCursor = async () => {
       const lineLength = currentElement.textContent?.length || 0;
       let pastePosition = currentCursorPosition;
       if (currentCursorPosition < lineLength) {
-        pastePosition = currentCursorPosition + 1;
+        // After the whole character under the cursor (an emoji is 2+ units).
+        pastePosition = charBoundsAt(
+          currentElement.textContent || "",
+          currentCursorPosition,
+        ).end;
       }
 
       setCursorPosition(currentElement, pastePosition);
