@@ -13,8 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Line deletion works again on current Notion**: `dd`, `Vd` and `Vjd` delete the right lines. `dd` on a nested bullet keeps its children, and the cursor lands where Vim puts it.
 - **Keys typed right after `dd`, `Vd` or `O` are no longer lost**: they wait for the edit to finish and then run in order. Fast `ddj`, `ddo` + text and `O` + text all work.
-- **`x` on an emoji no longer deletes the whole line**: emoji (including skin tones and flags) count as one character for `h`, `l`, `$` and `x`.
-- **Typing in Notion's own fields no longer runs Vim commands**: the sidebar Rename box, comment box, database cells and AI prompt are left alone. After you close them, the cursor returns to the line you were on.
+- **Keys typed during those edits keep working**: Backspace, Enter, arrow keys, Cmd-Z and the `jk` escape typed right after `dd`/`O`/`o` behave as if typed slowly.
+- **`x` on an emoji no longer deletes the whole line**: emoji (including skin tones and flags) count as one character for `h`, `l`, `$`, `x`, `X`, `a`, `p`, visual mode and inside code blocks.
+- **Japanese / CJK text has words**: `w`, `b`, `e`, `dw`, `cw`, `iw` work on Japanese, Chinese and Korean text. Previously a line of Japanese had no words, so `dw` or `cw` wiped the whole line.
+- **Typing in Notion's own fields no longer runs Vim commands**: the sidebar Rename box, comment box, database cells, find bar (Cmd+F) and AI prompt are left alone. After you close them, the cursor returns to the line you were on, and edits no longer go into a database row that was just edited.
 - **Cursor jumps fixed**: `j`/`k` in tables moved only every other press, `k` out of a code block landed below it, held `j`/`k` dropped presses, and the cursor jumped to the title after yanks, popups (Cmd+/), creating a new page, undo of deleted lines, or a block drag.
 - **Clicks**: clicking a to-do checkbox or toggle no longer sends the cursor to the top of the page. Closing a toggle with the cursor inside puts the cursor on the toggle. Clicking past the end of a line rests the cursor on the last character.
 - **Code blocks**: operators, motions, `A`/`I`, visual mode and `x` work on the current code line instead of the whole block. `dd` on the last line no longer leaves an empty line, and `j`/`k` onto a shorter line land on its last character.
