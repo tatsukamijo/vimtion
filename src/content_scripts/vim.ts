@@ -641,10 +641,32 @@ const followClick = (
         focus instanceof Element ? focus : focus?.parentElement ?? null;
       const focusLeaf = focusEl?.closest('[contenteditable="true"]');
       const idx = vim_info.lines.findIndex((l) => l.element === focusLeaf);
-      if (idx !== -1 && !isWrapperLine(idx)) {
-        vim_info.active_line = idx;
-        updateInfoContainer();
+      if (idx === -1 || isWrapperLine(idx)) return;
+      vim_info.active_line = idx;
+      // Vim (mouse=a): a mouse selection within one line is a visual
+      // selection, so x / d / y / c act on it. (Vimtion's charwise visual
+      // mode is single-line; a cross-line range is left as Notion's.)
+      const anchorNode = selection.anchorNode;
+      const leaf = focusLeaf as HTMLElement;
+      if (anchorNode && leaf.contains(anchorNode) && focus) {
+        const offsetOf = (node: Node, offset: number) => {
+          const r = document.createRange();
+          r.selectNodeContents(leaf);
+          r.setEnd(node, offset);
+          return r.toString().length;
+        };
+        const a = offsetOf(anchorNode, selection.anchorOffset);
+        const f = offsetOf(focus, selection.focusOffset);
+        if (a !== f) {
+          vim_info.mode = "visual";
+          vim_info.visual_start_line = idx;
+          // Visual ends are inclusive character positions.
+          vim_info.visual_start_pos = f > a ? a : a - 1;
+          vim_info.desired_column = f > a ? f - 1 : f;
+          updateVisualSelection();
+        }
       }
+      updateInfoContainer();
       return;
     }
     let caretHere =
