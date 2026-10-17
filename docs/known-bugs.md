@@ -698,8 +698,8 @@ Nine driver agents (menus, markdown shortcuts, structure, pages, mouse, core, ol
 ## Open from the post-fix sweep (2026-10-16, stopped before it finished)
 
 Confirmed, not yet fixed:
-- **Regression (ed2bb05)**: a mouse drag across blocks in normal mode is collapsed. The click lands on the page wrapper, and `followClickAtPoint` → `followClick` replaces the non-collapsed selection with a caret. Fix: skip when the selection is not collapsed.
-- **Regression (ed2bb05)**: clicking a checkbox or toggle triangle in `v`/`V` mode, then pressing a key, silently drops visual mode. The stranded-focus keydown fallback forces normal mode. Fix: keep the visual mode when refocusing.
+- ~~Regression (ed2bb05): a mouse drag across blocks in normal mode is collapsed.~~ **RESOLVED**: `followClick` keeps a range made by a drag, double-click or Shift+click and only follows its end line.
+- ~~Regression (ed2bb05): a checkbox or toggle click in `v`/`V` mode silently drops visual mode on the next key.~~ **RESOLVED**: a click on a control ends visual mode right away, and the status bar shows it.
 - A mouse range selection (drag, double-click, Shift+click) in normal mode is not used by `x`/`d`/`y`/`v`. In Vim with `mouse=a` it enters visual mode.
 - Normal-mode Enter on a link does not save the cursor, so Back/`H` lands on the title.
 - The status-bar line number is stale after navigation plus cursor restore. A newly opened page puts the cursor on the title at the previous page's column.

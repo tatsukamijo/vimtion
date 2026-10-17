@@ -584,11 +584,19 @@ const handleClick = (e: MouseEvent) => {
 const followClickAtPoint = (e: MouseEvent) => {
   const { vim_info } = window;
   const target = e.target as HTMLElement | null;
-  // Controls do their own thing (and never move Vim's cursor).
-  if (
-    !target ||
-    target.closest("input, button, a, [role=button], [role=checkbox]")
-  ) {
+  if (!target) return;
+  // Controls do their own thing (and never move Vim's cursor). A click still
+  // ends visual mode, as in Vim; leaving the mode set made the next key run
+  // in normal mode while the status bar said VISUAL.
+  if (target.closest("input, button, a, [role=button], [role=checkbox]")) {
+    if (vim_info.mode === "visual" || vim_info.mode === "visual-line") {
+      clearAllBackgroundColors();
+      vim_info.mode = "normal";
+      vim_info.pending_operator = null;
+      delete vim_info.visual_end_pos;
+      window.getSelection()?.removeAllRanges();
+      updateInfoContainer();
+    }
     return;
   }
   if (typeof document.caretRangeFromPoint !== "function") return;
@@ -624,6 +632,21 @@ const followClick = (
   // Let the browser handle the click to position the cursor, then update our state
   setTimeout(() => {
     const selection = window.getSelection();
+    // A drag, double-click or Shift+click made a range: keep it (replacing it
+    // with a caret at the mouseup point lost cross-block mouse selections).
+    // Follow the line where the range ends.
+    if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+      const focus = selection.focusNode;
+      const focusEl =
+        focus instanceof Element ? focus : focus?.parentElement ?? null;
+      const focusLeaf = focusEl?.closest('[contenteditable="true"]');
+      const idx = vim_info.lines.findIndex((l) => l.element === focusLeaf);
+      if (idx !== -1 && !isWrapperLine(idx)) {
+        vim_info.active_line = idx;
+        updateInfoContainer();
+      }
+      return;
+    }
     let caretHere =
       !!selection &&
       selection.rangeCount > 0 &&
