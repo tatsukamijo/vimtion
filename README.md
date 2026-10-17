@@ -90,7 +90,8 @@ To access the Options page:
 **Basic**: `h` `j` `k` `l` (with line wrapping) • `w` `b` `e` `W` `B` `E` (word motions) • `0` `$` (line start/end) • `gg` `G` (document start/end)
 **Paragraph**: `{` (previous paragraph) • `}` (next paragraph)
 **History**: `H` (back) • `L` (forward)
-**Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character)
+**Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character) • `;` `,` (repeat) • `%` (matching bracket)
+**Search**: `/` `?` (search forward/backward) • `n` `N` (next/previous) • `*` `#` (word under cursor) — every match is highlighted as you type, the status bar shows `[2/5]`, and `Esc` clears the highlight
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
 **Counts**: prefix motions and commands with a number: `3j` `5w` `4x` `2dd` `d3w` `3dw` `y2b` `c2w` `10G` `3fx` `2u`
 
@@ -142,7 +143,7 @@ Faster in-document navigation:
 **Insert**: `i` `I` `a` `A` `o` `O` • **Visual**: `v` (char) `V` (line) • **Normal**: `Esc` or `jk` (in insert mode)
 
 ### Editing
-**Delete**: `x` `X` `s` `D` `dd` (delete line with block) • **Change/Yank line**: `S` `Y` • **Repeat**: `.` (repeat the last change) • **Undo/Redo**: `u` `r` (grouped undo for multi-line operations) • **Paste**: `p` `P`
+**Delete**: `x` `X` `s` `D` `dd` (delete line with block) • **Change/Yank line**: `S` `Y` • **Join**: `J` • **Indent**: `>>` `<<` • **Toggle case**: `~` • **Repeat**: `.` (repeat the last change) • **Undo/Redo**: `u` `r` (grouped undo for multi-line operations) • **Paste**: `p` `P`
 
 ### Operators with Motions
 All operators (`d` delete, `c` change, `y` yank) work with all motions:
@@ -225,12 +226,10 @@ This will correctly create separate Notion blocks for each line. Single-line pas
 
 The following Vim features are not implemented:
 
-- **Search functionality** (`/`, `?`, `n`, `N`, `*`, `#`) - Not planned due to complexity and Notion's built-in search
 - **Marks** (`m`, `'`, `` ` ``) - Not essential for basic editing workflow
 - **Macros** (`q`, `@`) - Complex to implement and not essential for most users
 - **Screen-based motions** (`M`) - Not meaningful in Notion's infinite scroll context (note: `H`/`L` are repurposed for browser history navigation)
-- **Block operations** (`J` join lines, `<`/`>` indent) - Notion's block-based structure has its own system
-- **Advanced features** (`.` repeat, `~` toggle case, `%` bracket matching, `R` replace mode) - Not essential for core editing (repeat will be implemented in the near future)
+- **Replace mode** (`R`) - Not essential for core editing
 
 **Note**: `r` is used for **redo** instead of Vim's default "replace character" to provide undo/redo functionality.
 

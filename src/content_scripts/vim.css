@@ -97,3 +97,44 @@ body.vim-visual-line-mode [contenteditable="true"]:empty::selection {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
 }
+
+/* / ? search command line */
+.vim-search-bar {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(24, 24, 27, 0.94);
+  color: #f4f4f5;
+  font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.vim-search-bar input {
+  width: 260px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.vim-search-count {
+  color: #a1a1aa;
+  font-weight: 500;
+}
+.vim-search-bar--miss .vim-search-count {
+  color: #f87171;
+}
+
+/* Search matches (hlsearch); the one under the cursor stands out. */
+::highlight(vimtion-search) {
+  background-color: rgba(250, 204, 21, 0.4);
+}
+::highlight(vimtion-search-current) {
+  background-color: rgba(249, 115, 22, 0.85);
+  color: #fff;
+}

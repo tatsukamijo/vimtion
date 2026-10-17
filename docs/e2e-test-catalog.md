@@ -649,6 +649,20 @@ Block types not already in operators-block-types.spec.ts.
 
 ---
 
+## motions-search.spec.ts (9 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | ; and , repeat f in both directions | Pass |
+| 2 | ~ toggles case and moves right; 3~ | Pass |
+| 3 | J joins the next line with one space | Pass |
+| 4 | >> indents and << outdents a block | Pass |
+| 5 | % jumps between matching brackets | Pass |
+| 6 | / search, n / N, ? backward, smartcase | Pass |
+| 7 | search highlights every match and counts the one under the cursor | Pass |
+| 8 | cancelling the search bar keeps the previous search highlighted | Pass |
+| 9 | search counts overlapping matches and keeps offsets after İ | Pass |
+
 ## Related Docs
 
 - [Known Bugs](known-bugs.md) — BUG-001 through BUG-014, BUG-029, BUG-035, BUG-036

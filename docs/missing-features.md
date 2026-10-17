@@ -4,6 +4,8 @@ Vim operations that users would expect but are not yet implemented. Discovered d
 
 ## MISSING-001: Numeric count prefix for operators
 
+- **Status**: **DONE** (1.9.0)
+
 - **Detected**: 2026-04-14
 - **Impact**: High
 - **Example**: `d3w` (delete 3 words), `5j` (move down 5 lines)
@@ -12,12 +14,16 @@ Vim operations that users would expect but are not yet implemented. Discovered d
 
 ## MISSING-002: `db` (delete backward word)
 
+- **Status**: **DONE** (1.9.0)
+
 - **Detected**: 2026-04-14
 - **Impact**: Medium
 - **Context**: `handlePendingOperator` for `d` does not handle `b` key. Falls through to `default: return true`.
 - **Expected Vim behavior**: `db` deletes from cursor backward to the start of the previous word.
 
 ## MISSING-003: `de` (delete to end of word)
+
+- **Status**: **DONE** (1.9.0)
 
 - **Detected**: 2026-04-14
 - **Impact**: Medium
@@ -26,12 +32,16 @@ Vim operations that users would expect but are not yet implemented. Discovered d
 
 ## MISSING-004: `dW`, `dB`, `dE` (WORD-based delete motions)
 
+- **Status**: **DONE** (1.9.0)
+
 - **Detected**: 2026-04-14
 - **Impact**: Low
 - **Context**: `handlePendingOperator` for `d` does not handle `W`, `B`, or `E` keys.
 - **Expected Vim behavior**: Same as `dw`/`db`/`de` but using whitespace-only word boundaries (WORD).
 
 ## MISSING-005: `c` operator in character-wise visual mode
+
+- **Status**: **DONE** (1.9.0)
 
 - **Detected**: 2026-04-14
 - **Impact**: High
@@ -40,12 +50,16 @@ Vim operations that users would expect but are not yet implemented. Discovered d
 
 ## MISSING-006: `cb`, `ce`, `cW`, `cB`, `cE` (change motions)
 
+- **Status**: **DONE** (1.9.0)
+
 - **Detected**: 2026-04-14
 - **Impact**: Medium
 - **Context**: `handlePendingOperator` for `c` mirrors `d` — only supports `c`, `w`, `$`, `0`, `{`, `}`, `f/F/t/T`, `i/a`.
 - **Expected Vim behavior**: Same as delete counterparts but entering insert mode after.
 
 ## MISSING-007: `.` (dot repeat)
+
+- **Status**: **DONE** (1.9.0)
 
 - **Detected**: 2026-04-14
 - **Impact**: High
@@ -60,11 +74,15 @@ Vim operations that users would expect but are not yet implemented. Discovered d
 
 ## MISSING-009: `/` and `?` (search)
 
+- **Status**: **DONE** (1.10.0)
+
 - **Detected**: 2026-04-14
 - **Impact**: High
 - **Expected Vim behavior**: `/` opens forward search prompt, `?` opens backward search. `n`/`N` jump to next/previous match.
 
 ## MISSING-010: `^` (first non-whitespace character)
+
+- **Status**: **DONE** (earlier)
 
 - **Detected**: 2026-04-14
 - **Impact**: Medium
@@ -72,11 +90,15 @@ Vim operations that users would expect but are not yet implemented. Discovered d
 
 ## MISSING-011: `%` (matching bracket jump)
 
+- **Status**: **DONE** (1.10.0)
+
 - **Detected**: 2026-04-14
 - **Impact**: Medium
 - **Expected Vim behavior**: `%` jumps to the matching bracket/parenthesis/brace.
 
 ## MISSING-012: `;` and `,` (repeat character search)
+
+- **Status**: **DONE** (1.10.0)
 
 - **Detected**: 2026-04-14
 - **Impact**: Medium
@@ -84,17 +106,23 @@ Vim operations that users would expect but are not yet implemented. Discovered d
 
 ## MISSING-013: `J` (join lines)
 
+- **Status**: **DONE** (1.10.0)
+
 - **Detected**: 2026-04-14
 - **Impact**: Medium
 - **Expected Vim behavior**: `J` joins the current line with the next line, separated by a space.
 
 ## MISSING-014: `~` (toggle case)
 
+- **Status**: **DONE** (1.10.0)
+
 - **Detected**: 2026-04-14
 - **Impact**: Low
 - **Expected Vim behavior**: `~` toggles the case of the character under cursor and advances.
 
 ## MISSING-015: `>>` / `<<` (indent / outdent)
+
+- **Status**: **DONE** (1.10.0)
 
 - **Detected**: 2026-04-14
 - **Impact**: Medium
@@ -107,6 +135,8 @@ Vim operations that users would expect but are not yet implemented. Discovered d
 - **Expected Vim behavior**: Move by display lines (wrapped lines) rather than logical lines.
 
 ## MISSING-017: `zz` / `zt` / `zb` (scroll positioning)
+
+- **Status**: **DONE** (1.6.0)
 
 - **Detected**: 2026-04-14
 - **Impact**: Low
