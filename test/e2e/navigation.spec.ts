@@ -595,7 +595,7 @@ test.describe.serial("Navigation", () => {
   // isolated world, and Notion ignores Selection API changes from that world after
   // mode switch to insert. Verified: page.evaluate selection works, content script doesn't.
   // Home key dispatch also ignored. This is a Chrome extension isolated world limitation.
-  test.fail("I inserts text at beginning of line", async ({ extensionPage: page }) => {
+  test("I inserts text at beginning of line", async ({ extensionPage: page }) => {
     await goToBlock(page, "The quick brown fox");
     await pressKeys(page, "0", "w", "w");
     await page.waitForTimeout(100);
@@ -704,7 +704,7 @@ test.describe.serial("Navigation", () => {
   // empty block below instead. Confirmed via debug: NEW_ABOVE ends up at origIndex+1.
   // User reports O works correctly in manual headed-mode testing — may be a
   // dispatchEvent vs real keypress or headless vs headed difference.
-  test.fail("O opens new line above and enters insert", async ({ extensionPage: page }) => {
+  test("O opens new line above and enters insert", async ({ extensionPage: page }) => {
     await goToBlock(page, "Plain text line 3");
     const beforeTexts = await getAllBlockTexts(page);
     const origIndex = beforeTexts.findIndex((t) => t.includes("Plain text line 3"));
@@ -731,7 +731,7 @@ test.describe.serial("Navigation", () => {
   // =========================================================================
 
   // BUG-008: Shift+i on heading inserts at wrong position
-  test.fail("I on heading inserts at beginning", async ({ extensionPage: page }) => {
+  test("I on heading inserts at beginning", async ({ extensionPage: page }) => {
     await goToBlock(page, "Heading 1 test");
     await pressKeys(page, "$");
     await page.waitForTimeout(100);
@@ -754,7 +754,7 @@ test.describe.serial("Navigation", () => {
   });
 
   // BUG-008: Shift+a on bullet inserts at wrong position
-  test.fail("A on bullet inserts at end", async ({ extensionPage: page }) => {
+  test("A on bullet inserts at end", async ({ extensionPage: page }) => {
     await goToBlock(page, "Bullet item 1");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
@@ -820,7 +820,7 @@ test.describe.serial("Navigation", () => {
   });
 
   // BUG-009: Shift+o creates line below instead of above
-  test.fail("O on numbered list creates line above", async ({ extensionPage: page }) => {
+  test("O on numbered list creates line above", async ({ extensionPage: page }) => {
     await goToBlock(page, "Numbered item 2");
     const beforeTexts = await getAllBlockTexts(page);
     const origIndex = beforeTexts.findIndex((t) => t.includes("Numbered item 2"));

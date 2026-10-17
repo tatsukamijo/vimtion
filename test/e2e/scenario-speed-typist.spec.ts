@@ -148,6 +148,9 @@ test.describe.serial("Scenario 5 — Speed-typist burst", () => {
   // ---------------------------------------------------------------------------
   test("Phase 3: rapid mode flap across 10 blocks", async ({ extensionPage: page }) => {
     await goToBlock(page, "Plain text line 1");
+    // Column 0, so the inserted x's land before "Plain text line N" and later
+    // phases/specs on the shared page still find those lines.
+    await pressKeys(page, "0");
     await assertCursorInvariant(page, { label: "before 10× i/x/Esc/j flap" });
 
     const startState = await getVimState(page);

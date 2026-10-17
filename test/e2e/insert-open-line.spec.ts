@@ -281,7 +281,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   // =========================================================================
 
   // BUG-009: O creates line below instead of above in automated tests
-  test.fail("O on nested bullet child creates line above it", async ({ extensionPage: page }) => {
+  test("O on nested bullet child creates line above it", async ({ extensionPage: page }) => {
     await goToBlock(page, "Nested bullet child 1");
     const before = await getAllBlockTexts(page);
     const child1Idx = before.findIndex((t) => t.includes("Nested bullet child 1"));
@@ -307,7 +307,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   });
 
   // BUG-009: O creates line below instead of above in automated tests
-  test.fail("O on parent bullet with children creates line above parent", async ({ extensionPage: page }) => {
+  test("O on parent bullet with children creates line above parent", async ({ extensionPage: page }) => {
     await goToBlock(page, "Bullet item 2");
     const before = await getAllBlockTexts(page);
     const parentIdx = before.findIndex((t) => t.includes("Bullet item 2"));
@@ -337,7 +337,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   // =========================================================================
 
   // BUG-009: O creates line below instead of above in automated tests
-  test.fail("O on text after code block creates line between code and text", async ({ extensionPage: page }) => {
+  test("O on text after code block creates line between code and text", async ({ extensionPage: page }) => {
     await goToBlock(page, "Text after code block");
     const before = await getAllBlockTexts(page);
     const textIdx = before.findIndex((t) => t.includes("Text after code block"));
@@ -451,7 +451,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   // =========================================================================
 
   // BUG-008: I doesn't move cursor to col 0 in automated tests
-  test.fail("I on bullet: text should be prepended", async ({ extensionPage: page }) => {
+  test("I on bullet: text should be prepended", async ({ extensionPage: page }) => {
     await goToBlock(page, "Bullet item 3");
     await pressKeys(page, "$");
     await page.waitForTimeout(100);
@@ -477,7 +477,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   });
 
   // BUG-008: A doesn't move cursor to end in automated tests
-  test.fail("A on nested bullet child: text should be appended", async ({ extensionPage: page }) => {
+  test("A on nested bullet child: text should be appended", async ({ extensionPage: page }) => {
     await goToBlock(page, "Nested bullet child 1");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
@@ -501,7 +501,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   });
 
   // BUG-008: I doesn't move cursor to col 0 in automated tests
-  test.fail("I on todo: text should be prepended", async ({ extensionPage: page }) => {
+  test("I on todo: text should be prepended", async ({ extensionPage: page }) => {
     await goToBlock(page, "Todo unchecked 1");
     await pressKeys(page, "$");
     await page.waitForTimeout(100);
@@ -524,7 +524,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   });
 
   // BUG-008: A doesn't move cursor to end in automated tests
-  test.fail("A on quote block: text should be appended", async ({ extensionPage: page }) => {
+  test("A on quote block: text should be appended", async ({ extensionPage: page }) => {
     await goToBlock(page, "This is a quote block");
     await pressKeys(page, "0");
     await page.waitForTimeout(100);

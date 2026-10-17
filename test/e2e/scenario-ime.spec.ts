@@ -55,6 +55,11 @@ async function goToBlock(
   await page.waitForTimeout(100);
   await page.keyboard.press("Escape");
   await waitForMode(page, "normal");
+  // Start at column 0: text these tests insert (or that leaks in normal
+  // mode) then lands before "Plain text line N", which later specs on the
+  // shared page still find. (A click past the end now rests on the last
+  // character, so inserting there split "line N" apart.)
+  await page.keyboard.press("0");
   await page.waitForTimeout(200);
 
   const allTexts = await getAllBlockTexts(page);
