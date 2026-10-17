@@ -649,7 +649,7 @@ Block types not already in operators-block-types.spec.ts.
 
 ---
 
-## motions-search.spec.ts (8 tests, fresh page per test)
+## motions-search.spec.ts (9 tests, fresh page per test)
 
 | # | Test | Status |
 |---|------|--------|
@@ -661,6 +661,7 @@ Block types not already in operators-block-types.spec.ts.
 | 6 | / search, n / N, ? backward, smartcase | Pass |
 | 7 | search highlights every match and counts the one under the cursor | Pass |
 | 8 | cancelling the search bar keeps the previous search highlighted | Pass |
+| 9 | search counts overlapping matches and keeps offsets after İ | Pass |
 
 ## Related Docs
 

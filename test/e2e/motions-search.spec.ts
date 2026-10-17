@@ -203,4 +203,32 @@ test.describe("; , ~ J >> << % and search", () => {
     expect(await highlighted(page, "vimtion-search")).toEqual(["foo", "foo"]);
     expect((await getVimState(page)).statusText).toContain("/foo [2/2]");
   });
+
+  test("search counts overlapping matches and keeps offsets after İ", async ({
+    extensionPage: page,
+  }) => {
+    await openFreshPage(page, ["İstanbul foo", "baaaa"]);
+    // "İ" lower-cases to two code units; the match must still be "foo".
+    await pressKeys(page, "/");
+    await page.keyboard.type("foo");
+    await pressKeys(page, "Enter");
+    await settle(page);
+    expect(await highlighted(page, "vimtion-search")).toEqual(["foo"]);
+    await pressKeys(page, "x");
+    await settle(page);
+    expect((await body(page))[0]).toBe("İstanbul oo");
+    // n stops at every overlapping "aa", and the count agrees.
+    await pressKeys(page, "/");
+    await page.keyboard.type("aa");
+    await pressKeys(page, "Enter");
+    await settle(page);
+    expect(await highlighted(page, "vimtion-search")).toEqual(["aa", "aa", "aa"]);
+    expect((await getVimState(page)).statusText).toContain("/aa [1/3]");
+    await pressKeys(page, "n");
+    await settle(page);
+    expect((await getVimState(page)).statusText).toContain("/aa [2/3]");
+    await pressKeys(page, "n");
+    await settle(page);
+    expect((await getVimState(page)).statusText).toContain("/aa [3/3]");
+  });
 });

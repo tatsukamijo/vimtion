@@ -500,7 +500,8 @@ export const createSetLines = (
           if (
             cur.classList.contains("vim-info-container") ||
             cur.classList.contains("vim-mode") ||
-            cur.classList.contains("vim-block-cursor")
+            cur.classList.contains("vim-block-cursor") ||
+            cur.classList.contains("vim-search-bar")
           ) {
             return true;
           }

@@ -20,6 +20,7 @@ import {
 } from "../cursor";
 import { setActiveLine, isWrapperLine } from "../core/line-management";
 import { WORD_CHAR } from "../text/word-char";
+import { findScrollableContainer } from "./scroll";
 
 type Direction = "forward" | "backward";
 
@@ -56,10 +57,23 @@ const highlightsSupported = () =>
 // The bundled DOM typings predate the registry's Map methods.
 const registry = () => (CSS as any).highlights as Map<string, Highlight>;
 
+/**
+ * Lower-case without changing the length: a few characters (e.g. U+0130)
+ * lower-case to two code units, which would shift every later index.
+ */
+const fold = (text: string) => {
+  const lower = text.toLowerCase();
+  if (lower.length === text.length) return lower;
+  return Array.from(text, (c) => {
+    const l = c.toLowerCase();
+    return l.length === c.length ? l : c;
+  }).join("");
+};
+
 const matchIndex = (haystack: string, needle: string, from: number, dir: Direction) => {
   const ignoreCase = needle === needle.toLowerCase();
-  const h = ignoreCase ? haystack.toLowerCase() : haystack;
-  const n = ignoreCase ? needle.toLowerCase() : needle;
+  const h = ignoreCase ? fold(haystack) : haystack;
+  const n = ignoreCase ? fold(needle) : needle;
   if (dir === "forward") return from > h.length ? -1 : h.indexOf(n, from);
   return from < 0 ? -1 : h.lastIndexOf(n, from);
 };
@@ -68,13 +82,22 @@ const findAll = (pattern: string): Match[] => {
   const { lines } = window.vim_info;
   const matches: Match[] = [];
   if (!pattern) return matches;
+  // A wrapper line contains other lines; skip it (one pass, not per line).
+  const elements = new Set<Element>(lines.map((l) => l.element));
+  const wrappers = new Set<Element>();
+  lines.forEach((l) => {
+    for (let p = l.element.parentElement; p; p = p.parentElement) {
+      if (elements.has(p)) wrappers.add(p);
+    }
+  });
   for (let line = 0; line < lines.length; line++) {
-    if (isWrapperLine(line)) continue;
+    if (wrappers.has(lines[line].element)) continue;
     const text = lines[line].element.textContent || "";
     let at = matchIndex(text, pattern, 0, "forward");
+    // Step by one, as n / N do, so overlapping matches ("aa" in "aaa") count.
     while (at !== -1) {
       matches.push({ line, start: at, end: at + pattern.length });
-      at = matchIndex(text, pattern, at + pattern.length, "forward");
+      at = matchIndex(text, pattern, at + 1, "forward");
     }
   }
   return matches;
@@ -98,7 +121,19 @@ const toRange = (m: Match): Range | null => {
   return range;
 };
 
+const rangesConnected = () => {
+  if (!highlightsSupported()) return true;
+  const h = registry().get(HL_ALL) as unknown as Set<Range> | undefined;
+  if (!h) return true;
+  let ok = true;
+  h.forEach((r) => {
+    if (!r.startContainer.isConnected || !r.endContainer.isConnected) ok = false;
+  });
+  return ok;
+};
+
 const clearPaint = () => {
+  painted = "";
   if (!highlightsSupported()) return;
   registry().delete(HL_ALL);
   registry().delete(HL_CURRENT);
@@ -108,12 +143,28 @@ const clearPaint = () => {
  * Paint every match of `pattern` and mark `current` (index into the matches,
  * -1 = none). Returns the "[n/total]" text.
  */
-const paint = (pattern: string, matches: Match[], current: number): string => {
+let painted = "";
+
+const paint = (pattern: string, matches: Match[], current: number, near = current): string => {
+  const count = !pattern
+    ? ""
+    : matches.length === 0
+      ? "[0/0]"
+      : current >= 0
+        ? `[${current + 1}/${matches.length}]`
+        : `[-/${matches.length}]`;
+  // Repaint only when something changed and the painted ranges still hold
+  // (Notion can replace a block's text nodes when it re-renders).
+  const key = `${pattern}\u0000${current}\u0000${near}\u0000${matches
+    .map((m) => `${m.line}:${m.start}`)
+    .join(",")}`;
+  if (key === painted && rangesConnected()) return count;
   clearPaint();
+  painted = key;
   if (!pattern) return "";
   if (highlightsSupported() && matches.length > 0) {
-    // Paint the matches nearest the current one first when there are too many.
-    const center = Math.max(0, current);
+    // Paint the matches nearest the cursor when there are too many.
+    const center = Math.max(0, near);
     const from = Math.max(0, Math.min(center - MAX_PAINTED / 2, matches.length - MAX_PAINTED));
     const ranges = matches
       .slice(from, from + MAX_PAINTED)
@@ -127,17 +178,39 @@ const paint = (pattern: string, matches: Match[], current: number): string => {
       registry().set(HL_CURRENT, h);
     }
   }
-  if (matches.length === 0) return "[0/0]";
-  return current >= 0 ? `[${current + 1}/${matches.length}]` : `[-/${matches.length}]`;
+  return count;
 };
 
-/** Index of the match at the cursor (or -1). */
-const matchAtCursor = (matches: Match[]): number => {
+/** The match `dir` from (line, pos), wrapping around (or -1). */
+const nextMatchFrom = (matches: Match[], line: number, pos: number, dir: Direction) => {
+  if (matches.length === 0) return -1;
+  if (dir === "forward") {
+    const i = matches.findIndex((m) => m.line > line || (m.line === line && m.start > pos));
+    return i === -1 ? 0 : i;
+  }
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const m = matches[i];
+    if (m.line < line || (m.line === line && m.start < pos)) return i;
+  }
+  return matches.length - 1;
+};
+
+/** The match at the cursor (-1 if none) and the next one from it. */
+const matchAtCursor = (matches: Match[]): { at: number; near: number } => {
   const { vim_info } = window;
-  const el = vim_info.lines[vim_info.active_line]?.element;
-  if (!el) return -1;
+  const line = vim_info.active_line;
+  const el = vim_info.lines[line]?.element;
+  if (!el) return { at: -1, near: 0 };
   const pos = getCursorIndexInElement(el);
-  return matches.findIndex((m) => m.line === vim_info.active_line && m.start <= pos && pos < m.end);
+  // The last match starting at or before the cursor that covers it (with
+  // overlapping matches, the one n would have stopped on).
+  let at = -1;
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    if (m.line > line || (m.line === line && m.start > pos)) break;
+    if (m.line === line && pos < m.end) at = i;
+  }
+  return { at, near: at >= 0 ? at : nextMatchFrom(matches, line, pos, "forward") };
 };
 
 /**
@@ -147,8 +220,12 @@ const matchAtCursor = (matches: Match[]): number => {
 export const refreshSearchHighlights = () => {
   if (!hlPattern || barOpen) return;
   const matches = findAll(hlPattern);
-  hlStatus = paint(hlPattern, matches, matchAtCursor(matches));
+  const { at, near } = matchAtCursor(matches);
+  hlStatus = paint(hlPattern, matches, at, near);
 };
+
+/** Whether the / ? bar is open (its preview scrolls the page). */
+export const isSearchOpen = () => barOpen;
 
 /** Turn search highlighting off (Vim's :nohlsearch). */
 export const clearSearchHighlights = () => {
@@ -206,21 +283,10 @@ const jump = (pattern: string, dir: Direction, updateInfoContainer: () => void):
   return false;
 };
 
-/** The match `dir` from (line, pos), wrapping around (or -1). */
-const nextMatchFrom = (matches: Match[], line: number, pos: number, dir: Direction) => {
-  if (matches.length === 0) return -1;
-  if (dir === "forward") {
-    const i = matches.findIndex((m) => m.line > line || (m.line === line && m.start > pos));
-    return i === -1 ? 0 : i;
-  }
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const m = matches[i];
-    if (m.line < line || (m.line === line && m.start < pos)) return i;
-  }
-  return matches.length - 1;
+const isOffscreen = (rect: DOMRect) => {
+  const box = findScrollableContainer().getBoundingClientRect();
+  return rect.bottom < Math.max(box.top, 0) || rect.top > Math.min(box.bottom, window.innerHeight);
 };
-
-const isOffscreen = (rect: DOMRect) => rect.bottom < 0 || rect.top > window.innerHeight;
 
 /** Open the / or ? command line. */
 export const openSearch = (dir: Direction, updateInfoContainer: () => void) => {
@@ -229,6 +295,8 @@ export const openSearch = (dir: Direction, updateInfoContainer: () => void) => {
   const originLine = vim_info.active_line;
   const origin = vim_info.lines[originLine]?.element;
   const originPos = origin ? getCursorIndexInElement(origin) : 0;
+  const scroller = findScrollableContainer();
+  const originScroll = scroller.scrollTop;
 
   const bar = document.createElement("div");
   bar.className = SEARCH_BAR_CLASS;
@@ -262,7 +330,8 @@ export const openSearch = (dir: Direction, updateInfoContainer: () => void) => {
       count.textContent = "";
       bar.classList.remove("vim-search-bar--miss");
       const previous = findAll(hlPattern);
-      paint(hlPattern, previous, matchAtCursor(previous));
+      const { at, near } = matchAtCursor(previous);
+      paint(hlPattern, previous, at, near);
       return;
     }
     const matches = findAll(pattern);
@@ -270,9 +339,13 @@ export const openSearch = (dir: Direction, updateInfoContainer: () => void) => {
     count.textContent = paint(pattern, matches, current);
     bar.classList.toggle("vim-search-bar--miss", matches.length === 0);
     const range = current >= 0 ? toRange(matches[current]) : null;
-    if (range && isOffscreen(range.getBoundingClientRect())) {
-      const el = vim_info.lines[matches[current].line].element as HTMLElement;
-      el.scrollIntoView({ block: "center" });
+    const rect = range?.getBoundingClientRect();
+    if (rect && isOffscreen(rect)) {
+      // Centre the match itself (a code block can be taller than the screen).
+      const box = scroller.getBoundingClientRect();
+      const visibleTop = Math.max(box.top, 0);
+      const visibleBottom = Math.min(box.bottom, window.innerHeight);
+      scroller.scrollTop += rect.top - (visibleTop + visibleBottom) / 2;
     }
   });
 
@@ -280,20 +353,21 @@ export const openSearch = (dir: Direction, updateInfoContainer: () => void) => {
   const close = () => {
     if (closed) return;
     closed = true;
-    barOpen = false;
     bar.remove();
+    // Back to where the page was before the preview scrolled it.
+    scroller.scrollTop = originScroll;
     if (origin && origin.isConnected) {
       (origin as HTMLElement).focus({ preventScroll: true });
       setCursorPosition(origin, originPos);
-      if (isOffscreen(origin.getBoundingClientRect())) {
-        (origin as HTMLElement).scrollIntoView({ block: "center" });
-      }
     }
+    barOpen = false;
   };
 
   input.addEventListener("keydown", (e) => {
     // Keep keys typed here away from Notion and Vimtion's page handling.
     e.stopPropagation();
+    // The Enter / Esc that confirms or cancels an IME conversion.
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "Escape") {
       e.preventDefault();
       close();

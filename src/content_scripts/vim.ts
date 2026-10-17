@@ -185,6 +185,7 @@ import {
   repeatSearch,
   searchWordUnderCursor,
   clearSearchHighlights,
+  isSearchOpen,
   SEARCH_BAR_CLASS,
 } from "./navigation/search";
 import {
@@ -4986,6 +4987,8 @@ const openLineAboveInCodeBlockWrapped = () => {
       if (vim_info.mode !== "normal") {
         return;
       }
+      // The search preview scrolls to a match without moving the cursor.
+      if (isSearchOpen()) return;
 
       // Check if active line is still visible
       const activeElement = vim_info.lines[vim_info.active_line]?.element;
