@@ -15,6 +15,7 @@ import { beginBusy, endBusy, deferInput, isBusy } from "./busy";
 // yanks, v / V start a selection: none of these is repeatable.)
 const CHANGE_START = new Set([
   "x", "X", "s", "S", "C", "D", "d", "c", "o", "O", "i", "a", "I", "A", "p", "P",
+  "~", "J", ">", "<",
 ]);
 
 let recording: KeyboardEvent[] | null = null;

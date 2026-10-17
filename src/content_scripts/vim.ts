@@ -179,6 +179,13 @@ import {
   setActiveSurface,
 } from "./core";
 import { recordKey, repeatLastChange } from "./core/dot-repeat";
+import { repeatLastFind } from "./navigation/char-find";
+import {
+  toggleCase,
+  joinLines,
+  shiftBlock,
+  jumpToMatchingBracket,
+} from "./operators/line-ops";
 import {
   isBusy,
   beginBusy,
@@ -3036,6 +3043,12 @@ const handlePendingOperator = (key: string): boolean => {
     vim_info.yank_type = key === "p" ? "line" : "char";
   }
 
+  if (operator === ">" || operator === "<") {
+    // >> indents, << outdents the block; anything else cancels.
+    if (key === operator) shiftBlock(operator === "<", refreshLines, updateInfoContainer);
+    return true;
+  }
+
   if (operator === "f") {
     // Handle f{char} - find character forward
     findCharForward(key);
@@ -3795,6 +3808,30 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
   }
 
   switch (e.key) {
+    case ";":
+      repeatLastFind(false);
+      return true;
+    case ",":
+      repeatLastFind(true);
+      return true;
+    case "~":
+      toggleCase();
+      return true;
+    case "J":
+      joinLines(refreshLines, updateInfoContainer);
+      return true;
+    case "%":
+      jumpToMatchingBracket();
+      return true;
+    case ">":
+    case "<":
+      window.vim_info.pending_operator = e.key;
+      return true;
+    default:
+      break;
+  }
+
+  switch (e.key) {
     case "i":
       window.vim_info.mode = "insert";
       updateInfoContainer();
@@ -4282,7 +4319,7 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
 // ---------------------------------------------------------------------------
 const MAX_COUNT = 999;
 // Commands that a count simply repeats.
-const REPEATED = new Set(["h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "{", "}", "x", "X", ";", ","]);
+const REPEATED = new Set(["h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "{", "}", "x", "X", ";", ",", "~"]);
 // Motions after y / c that a count extends (built as a visual selection).
 const VISUAL_MOTIONS = new Set(["w", "b", "e", "W", "B", "E", "h", "l"]);
 

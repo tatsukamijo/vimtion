@@ -89,6 +89,8 @@ export interface VimInfo {
     | "cF"
     | "ct"
     | "cT"
+    | ">"
+    | "<"
     | null;
   yank_type: "line" | "char" | null;
   // Vim counts: digits typed so far, the count typed before an operator
