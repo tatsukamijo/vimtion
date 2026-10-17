@@ -175,6 +175,7 @@ import {
   createSetLines,
   isDocumentEditable,
 } from "./core";
+import { recordKey, repeatLastChange } from "./core/dot-repeat";
 import {
   isBusy,
   beginBusy,
@@ -995,6 +996,10 @@ document.addEventListener(
   },
   true,
 );
+
+// `.` recording (core/dot-repeat.ts): registered before the typeahead
+// listener below, which stops keys typed during an async edit from going on.
+document.addEventListener("keydown", recordKey, true);
 
 // Typeahead during async edits (see core/busy.ts). Capture phase on the
 // document: during a block cut the caret is often on no line at all, so the
@@ -4354,6 +4359,21 @@ const normalReducer = (e: KeyboardEvent): boolean => {
   // --- a pending command completes with the count ---
   if (pending) {
     vim_info.pending_count = 1;
+    // Operator + word motion through a visual selection: gives Vim's cw (= ce)
+    // and the missing ce / cb / de / db / ye / yb (and their WORD forms).
+    // dw / dW keep their own path, which also handles line ends.
+    const viaVisual =
+      (pending === "c" || pending === "y" || pending === "d") &&
+      ["w", "W", "e", "E", "b", "B"].includes(e.key) &&
+      !(pending === "d" && (e.key === "w" || e.key === "W"));
+    const lineText =
+      vim_info.lines[vim_info.active_line]?.element.textContent || "";
+    if (viaVisual && lineText.length > 0) {
+      vim_info.pending_operator = null;
+      vim_info.yank_type = "char";
+      charwiseWithCount(pending, e.key, n);
+      return true;
+    }
     if (n <= 1) return normalReducerBase(e);
     if (pending === "f" || pending === "F" || pending === "t" || pending === "T") {
       for (let i = 0; i < n; i++) {
@@ -4400,6 +4420,12 @@ const normalReducer = (e: KeyboardEvent): boolean => {
       return true;
     }
     return normalReducerBase(e);
+  }
+
+  // . repeats the last change.
+  if (e.key === ".") {
+    repeatLastChange();
+    return true;
   }
 
   // S = cc, Y = yy (with counts: NS, NY).
