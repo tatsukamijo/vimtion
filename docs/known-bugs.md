@@ -756,3 +756,12 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
   - `o` and `G`/`gg` hold typeahead until the cursor has moved. Each operation sets its own replay delay (100ms after a block cut, 0 otherwise).
   - Verified at 30ms gaps: `Oab<BS>c` → "ac", `Oab<CR>cd` → "ab"/"cd", `Oab<Left>X` → "aXb", `Oabjk` and `ddoabjk` → normal mode, `Ojjx` → "jjx", `oxy` at 0ms → new line "xy", `Gx` at 0ms deletes on the last line.
 - Not fixed (minor): a 0ms burst of `j` into a code block followed by `dd` can delete in the wrong code line.
+
+## Open after sweep 3 (2026-10-17), not release-blocking
+
+- `j`/`k` inside a text block with soft line breaks (Shift+Enter) skip its rows and land at an absolute offset. This predates the branch.
+- Esc right after typing an emoji in insert mode stores `desired_column` inside the emoji, so the next `j` lands one column too far right.
+- `r` (redo) of a multi-line `Vjd` lands one line below the change.
+- `yl` is not implemented, and `yiw`/`viw` on an emoji select nothing (BUG-067/069 family).
+- Vim splits kanji, hiragana and katakana runs into separate words; Vimtion treats a run of any letters as one word.
+- After `/database inline` and `/table`, Notion itself puts the caret in the page title or nowhere.
