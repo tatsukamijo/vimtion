@@ -893,7 +893,8 @@ document.addEventListener(
 );
 
 // Focus somewhere that takes no typing and belongs to no popup: <body>, a
-// to-do checkbox or toggle triangle that was just clicked.
+// to-do checkbox or toggle triangle that was just clicked, the top-bar
+// button a closed menu returned focus to.
 const isStrandedFocus = (t: HTMLElement): boolean => {
   if (t === document.body || t === document.documentElement) return true;
   if (t.isContentEditable) return false;
@@ -905,7 +906,12 @@ const isStrandedFocus = (t: HTMLElement): boolean => {
     const type = (t as HTMLInputElement).type;
     return type === "checkbox" || type === "radio" || type === "button";
   }
-  return !!t.closest(".notion-page-content");
+  // Database grids: a focused cell starts editing on the next letter.
+  if (t.closest('[role="grid"], [role="gridcell"], .notion-collection_view-block')) {
+    return false;
+  }
+  // The page, or a top-bar button Notion refocused after its menu closed.
+  return !!t.closest(".notion-page-content, .notion-topbar");
 };
 
 // Keys with focus on <body> (after dragging a block, after Notion's click
@@ -2569,6 +2575,27 @@ const restOnCharacter = (element: Element): number => {
   return pos;
 };
 
+// After an edit Notion made itself (Cmd-Z / Cmd-Shift-Z / Cmd-V / Cmd-X in
+// normal mode): it re-selects restored text (typing would overwrite it) and
+// can leave the caret past the end; Vimtion's column memory is stale too.
+const settleAfterNativeEdit = () => {
+  const { vim_info } = window;
+  if (vim_info.mode !== "normal") return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  if (!sel.isCollapsed) sel.collapseToStart();
+  const node = sel.anchorNode;
+  const el = node instanceof Element ? node : node?.parentElement ?? null;
+  const leaf = el?.closest('[contenteditable="true"]');
+  const idx = vim_info.lines.findIndex((l) => l.element === leaf);
+  if (!leaf || idx === -1 || isWrapperLine(idx)) return;
+  vim_info.active_line = idx;
+  const pos = restOnCharacter(leaf);
+  vim_info.desired_column = columnInLine(leaf, pos);
+  updateBlockCursor();
+  updateInfoContainer();
+};
+
 const undo = () => {
   const { vim_info } = window;
 
@@ -3251,6 +3278,10 @@ const normalReducer = (e: KeyboardEvent): boolean => {
   if (e.metaKey || e.altKey) {
     if (!["Meta", "Alt", "Shift", "Control"].includes(e.key)) {
       clearNavigationGuard();
+    }
+    // Notion's undo / redo / paste / cut: settle into normal mode afterwards.
+    if (e.metaKey && ["z", "v", "x"].includes(e.key.toLowerCase())) {
+      setTimeout(settleAfterNativeEdit, 80);
     }
     return false;
   }

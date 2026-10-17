@@ -30,8 +30,8 @@ export const isDocumentEditable = (el: Element): boolean => {
   ) {
     return false;
   }
-  // Comment / discussion inputs inside the page.
-  if (el.closest('[class*="discussion"]')) return false;
+  // Comment / discussion inputs and the Notion AI prompt inside the page.
+  if (el.closest('[class*="discussion"], .notion-agent-writer-ui')) return false;
   const frame = document.querySelector(".notion-frame");
   return !frame || frame.contains(el);
 };

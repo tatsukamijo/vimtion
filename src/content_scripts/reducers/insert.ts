@@ -21,7 +21,7 @@ import { getCursorIndexInElement, setCursorPosition } from "../cursor";
 const inlineMenuOpen = (): boolean =>
   Array.from(
     document.querySelectorAll(
-      '.notion-overlay-container [role="listbox"], .notion-overlay-container [role="menu"]',
+      '.notion-overlay-container [role="listbox"], .notion-overlay-container [role="menu"], .notion-overlay-container [role="dialog"], .notion-overlay-container [role="grid"]',
     ),
   ).some((el) => el.getClientRects().length > 0);
 
