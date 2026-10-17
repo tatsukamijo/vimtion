@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.10.0] - 2026-10-17
 
 ### Added
-- **Search**: `/` and `?` open a small command line to search forward / backward (smartcase, wraps around the page); `n` / `N` repeat; `*` / `#` search for the word under the cursor.
+- **Search**: `/` and `?` open a small command line to search forward / backward (smartcase, wraps around the page); `n` / `N` repeat; `*` / `#` search for the word under the cursor. Every match is highlighted while you type and after the search (the one under the cursor stands out), the status bar shows the match number (`/foo [2/5]`), and `Esc` in normal mode clears the highlight.
 - **`;` and `,`** repeat the last `f` / `t` / `F` / `T`.
 - **`J`** joins the next line onto the current one with a single space (inside code blocks too). The clipboard is left alone.
 - **`>>` / `<<`** indent / outdent the block.
