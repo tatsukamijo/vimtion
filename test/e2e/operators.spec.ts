@@ -84,7 +84,7 @@ test.describe.serial("Operators", () => {
 
     const textsBefore = await getAllBlockTexts(page);
 
-    await pressKeys(page, "Shift+v");
+    await pressKeys(page, "Shift+V");
     await page.waitForTimeout(300);
     await pressKeys(page, "d");
 

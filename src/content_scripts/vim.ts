@@ -864,6 +864,24 @@ document.addEventListener(
   true,
 );
 
+// Leaving the page by clicking a link (sidebar, mention, inline link): save
+// the cursor so Back / H can restore it, as gl and Enter already do.
+document.addEventListener(
+  "click",
+  (e) => {
+    if (!e.isTrusted || e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return; // new tab / window
+    const a = (e.target as Element | null)?.closest?.("a[href]") as
+      | HTMLAnchorElement
+      | null;
+    if (!a || a.host !== window.location.host) return;
+    const pageId = (url: string) => url.match(/([a-f0-9]{32})(\?|#|$)/)?.[1] ?? null;
+    if (pageId(a.href) === pageId(window.location.href)) return;
+    if (window.vim_info.lines.length > 0) saveCursorPosition();
+  },
+  true,
+);
+
 // Typeahead during async edits (see core/busy.ts). Capture phase on the
 // document: during a block cut the caret is often on no line at all, so the
 // per-line listeners would not see the key.
@@ -3709,6 +3727,16 @@ const normalReducer = (e: KeyboardEvent): boolean => {
               return match ? match[1] : null;
             };
 
+            // Leaving for another page: remember where we were so Back / H
+            // can restore it (block links stay on this page; Shift+Enter
+            // opens a new tab).
+            const leavesPage =
+              !e.shiftKey &&
+              closestLink.host === window.location.host &&
+              extractPageId(closestLink.href) !==
+                extractPageId(window.location.href);
+            if (leavesPage) saveCursorPosition();
+
             // Use navigateToLink to handle all link types consistently
             // Shift+Enter opens in new tab
             navigateToLink(closestLink, e.shiftKey, updateInfoContainer);
@@ -4289,7 +4317,13 @@ const openLineAboveInCodeBlockWrapped = () => {
     // Reset active_line to prevent old page state from leaking. Only on the
     // first attempt: retries happen while the user may already be typing on
     // the new page.
-    if (!isRetry) window.vim_info.active_line = 0;
+    if (!isRetry) {
+      window.vim_info.active_line = 0;
+      // A new page starts at column 0 (Vim's startofline), not at the
+      // previous page's column.
+      window.vim_info.desired_column = 0;
+      window.vim_info.cursor_position = 0;
+    }
 
     // Exit link selection mode if active (old page's link references)
     if (linkSelectionMode) {
@@ -4320,6 +4354,8 @@ const openLineAboveInCodeBlockWrapped = () => {
       );
       if (hasContentLeaf) {
         setLines(editableElements);
+        // setLines moves active_line without redrawing the status bar.
+        updateInfoContainer();
 
         // Restore cursor position after navigation (if available)
         // Only restore if this is an intentional navigation (gl, Shift+H/L), not a reload
@@ -4331,6 +4367,8 @@ const openLineAboveInCodeBlockWrapped = () => {
           // Clear the flag immediately after reading it
           sessionStorage.removeItem("vimtion_intentional_navigation");
           restoreCursorPosition();
+          // The restore re-places the caret once more after 100ms.
+          setTimeout(updateInfoContainer, 150);
         } else {
           // Clear saved position for current URL since it's a reload
           try {

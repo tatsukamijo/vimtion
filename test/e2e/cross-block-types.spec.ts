@@ -393,7 +393,7 @@ test.describe("V+d across block types", () => {
       const beforeCount = before.filter((t) => t.includes(block.text)).length;
       expect(beforeCount).toBeGreaterThanOrEqual(1);
 
-      await pressKeys(page, "Shift+v");
+      await pressKeys(page, "Shift+V");
       await page.waitForTimeout(100);
       await pressKeys(page, "d");
       await page.waitForTimeout(300);

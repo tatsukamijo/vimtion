@@ -335,7 +335,7 @@ test.describe.serial("Undo / Redo", () => {
     await goToBlock(page, "Plain text line 1");
     const beforeCount = (await getAllBlockTexts(page)).length;
 
-    await pressKeys(page, "Shift+v");
+    await pressKeys(page, "Shift+V");
     await page.waitForTimeout(500);
 
     await pressKeys(page, "j", "j", "j");
@@ -364,7 +364,7 @@ test.describe.serial("Undo / Redo", () => {
     await goToBlock(page, "Plain text line 1");
     const beforeCount = (await getAllBlockTexts(page)).length;
 
-    await pressKeys(page, "Shift+v");
+    await pressKeys(page, "Shift+V");
     await page.waitForTimeout(500);
     await pressKeys(page, "j", "j", "j");
     await page.waitForTimeout(300);
@@ -398,7 +398,7 @@ test.describe.serial("Undo / Redo", () => {
     await goToBlock(page, "Bullet item 1");
     const beforeCount = (await getAllBlockTexts(page)).length;
 
-    await pressKeys(page, "Shift+v");
+    await pressKeys(page, "Shift+V");
     await page.waitForTimeout(500);
     await pressKeys(page, "j", "j", "j", "j", "j");
     await page.waitForTimeout(300);
@@ -422,7 +422,7 @@ test.describe.serial("Undo / Redo", () => {
   test("V + d stays in normal mode after delete", async ({ extensionPage: page }) => {
     await goToBlock(page, "Plain text line 5");
 
-    await pressKeys(page, "Shift+v");
+    await pressKeys(page, "Shift+V");
     await page.waitForTimeout(500);
     await pressKeys(page, "j");
     await page.waitForTimeout(300);

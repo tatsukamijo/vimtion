@@ -366,7 +366,7 @@ test.describe.serial("Navigation", () => {
     await page.waitForTimeout(100);
 
     // "find char:..." — W: f(0) -> c(5)
-    await pressKeys(page, "Shift+w");
+    await pressKeys(page, "Shift+W");
     await page.waitForTimeout(100);
 
     expect((await getCursorPosition(page)).col).toBe(5);
@@ -374,9 +374,9 @@ test.describe.serial("Navigation", () => {
 
   test("B jumps back to previous WORD start", async ({ extensionPage: page }) => {
     await goToBlock(page, "find char: abcdefghij");
-    await pressKeys(page, "0", "Shift+w", "Shift+w");
+    await pressKeys(page, "0", "Shift+W", "Shift+W");
     await page.waitForTimeout(100);
-    await pressKeys(page, "Shift+b");
+    await pressKeys(page, "Shift+B");
     await page.waitForTimeout(100);
 
     expect((await getCursorPosition(page)).col).toBe(5);
@@ -388,7 +388,7 @@ test.describe.serial("Navigation", () => {
     await page.waitForTimeout(100);
 
     // "find" ends at col 3
-    await pressKeys(page, "Shift+e");
+    await pressKeys(page, "Shift+E");
     await page.waitForTimeout(100);
 
     expect((await getCursorPosition(page)).col).toBe(3);
@@ -600,7 +600,7 @@ test.describe.serial("Navigation", () => {
     await pressKeys(page, "0", "w", "w");
     await page.waitForTimeout(100);
 
-    await pressKeys(page, "Shift+i");
+    await pressKeys(page, "Shift+I");
     await page.waitForTimeout(200);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -648,7 +648,7 @@ test.describe.serial("Navigation", () => {
     const colAfterZero = (await getCursorPosition(page)).col;
     console.log("A-DEBUG COL after 0:", colAfterZero);
 
-    await pressKeys(page, "Shift+a");
+    await pressKeys(page, "Shift+A");
     await page.waitForTimeout(200);
     const mode = (await getVimState(page)).mode;
     const colAfterA = (await getCursorPosition(page)).col;
@@ -709,7 +709,7 @@ test.describe.serial("Navigation", () => {
     const beforeTexts = await getAllBlockTexts(page);
     const origIndex = beforeTexts.findIndex((t) => t.includes("Plain text line 3"));
 
-    await pressKeys(page, "Shift+o");
+    await pressKeys(page, "Shift+O");
     await page.waitForTimeout(500);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -736,7 +736,7 @@ test.describe.serial("Navigation", () => {
     await pressKeys(page, "$");
     await page.waitForTimeout(100);
 
-    await pressKeys(page, "Shift+i");
+    await pressKeys(page, "Shift+I");
     await page.waitForTimeout(200);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -759,7 +759,7 @@ test.describe.serial("Navigation", () => {
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
 
-    await pressKeys(page, "Shift+a");
+    await pressKeys(page, "Shift+A");
     await page.waitForTimeout(200);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -825,7 +825,7 @@ test.describe.serial("Navigation", () => {
     const beforeTexts = await getAllBlockTexts(page);
     const origIndex = beforeTexts.findIndex((t) => t.includes("Numbered item 2"));
 
-    await pressKeys(page, "Shift+o");
+    await pressKeys(page, "Shift+O");
     await page.waitForTimeout(500);
     expect((await getVimState(page)).mode).toBe("insert");
 

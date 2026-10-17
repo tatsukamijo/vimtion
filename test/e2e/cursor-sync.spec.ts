@@ -55,7 +55,7 @@ async function assertInsertEscapeNavigation(
   const stateBefore = await getVimState(page);
 
   // I → Escape
-  await pressKeys(page, "Shift+i");
+  await pressKeys(page, "Shift+I");
   await waitForMode(page, "insert");
   await page.waitForTimeout(200);
   await pressKeys(page, "Escape");
@@ -188,7 +188,7 @@ test.describe.serial("Cursor synchronization", () => {
     const blockBefore = await getActualCursorBlockIndex(page);
     const stateBefore = await getVimState(page);
 
-    await pressKeys(page, "Shift+i");
+    await pressKeys(page, "Shift+I");
     await waitForMode(page, "insert");
     await page.waitForTimeout(200);
     await pressKeys(page, "Escape");
@@ -238,7 +238,7 @@ test.describe.serial("Cursor synchronization", () => {
     const startState = await getVimState(page);
 
     for (let i = 0; i < 5; i++) {
-      await pressKeys(page, "Shift+i");
+      await pressKeys(page, "Shift+I");
       await waitForMode(page, "insert");
       await page.waitForTimeout(100);
       await pressKeys(page, "Escape");
@@ -318,7 +318,7 @@ test.describe.serial("Cursor synchronization", () => {
     await navigateToBlockWithText(page, "Numbered item 2");
     const blockBefore = await getActualCursorBlockIndex(page);
 
-    await pressKeys(page, "Shift+a");
+    await pressKeys(page, "Shift+A");
     await waitForMode(page, "insert");
     await page.waitForTimeout(200);
     await pressKeys(page, "Escape");

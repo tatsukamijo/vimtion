@@ -701,9 +701,10 @@ Confirmed, not yet fixed:
 - ~~Regression (ed2bb05): a mouse drag across blocks in normal mode is collapsed.~~ **RESOLVED**: `followClick` keeps a range made by a drag, double-click or Shift+click and only follows its end line.
 - ~~Regression (ed2bb05): a checkbox or toggle click in `v`/`V` mode silently drops visual mode on the next key.~~ **RESOLVED**: a click on a control ends visual mode right away, and the status bar shows it.
 - A mouse range selection (drag, double-click, Shift+click) in normal mode is not used by `x`/`d`/`y`/`v`. In Vim with `mouse=a` it enters visual mode.
-- Normal-mode Enter on a link does not save the cursor, so Back/`H` lands on the title.
-- The status-bar line number is stale after navigation plus cursor restore. A newly opened page puts the cursor on the title at the previous page's column.
-- After navigating away by a sidebar click, `H` does not restore the cursor.
+- ~~Normal-mode Enter on a link does not save the cursor~~ **RESOLVED**: Enter saves before leaving for another page.
+- ~~Status bar stale after navigation/restore; a new page opens at the previous page's column~~ **RESOLVED**: a new page resets the column, and the status bar redraws after `setLines` and after a restore.
+- ~~After navigating away by a sidebar click, `H` does not restore~~ **RESOLVED**: a click on a same-host link to another page saves the cursor.
+- **Test harness**: Playwright's `press("Shift+i")` sends `key: "i"` with Shift, not `"I"`, so 51 presses across 9 specs were testing `a`/`i`/`o`/`v`/`w`/`b`/`e` instead of `A`/`I`/`O`/`V`/`W`/`B`/`E`. This is the "automated test only" cause of BUG-008/009. The specs now send the uppercase key. Exposed by the click-past-end clamp: the stress test's stray `x` (typed by `i`, not `I`) now lands before the last character and broke later specs' text lookups.
 - The block cursor is drawn at column 0 while focus is outside the page.
 
 Unverified sweep claims (re-check):

@@ -286,7 +286,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
     const before = await getAllBlockTexts(page);
     const child1Idx = before.findIndex((t) => t.includes("Nested bullet child 1"));
 
-    await pressKeys(page, "Shift+o");
+    await pressKeys(page, "Shift+O");
     await page.waitForTimeout(500);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -312,7 +312,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
     const before = await getAllBlockTexts(page);
     const parentIdx = before.findIndex((t) => t.includes("Bullet item 2"));
 
-    await pressKeys(page, "Shift+o");
+    await pressKeys(page, "Shift+O");
     await page.waitForTimeout(500);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -342,7 +342,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
     const before = await getAllBlockTexts(page);
     const textIdx = before.findIndex((t) => t.includes("Text after code block"));
 
-    await pressKeys(page, "Shift+o");
+    await pressKeys(page, "Shift+O");
     await page.waitForTimeout(500);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -456,7 +456,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
     await pressKeys(page, "$");
     await page.waitForTimeout(100);
 
-    await pressKeys(page, "Shift+i");
+    await pressKeys(page, "Shift+I");
     await page.waitForTimeout(200);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -482,7 +482,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
 
-    await pressKeys(page, "Shift+a");
+    await pressKeys(page, "Shift+A");
     await page.waitForTimeout(200);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -506,7 +506,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
     await pressKeys(page, "$");
     await page.waitForTimeout(100);
 
-    await pressKeys(page, "Shift+i");
+    await pressKeys(page, "Shift+I");
     await page.waitForTimeout(200);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -529,7 +529,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
     await pressKeys(page, "0");
     await page.waitForTimeout(100);
 
-    await pressKeys(page, "Shift+a");
+    await pressKeys(page, "Shift+A");
     await page.waitForTimeout(200);
     expect((await getVimState(page)).mode).toBe("insert");
 
@@ -553,7 +553,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   test("I on heading + type + Esc, j moves to next block", async ({ extensionPage: page }) => {
     await goToBlock(page, "Heading 1 test");
 
-    await pressKeys(page, "Shift+i");
+    await pressKeys(page, "Shift+I");
     await page.waitForTimeout(200);
     await page.keyboard.type("X");
     await page.waitForTimeout(100);
@@ -586,7 +586,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   test("A on numbered item + type + Esc, j moves to next item", async ({ extensionPage: page }) => {
     await goToBlock(page, "Numbered item 1");
 
-    await pressKeys(page, "Shift+a");
+    await pressKeys(page, "Shift+A");
     await page.waitForTimeout(200);
     await page.keyboard.type("Z");
     await page.waitForTimeout(100);
@@ -608,7 +608,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
   test("I on text before code block + type + Esc, j navigates into code block", async ({ extensionPage: page }) => {
     await goToBlock(page, "Section 8: Code block");
 
-    await pressKeys(page, "Shift+i");
+    await pressKeys(page, "Shift+I");
     await page.waitForTimeout(200);
     await page.keyboard.type("X");
     await page.waitForTimeout(100);
@@ -734,7 +734,7 @@ test.describe.serial("Insert / Open Line — block types & edge cases", () => {
 
     await goToBlock(page, "Nested bullet child 2");
 
-    await pressKeys(page, "Shift+o");
+    await pressKeys(page, "Shift+O");
     await page.waitForTimeout(500);
     expect((await getVimState(page)).mode).toBe("insert");
 
