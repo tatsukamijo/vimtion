@@ -745,3 +745,14 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
   - The restore sends a pointer press (pointerdown/mousedown/pointerup/mouseup/click) at the caret inside the line, as a user click would, which clears Notion's own selection. Mouse events alone did not do it, and a press on the line's edge block-selected the line (the next `x` cut the block).
   - Cmd/Ctrl shortcuts snapshot the page caret on keydown and freeze it for 400ms.
   - Verified: row "abc" survives `x`, `xx` and `iZy<Esc>` after both Enter and Esc closes; Cmd+F then Esc returns to the line and column; Cmd+/ still restores.
+
+## BUG-094: Typeahead replay dropped Backspace/Enter/arrows/Cmd-z, broke `jk`; `o` and `G`/`gg` did not hold typeahead
+
+- **Detected**: 2026-10-17 (sweep 3, refix-b agent).
+- **Status**: **RESOLVED** on `fix/live-sweep-batch1`.
+- **Fix**:
+  - Replayed keys whose effect is a default action are performed explicitly: Backspace/Delete through `execCommand`, arrows through `Selection.modify`, and Enter/Tab/Cmd-combos as a synthetic keydown, which Notion and Vimtion's line listener handle like a real key.
+  - Queued `j`/`k` go through the insert reducer's jk logic (`isJPending`).
+  - `o` and `G`/`gg` hold typeahead until the cursor has moved. Each operation sets its own replay delay (100ms after a block cut, 0 otherwise).
+  - Verified at 30ms gaps: `Oab<BS>c` → "ac", `Oab<CR>cd` → "ab"/"cd", `Oab<Left>X` → "aXb", `Oabjk` and `ddoabjk` → normal mode, `Ojjx` → "jjx", `oxy` at 0ms → new line "xy", `Gx` at 0ms deletes on the last line.
+- Not fixed (minor): a 0ms burst of `j` into a code block followed by `dd` can delete in the wrong code line.

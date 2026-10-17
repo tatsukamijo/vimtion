@@ -18,19 +18,26 @@ const MAX_BUSY_MS = 3000;
 
 let depth = 0;
 let since = 0;
+// How long Notion needs after the edit before replayed keys act (see
+// beginBusy); the largest asked for since input started queuing.
+let settleMs = 0;
 let pending: Deferred[] = [];
-let flush: (items: Deferred[]) => void = () => {};
+let flush: (items: Deferred[], settleMs: number) => void = () => {};
 
-export const setBusyFlush = (fn: (items: Deferred[]) => void): void => {
+export const setBusyFlush = (
+  fn: (items: Deferred[], settleMs: number) => void,
+): void => {
   flush = fn;
 };
 
 const release = (): void => {
   depth = 0;
+  const settle = settleMs;
+  settleMs = 0;
   if (pending.length === 0) return;
   const items = pending;
   pending = [];
-  flush(items);
+  flush(items, settle);
 };
 
 export const isBusy = (): boolean => {
@@ -38,9 +45,15 @@ export const isBusy = (): boolean => {
   return depth > 0;
 };
 
-export const beginBusy = (): void => {
+/**
+ * Start an async edit. `settle` is how long to wait after it ends before
+ * replaying queued input (Notion is still committing a block cut for ~100ms;
+ * a cursor move needs nothing).
+ */
+export const beginBusy = (settle = 100): void => {
   if (depth === 0) since = Date.now();
   depth++;
+  settleMs = Math.max(settleMs, settle);
 };
 
 /** End the edit; replays deferred input once no edit is running. */

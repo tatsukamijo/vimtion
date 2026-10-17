@@ -213,7 +213,7 @@ import {
 } from "./visual/helpers";
 
 // Import reducer factories
-import { createInsertReducer } from "./reducers/insert";
+import { createInsertReducer, isJPending } from "./reducers/insert";
 import { createLinkHintReducer } from "./reducers/link-hint";
 
 // safeAddRange now imported from visual/helpers
@@ -291,6 +291,9 @@ const openLineBelow = () => {
   vim_info.mode = "insert";
   updateInfoContainer();
 
+  // Text typed before Notion has made the new block went into this line.
+  beginBusy(0);
+
   // Then simulate Enter key (in insert mode, so it won't be blocked)
   setTimeout(() => {
     const currentElement = vim_info.lines[vim_info.active_line].element;
@@ -307,6 +310,7 @@ const openLineBelow = () => {
     // Wait for new line to be created, then refresh
     setTimeout(() => {
       refreshLines();
+      endBusy();
     }, 100);
   }, 0);
 };
@@ -339,7 +343,7 @@ const openLineAbove = () => {
 
   // Text typed before the caret reaches the new block went into this one;
   // hold it until the caret has moved (core/busy.ts).
-  beginBusy();
+  beginBusy(0);
 
   // Enter at column 0 makes Notion insert an empty block ABOVE this one and
   // keep the caret in this (now lower) block.
@@ -1107,6 +1111,13 @@ const replayDeferred = (item: Deferred) => {
     !e.metaKey &&
     !e.altKey
   ) {
+    // The jk escape: j is held by the insert reducer, a following k escapes.
+    if (e.key === "j" || (e.key === "k" && isJPending())) {
+      handleKeydown(e);
+      return;
+    }
+    // Commits a held j first, keeping the typed order.
+    if (isJPending()) handleKeydown(e);
     // Notion drops a bare execCommand insert into a freshly created empty
     // block; announcing it with a beforeinput first makes it stick.
     const target = document.activeElement || document.body;
@@ -1121,6 +1132,57 @@ const replayDeferred = (item: Deferred) => {
     document.execCommand("insertText", false, e.key);
     return;
   }
+  // Keys whose effect is the browser's / Notion's default action: that action
+  // was cancelled when the key was queued, so perform it now.
+  if (vim_info.mode === "insert" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const sel = window.getSelection();
+    const arrows: Record<string, [string, string]> = {
+      ArrowLeft: ["backward", "character"],
+      ArrowRight: ["forward", "character"],
+      ArrowUp: ["backward", "line"],
+      ArrowDown: ["forward", "line"],
+    };
+    if (e.key === "Backspace") {
+      document.execCommand("delete");
+      return;
+    }
+    if (e.key === "Delete") {
+      document.execCommand("forwardDelete");
+      return;
+    }
+    if (arrows[e.key] && sel) {
+      const [direction, unit] = arrows[e.key];
+      (sel as Selection & {
+        modify(a: string, d: string, u: string): void;
+      }).modify(e.shiftKey ? "extend" : "move", direction, unit);
+      return;
+    }
+  }
+  if (
+    e.key === "Enter" ||
+    e.key === "Tab" ||
+    e.metaKey ||
+    (e.ctrlKey && vim_info.mode === "insert")
+  ) {
+    // Notion handles these from the keydown itself (split / indent / undo /
+    // its shortcuts); a synthetic copy reaches it, and Vimtion's own line
+    // listener sees it first, as for a real key.
+    (document.activeElement || document.body).dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: e.key,
+        code: e.code,
+        keyCode: e.keyCode,
+        which: e.which,
+        shiftKey: e.shiftKey,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        altKey: e.altKey,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    return;
+  }
   handleKeydown(e);
 };
 
@@ -1128,8 +1190,8 @@ const replayDeferred = (item: Deferred) => {
 // text typed after them must land in the new line. Replay holds the busy state
 // itself, so input arriving meanwhile queues behind it, and waits whenever a
 // replayed key started another async edit.
-setBusyFlush((items) => {
-  beginBusy();
+setBusyFlush((items, settle) => {
+  beginBusy(0);
   let i = 0;
   const step = () => {
     if (busyDepth() > 1) {
@@ -1145,9 +1207,9 @@ setBusyFlush((items) => {
     i++;
     setTimeout(step, window.vim_info.mode !== modeBefore ? 120 : 10);
   };
-  // Notion is still committing the cut for a moment; an Enter (o / O) sent
-  // straight away was dropped.
-  setTimeout(step, 100);
+  // After a block cut Notion is still committing for a moment; an Enter
+  // (o / O) sent straight away was dropped.
+  setTimeout(step, settle);
 });
 
 /**

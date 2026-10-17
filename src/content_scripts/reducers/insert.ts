@@ -25,6 +25,11 @@ const inlineMenuOpen = (): boolean =>
     ),
   ).some((el) => el.getClientRects().length > 0);
 
+// Mirrors the reducer's pending-`j` state for replayed typeahead (vim.ts),
+// which must route a queued `k` into the jk escape.
+let jPending = false;
+export const isJPending = (): boolean => jPending;
+
 export interface InsertReducerDeps {
   updateInfoContainer: () => void;
   JK_TIMEOUT_MS: number;
@@ -46,6 +51,7 @@ export const createInsertReducer = (deps: InsertReducerDeps) => {
     if (pendingJTimer === null) return;
     clearTimeout(pendingJTimer);
     pendingJTimer = null;
+    jPending = false;
     if (window.vim_info.mode === "insert") {
       document.execCommand("insertText", false, "j");
     }
@@ -57,6 +63,7 @@ export const createInsertReducer = (deps: InsertReducerDeps) => {
     if (pendingJTimer === null) return;
     clearTimeout(pendingJTimer);
     pendingJTimer = null;
+    jPending = false;
   };
 
   // Leave insert mode the way Vim does: the caret steps back one character
@@ -116,8 +123,10 @@ export const createInsertReducer = (deps: InsertReducerDeps) => {
         if (pendingJTimer !== null) commitPendingJ();
         e.preventDefault();
         e.stopPropagation();
+        jPending = true;
         pendingJTimer = window.setTimeout(() => {
           pendingJTimer = null;
+          jPending = false;
           if (window.vim_info.mode === "insert") {
             document.execCommand("insertText", false, "j");
           }
