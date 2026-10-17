@@ -174,6 +174,9 @@ import {
   createRefreshLines,
   createSetLines,
   isDocumentEditable,
+  surfaceOf,
+  currentSurface,
+  setActiveSurface,
 } from "./core";
 import { recordKey, repeatLastChange } from "./core/dot-repeat";
 import {
@@ -784,6 +787,28 @@ document.addEventListener(
 // when focus left the page for a popup, and put it back after Esc/Enter there.
 // (A popup closed by clicking elsewhere is left alone: the click placed the
 // caret where the user wanted it.)
+// Focus moving into the other page surface (into a side peek, or back to the
+// page behind it) switches the lines Vimtion works on to that surface.
+// Registered before the popup-return listener, which must then see the new
+// surface's lines as page lines.
+document.addEventListener(
+  "focusin",
+  (e) => {
+    const target = e.target as HTMLElement | null;
+    if (!target || !target.isContentEditable) return;
+    const surface = surfaceOf(target);
+    if (!surface || surface === currentSurface()) return;
+    setActiveSurface(surface);
+    refreshLines();
+    const { vim_info } = window;
+    const leaf = target.closest('[contenteditable="true"]');
+    const idx = vim_info.lines.findIndex((l) => l.element === leaf);
+    if (idx !== -1 && !isWrapperLine(idx)) vim_info.active_line = idx;
+    updateInfoContainer();
+  },
+  true,
+);
+
 let popupReturn: {
   blockId: string | null;
   line: number;

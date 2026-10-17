@@ -22,18 +22,51 @@ export const clearAllBackgroundColors = (): void => {
  * comment boxes and the sidebar; treating those as lines turned what the user
  * typed there into Vim commands (k + dd deleted a page block while renaming).
  */
+// A page can be shown in the main frame or in a peek (side / centre peek,
+// where Notion opens database pages). Lines come from one of them: the one
+// the user is working in.
+const FRAME = ".notion-frame";
+const PEEK = ".notion-peek-renderer";
+let activeSurface: Element | null = null;
+
+/** The frame or peek that contains `el`, if any. */
+export const surfaceOf = (el: Element): Element | null =>
+  el.closest(PEEK) ?? el.closest(FRAME);
+
+/** The surface whose lines Vimtion works on. An open peek wins by default. */
+const hasLines = (el: Element | null): el is Element =>
+  !!el && el.isConnected && !!el.querySelector('[contenteditable="true"]');
+
+export const currentSurface = (): Element | null => {
+  // (A peek that is closing is still in the DOM for a moment, but empty.)
+  if (hasLines(activeSurface)) return activeSurface;
+  const peek = document.querySelector(PEEK);
+  activeSurface = hasLines(peek) ? peek : document.querySelector(FRAME);
+  return activeSurface;
+};
+
+/** Work on `surface` from now on (the user focused or clicked into it). */
+export const setActiveSurface = (surface: Element | null): void => {
+  activeSurface = surface;
+};
+
 export const isDocumentEditable = (el: Element): boolean => {
-  if (
-    el.closest(
-      '[role="dialog"], .notion-overlay-container, .notion-sidebar-container, .notion-sidebar, .notion-topbar, nav, aside',
-    )
-  ) {
-    return false;
-  }
   // Comment / discussion inputs and the Notion AI prompt inside the page.
   if (el.closest('[class*="discussion"], .notion-agent-writer-ui')) return false;
-  const frame = document.querySelector(".notion-frame");
-  return !frame || frame.contains(el);
+  // A centre peek sits inside Notion's overlay / dialog; it is still a page.
+  const peek = el.closest(PEEK);
+  if (!peek) {
+    if (
+      el.closest(
+        '[role="dialog"], .notion-overlay-container, .notion-sidebar-container, .notion-sidebar, .notion-topbar, nav, aside',
+      )
+    ) {
+      return false;
+    }
+  }
+  const surface = currentSurface();
+  if (!surface) return true;
+  return (peek ?? el.closest(FRAME)) === surface;
 };
 
 /** The page's editable lines, in DOM order (see isDocumentEditable). */

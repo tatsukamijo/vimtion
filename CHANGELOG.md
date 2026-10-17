@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`$` is sticky**: after `$`, `j` and `k` keep going to the end of each line until a horizontal motion.
 
 ### Fixed
+- **Side peek**: in a page opened in side peek (e.g. a database's daily-log pages), normal-mode keys were typed as text instead of acting as Vim commands (a regression in 1.8.0).
 - **Visual-line yank** (`Vjy`, `2yy`) no longer leaves the text selected afterwards.
 
 ## [1.8.0] - 2026-10-17

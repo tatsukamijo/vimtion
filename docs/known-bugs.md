@@ -771,3 +771,11 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
 - `yl` is not implemented, and `yiw`/`viw` on an emoji select nothing (BUG-067/069 family).
 - Vim splits kanji, hiragana and katakana runs into separate words; Vimtion treats a run of any letters as one word.
 - After `/database inline` and `/table`, Notion itself puts the caret in the page title or nowhere.
+
+## BUG-095: In a side peek (database pages), normal-mode keys were typed as text
+
+- **Detected**: 2026-10-17 (user report: daily-log database pages open in a side peek; `j` typed "j").
+- **Status**: **RESOLVED** on `feat/counts` (1.9.0). Regression from BUG-091 in 1.8.0.
+- **Root cause**: BUG-091 limited lines to editables inside `.notion-frame`. A side or centre peek renders in `.notion-peek-renderer`, outside that frame, so none of its lines were Vimtion's and every key went to Notion.
+- **Fix**: Lines come from one page surface: the main frame or a peek. An open peek is the default; focus moving into the other surface switches to it; a closing (empty) peek falls back to the frame. Inside a peek, the overlay/dialog exclusions do not apply (a centre peek lives in Notion's overlay), but comment boxes and the AI prompt are still excluded.
+- **Verified**: peek opens → lines are the peek's (cursor on its title); `j`/`x`/`k` act in the peek; clicking the page behind switches to it and back; closing the peek returns to the page and `j` works.
