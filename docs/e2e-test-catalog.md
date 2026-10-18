@@ -663,6 +663,13 @@ Block types not already in operators-block-types.spec.ts.
 | 8 | cancelling the search bar keeps the previous search highlighted | Pass |
 | 9 | search counts overlapping matches and keeps offsets after İ | Pass |
 
+## side-peek.spec.ts (2 tests, fresh page)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | j / x / k act inside a side peek, and on the page after it closes | Pass |
+| 2 | Ctrl-h / Ctrl-l move between the page and the side peek, each keeping its cursor | Pass |
+
 ## database-links.spec.ts (1 test, fresh page)
 
 | # | Test | Status |

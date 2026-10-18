@@ -93,6 +93,8 @@ To access the Options page:
 **Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character) • `;` `,` (repeat) • `%` (matching bracket)
 **Search**: `/` `?` (search forward/backward) • `n` `N` (next/previous) • `*` `#` (word under cursor) — every match is highlighted as you type, the status bar shows `[2/5]`, and `Esc` clears the highlight
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
+
+**Side peek**: `Ctrl+h` (to the page on the left) • `Ctrl+l` (to the page open in the side peek); each side keeps its cursor
 **Counts**: prefix motions and commands with a number: `3j` `5w` `4x` `2dd` `d3w` `3dw` `y2b` `c2w` `10G` `3fx` `2u`
 
 ### Link Navigation

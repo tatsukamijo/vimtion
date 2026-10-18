@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **`gl` on databases**: database rows and cards (which have no link) get hints. A hint opens the page through the row's own Open button, so the database's "open pages in" setting applies (side peek by default); `Shift+hint` opens it in a new tab.
+- **`Ctrl+h` / `Ctrl+l`** move between the page and the page open in a side peek beside it (like Vim's `Ctrl-w h` / `Ctrl-w l`); each side keeps its cursor.
 
 ## [1.10.0] - 2026-10-17
 
