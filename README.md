@@ -94,7 +94,9 @@ To access the Options page:
 **Search**: `/` `?` (search forward/backward) • `n` `N` (next/previous) • `*` `#` (word under cursor) — every match is highlighted as you type, the status bar shows `[2/5]`, and `Esc` clears the highlight
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
 
-**Side peek**: `Ctrl+h` (to the page on the left) • `Ctrl+l` (to the page open in the side peek); each side keeps its cursor
+**Databases**: `j` `k` move onto and between database rows (the row is highlighted, the status bar shows `Row 2/5`) • `Enter` opens the row the way the database opens pages (side peek by default), `Shift+Enter` in a new tab • `o` adds a page to the database and starts on its title • `Esc` leaves the rows
+
+**Side peek**: `Ctrl+h` (to the page on the left; the first time, onto the row of the open page) • `Ctrl+l` (to the page open in the side peek) • `Ctrl+j` `Ctrl+k` (open the next / previous row's page in the peek) • `gq` (close the peek, back on its row); each side keeps its cursor
 **Counts**: prefix motions and commands with a number: `3j` `5w` `4x` `2dd` `d3w` `3dw` `y2b` `c2w` `10G` `3fx` `2u`
 
 ### Link Navigation

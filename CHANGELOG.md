@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **`gl` on databases**: database rows and cards (which have no link) get hints. A hint opens the page through the row's own Open button, so the database's "open pages in" setting applies (side peek by default); `Shift+hint` opens it in a new tab.
 - **`Ctrl+h` / `Ctrl+l`** move between the page and the page open in a side peek beside it (like Vim's `Ctrl-w h` / `Ctrl-w l`); each side keeps its cursor.
+- **Database rows**: `j` / `k` move onto and between the rows of a database (highlighted, `Row 2/5` in the status bar) and past either end back to the surrounding lines; `Enter` opens the row the way the database opens pages, `Shift+Enter` in a new tab; `o` adds a page to the database and starts in insert mode on its title; `Esc` leaves the rows.
+- **`Ctrl+j` / `Ctrl+k`** open the next / previous row's page in the side peek, for flipping through daily logs.
+- **`gq`** closes the side peek and puts the cursor on the row of the page that was open.
+
+### Fixed
+- `j` / `k` from one database's title to another database's title no longer bounces back (Notion moved the focus back to the first title).
 
 ## [1.10.0] - 2026-10-17
 
