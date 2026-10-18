@@ -663,6 +663,12 @@ Block types not already in operators-block-types.spec.ts.
 | 8 | cancelling the search bar keeps the previous search highlighted | Pass |
 | 9 | search counts overlapping matches and keeps offsets after İ | Pass |
 
+## database-links.spec.ts (1 test, fresh page)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | gl hints database rows and opens one in a side peek | Pass |
+
 ## Related Docs
 
 - [Known Bugs](known-bugs.md) — BUG-001 through BUG-014, BUG-029, BUG-035, BUG-036

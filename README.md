@@ -107,6 +107,7 @@ https://github.com/user-attachments/assets/04dae08b-8e01-4bcd-bd33-18f00de14d9f
 
 Vimium-style navigation with keyboard hints:
 - Press `gl` to show hints for all links on the page
+- Database rows and cards get hints too: a hint opens the page the way the database is set to open it (side peek, center peek or full page)
 - Type hint characters to filter and navigate instantly
 - `Shift+hint` opens the link in a new tab
 - Cursor position is automatically saved and restored when navigating back with `Shift+H`
