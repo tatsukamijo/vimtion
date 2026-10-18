@@ -3,7 +3,12 @@
  * behind keeps working after the peek closes.
  */
 import { test, expect } from "../fixtures";
-import { pressKeys, waitForVimStateReady, getActualCursorBlockText } from "../helpers";
+import {
+  pressKeys,
+  waitForVimStateReady,
+  getActualCursorBlockText,
+  getVimState,
+} from "../helpers";
 
 async function notion(method: string, path: string, body?: unknown) {
   const res = await fetch(`https://api.notion.com${path}`, {
@@ -118,11 +123,12 @@ test("Ctrl-h / Ctrl-l move between the page and the side peek, each keeping its 
   await page.waitForTimeout(300);
   expect(await getActualCursorBlockText(page)).toBe("peek line two");
 
-  // To the page: lands on a visible line there; then move and edit.
+  // To the page: the first time, on the row of the page open in the peek
+  // (row mode on the database); then move and edit.
   await pressKeys(page, "Control+h");
   await page.waitForTimeout(400);
-  const landed = await getActualCursorBlockText(page);
-  expect(["Peek switch", "page line one", "page line two"]).toContain(landed);
+  expect(await getActualCursorBlockText(page)).toBe("Logs");
+  expect((await getVimState(page)).statusText).toContain("Row 1/1");
   await pressKeys(page, "g", "g", "j", "j", "0", "x");
   await page.waitForTimeout(600);
   expect(await page.getByText("age line two", { exact: true }).count()).toBe(1);

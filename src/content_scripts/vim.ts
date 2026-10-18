@@ -180,6 +180,14 @@ import {
   pageSurfaces,
 } from "./core";
 import { recordKey, repeatLastChange } from "./core/dot-repeat";
+import {
+  databaseOfLine,
+  enterRowMode,
+  exitRowMode,
+  handleRowKey,
+  returnToPeekedRow,
+  stepPeekedRow,
+} from "./navigation/db-rows";
 import { repeatLastFind } from "./navigation/char-find";
 import {
   openSearch,
@@ -847,6 +855,15 @@ const switchSurface = (toPeek: boolean): void => {
   const saved = surfaceCursor.get(target);
   let idx = saved?.blockId ? vim_info.lines.findIndex((l) => l.block_id === saved.blockId) : -1;
   const back = idx !== -1;
+  if (!back && !toPeek) {
+    // First time on the page: on the row of the page open in the peek.
+    const title = returnToPeekedRow(vim_info.lines);
+    if (title !== -1) {
+      setActiveLine(title);
+      updateInfoContainer();
+      return;
+    }
+  }
   if (!back) idx = getFirstVisibleLine();
   setActiveLine(idx);
   const el = vim_info.lines[vim_info.active_line]?.element;
@@ -858,6 +875,79 @@ const switchSurface = (toPeek: boolean): void => {
   }
   updateInfoContainer();
 };
+
+// gq: close the side peek and continue on the page behind it.
+const closePeek = (): void => {
+  const { peek } = pageSurfaces();
+  if (!peek) return;
+  if (currentSurface() === peek) switchSurface(false);
+  const close = peek.querySelector<HTMLElement>('[aria-label="Close"]');
+  close?.click();
+  // Closing can move focus; put the caret back on the page's line.
+  setTimeout(() => {
+    setActiveLine(window.vim_info.active_line);
+    updateInfoContainer();
+  }, 200);
+};
+
+// After Ctrl+j / Ctrl+k replaced the page in the peek, continue on its title.
+const focusPeekAfterStep = (): void => {
+  setTimeout(() => {
+    const { peek } = pageSurfaces();
+    if (!peek) return;
+    setActiveSurface(peek);
+    refreshLines();
+    setActiveLine(0);
+    updateInfoContainer();
+  }, 700);
+};
+
+// o in row mode: Notion opens the new page with its title focused.
+const enterInsertAfterNewRow = (): void => {
+  const active = document.activeElement as HTMLElement | null;
+  const leaf = active?.isContentEditable ? active.closest('[contenteditable="true"]') : null;
+  if (!leaf) return;
+  refreshLines();
+  const { vim_info } = window;
+  const idx = vim_info.lines.findIndex((l) => l.element === leaf);
+  if (idx !== -1) vim_info.active_line = idx;
+  vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+// Moving onto a database's title from inside a keydown on another database's
+// title does not stick: Notion puts the focus back on the title the key was
+// pressed on a moment later. Put it back on the new line when that happens
+// (keys typed meanwhile wait in the typeahead queue).
+const setActiveLineFromDatabase = (idx: number): void => {
+  setActiveLine(idx);
+  const target = window.vim_info.lines[window.vim_info.active_line]?.element;
+  if (!target) return;
+  beginBusy(0);
+  const reassert = (delays: number[]) => {
+    const [delay, ...rest] = delays;
+    setTimeout(() => {
+      const stillThere = window.vim_info.lines[window.vim_info.active_line]?.element === target;
+      if (stillThere && document.activeElement !== target) {
+        setActiveLine(window.vim_info.active_line);
+        updateInfoContainer();
+      }
+      if (rest.length > 0 && stillThere) reassert(rest);
+      else endBusy();
+    }, delay);
+  };
+  reassert([40, 80, 120]);
+};
+
+const rowKeyContext = {
+  lineIndex: (el: Element) => window.vim_info.lines.findIndex((l) => l.element === el),
+  setActiveLine: setActiveLineFromDatabase,
+  updateInfoContainer: () => updateInfoContainer(),
+  enterInsertAfterNewRow,
+};
+
+// A click anywhere ends row mode (the click put the caret where it wanted).
+document.addEventListener("mousedown", () => exitRowMode(), true);
 
 let popupReturn: {
   blockId: string | null;
@@ -3116,6 +3206,9 @@ const handlePendingOperator = (key: string): boolean => {
       case "g":
         jumpToTop();
         return true;
+      case "q":
+        closePeek();
+        return true;
       case "l":
         // Save cursor position before entering link hint mode
         // (so we can restore it when navigating back)
@@ -3548,7 +3641,15 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
 
     // Ctrl+h / Ctrl+l - to the page / the side peek beside it
     if (key === "h" || key === "l") {
+      exitRowMode();
       switchSurface(key === "l");
+      return true;
+    }
+
+    // Ctrl+j / Ctrl+k - next / previous database row in the side peek
+    if (key === "j" || key === "k") {
+      exitRowMode();
+      if (stepPeekedRow(key === "j" ? 1 : -1, updateInfoContainer)) focusPeekAfterStep();
       return true;
     }
 
@@ -3599,6 +3700,9 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
 
   const { vim_info } = window;
   const { active_line, pending_operator } = vim_info;
+
+  // Row mode (the cursor on a database row) takes the keys it knows.
+  if (!pending_operator && handleRowKey(e, rowKeyContext)) return true;
 
   // Handle link selection mode
   if (linkSelectionMode) {
@@ -4220,7 +4324,16 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
         moveCursorDownInCodeBlock();
         return true;
       }
-      setActiveLine(active_line + 1);
+      // On a database's title: into its rows.
+      if (vim_info.lines[active_line] && enterRowMode(vim_info.lines[active_line].element, "first")) {
+        updateInfoContainer();
+        return true;
+      }
+      if (databaseOfLine(vim_info.lines[active_line]?.element)) {
+        setActiveLineFromDatabase(active_line + 1);
+      } else {
+        setActiveLine(active_line + 1);
+      }
       updateInfoContainer();
       return true;
     case "k":
@@ -4231,6 +4344,16 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
       ) {
         moveCursorUpInCodeBlock();
         return true;
+      }
+      // Coming up to a database: onto its last row.
+      {
+        const above = vim_info.lines[active_line - 1]?.element;
+        if (above && databaseOfLine(above)) {
+          setActiveLineFromDatabase(active_line - 1);
+          enterRowMode(above, "last");
+          updateInfoContainer();
+          return true;
+        }
       }
       setActiveLine(active_line - 1);
       updateInfoContainer();
