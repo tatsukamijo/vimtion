@@ -373,8 +373,9 @@ export const detectAllLinks = (): HTMLElement[] => {
   // Strategy 4: database rows and cards (no <a>; a long database would add
   // hundreds, so only those on screen).
   document.querySelectorAll<HTMLElement>(COLLECTION_ITEM).forEach((item) => {
-    // Board / gallery cards that are links already have a hint.
-    if (item.closest("a[href]") || item.querySelector("a[href]")) return;
+    // Board / gallery cards that are links already have a hint. (A link in
+    // one of a row's cells keeps its own hint; the row gets one too.)
+    if (item.closest("a[href]")) return;
     if (item.dataset.blockId && inViewport(item)) {
       links.push(item);
     }

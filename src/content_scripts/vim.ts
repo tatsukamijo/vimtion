@@ -185,6 +185,9 @@ import {
   enterRowMode,
   exitRowMode,
   handleRowKey,
+  hasPeekedRow,
+  inRowMode,
+  isDatabaseLine,
   returnToPeekedRow,
   stepPeekedRow,
 } from "./navigation/db-rows";
@@ -835,7 +838,10 @@ document.addEventListener(
 
 // Ctrl-h / Ctrl-l: move between the page (left) and the page open in a side
 // peek (right), like Vim's Ctrl-w h / Ctrl-w l. Each side keeps its cursor.
-const surfaceCursor = new WeakMap<Element, { blockId: string | null; pos: number }>();
+const surfaceCursor = new WeakMap<
+  Element,
+  { blockId: string | null; pos: number; inRow: boolean }
+>();
 
 const switchSurface = (toPeek: boolean): void => {
   const { frame, peek } = pageSurfaces();
@@ -848,15 +854,18 @@ const switchSurface = (toPeek: boolean): void => {
     surfaceCursor.set(from, {
       blockId: line.block_id ?? null,
       pos: getCursorIndexInElement(line.element),
+      inRow: inRowMode(),
     });
   }
+  exitRowMode();
   setActiveSurface(target);
   refreshLines();
   const saved = surfaceCursor.get(target);
   let idx = saved?.blockId ? vim_info.lines.findIndex((l) => l.block_id === saved.blockId) : -1;
   const back = idx !== -1;
-  if (!back && !toPeek) {
-    // First time on the page: on the row of the page open in the peek.
+  if (!toPeek && (!back || saved?.inRow)) {
+    // The first time on the page, or when the cursor was on a row: on the
+    // row of the page now open in the peek.
     const title = returnToPeekedRow(vim_info.lines);
     if (title !== -1) {
       setActiveLine(title);
@@ -890,16 +899,33 @@ const closePeek = (): void => {
   }, 200);
 };
 
-// After Ctrl+j / Ctrl+k replaced the page in the peek, continue on its title.
-const focusPeekAfterStep = (): void => {
-  setTimeout(() => {
+// After a row was opened (Enter on a row, Ctrl+j / Ctrl+k), continue on the
+// title of its page in the peek once the peek shows it. Typed keys wait.
+const afterPeekOpens = (blockId: string): void => {
+  const id = blockId.replace(/-/g, "");
+  const started = Date.now();
+  beginBusy(0);
+  const check = () => {
     const { peek } = pageSurfaces();
-    if (!peek) return;
-    setActiveSurface(peek);
-    refreshLines();
-    setActiveLine(0);
-    updateInfoContainer();
-  }, 700);
+    const shown =
+      new URLSearchParams(window.location.search).get("p") === id &&
+      peek?.querySelector(`[data-block-id="${blockId}"] [contenteditable="true"]`);
+    if (peek && shown) {
+      setActiveSurface(peek);
+      refreshLines();
+      const title = (shown as Element).closest('[contenteditable="true"]');
+      const idx = window.vim_info.lines.findIndex((l) => l.element === title);
+      setActiveLine(idx === -1 ? 0 : idx);
+      updateInfoContainer();
+      endBusy();
+    } else if (Date.now() - started > 2500) {
+      // Opened somewhere else (full page, new tab): nothing to do here.
+      endBusy();
+    } else {
+      setTimeout(check, 50);
+    }
+  };
+  setTimeout(check, 50);
 };
 
 // o in row mode: Notion opens the new page with its title focused.
@@ -944,10 +970,21 @@ const rowKeyContext = {
   setActiveLine: setActiveLineFromDatabase,
   updateInfoContainer: () => updateInfoContainer(),
   enterInsertAfterNewRow,
+  afterPeekOpens,
+  beginBusy: () => beginBusy(0),
+  endBusy: () => endBusy(),
 };
 
 // A click anywhere ends row mode (the click put the caret where it wanted).
-document.addEventListener("mousedown", () => exitRowMode(), true);
+document.addEventListener(
+  "mousedown",
+  () => {
+    if (!inRowMode()) return;
+    exitRowMode();
+    updateInfoContainer();
+  },
+  true,
+);
 
 let popupReturn: {
   blockId: string | null;
@@ -3640,17 +3677,28 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
     const key = e.key.toLowerCase();
 
     // Ctrl+h / Ctrl+l - to the page / the side peek beside it
-    if (key === "h" || key === "l") {
-      exitRowMode();
-      switchSurface(key === "l");
-      return true;
+    if (!e.shiftKey && (key === "h" || key === "l")) {
+      const { frame, peek } = pageSurfaces();
+      if (frame && peek) {
+        switchSurface(key === "l");
+        return true;
+      }
     }
 
     // Ctrl+j / Ctrl+k - next / previous database row in the side peek
-    if (key === "j" || key === "k") {
+    if (!e.shiftKey && (key === "j" || key === "k") && hasPeekedRow()) {
       exitRowMode();
-      if (stepPeekedRow(key === "j" ? 1 : -1, updateInfoContainer)) focusPeekAfterStep();
+      const opened = stepPeekedRow(key === "j" ? 1 : -1, updateInfoContainer);
+      if (opened) afterPeekOpens(opened);
+      updateInfoContainer();
       return true;
+    }
+
+    // Any other Ctrl command (Ctrl+d / u / f / b move the cursor) leaves the
+    // database rows.
+    if (inRowMode()) {
+      exitRowMode();
+      updateInfoContainer();
     }
 
     // Ctrl+d - half page down
@@ -4325,11 +4373,16 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
         return true;
       }
       // On a database's title: into its rows.
-      if (vim_info.lines[active_line] && enterRowMode(vim_info.lines[active_line].element, "first")) {
+      // (Not for Vimtion's own synthetic j / k, e.g. d3k selecting lines.)
+      if (
+        e.isTrusted &&
+        vim_info.lines[active_line] &&
+        enterRowMode(vim_info.lines[active_line].element, "first")
+      ) {
         updateInfoContainer();
         return true;
       }
-      if (databaseOfLine(vim_info.lines[active_line]?.element)) {
+      if (isDatabaseLine(vim_info.lines[active_line]?.element)) {
         setActiveLineFromDatabase(active_line + 1);
       } else {
         setActiveLine(active_line + 1);
@@ -4348,14 +4401,18 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
       // Coming up to a database: onto its last row.
       {
         const above = vim_info.lines[active_line - 1]?.element;
-        if (above && databaseOfLine(above)) {
+        if (e.isTrusted && above && databaseOfLine(above)) {
           setActiveLineFromDatabase(active_line - 1);
           enterRowMode(above, "last");
           updateInfoContainer();
           return true;
         }
       }
-      setActiveLine(active_line - 1);
+      if (isDatabaseLine(vim_info.lines[active_line]?.element)) {
+        setActiveLineFromDatabase(active_line - 1);
+      } else {
+        setActiveLine(active_line - 1);
+      }
       updateInfoContainer();
       return true;
     case "l":

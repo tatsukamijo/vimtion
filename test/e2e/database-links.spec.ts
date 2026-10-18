@@ -230,3 +230,34 @@ test("o on a row adds a page to the database and starts on its title", async ({
     expect.arrayContaining(["Monday", "Brand new"]),
   );
 });
+
+test("Shift+Enter on a row opens its page in a new tab, and yk below a database yanks lines", async ({
+  extensionPage: page,
+}) => {
+  const order = await openDatabasePage(page, ["Monday", "Tuesday"]);
+  await pressKeys(page, "j", "j");
+  await page.waitForTimeout(400);
+  expect(await status(page)).toContain("Row 1/2");
+  const rowId = await page.evaluate(() =>
+    (document.querySelector(".vim-row-cursor") as HTMLElement | null)?.dataset.blockId?.replace(/-/g, ""),
+  );
+  expect(rowId).toBeTruthy();
+  // Shift on its own keeps row mode, so Shift+Enter reaches the row.
+  const [tab] = await Promise.all([
+    page.context().waitForEvent("page", { timeout: 10_000 }),
+    pressKeys(page, "Shift+Enter"),
+  ]);
+  expect(tab.url()).toContain(rowId!);
+  await tab.close();
+  expect(order).toHaveLength(2);
+
+  // yk from the line below the database is a line-wise yank, not a move onto
+  // the database's rows.
+  await page.getByText("after", { exact: true }).click();
+  await pressKeys(page, "Escape");
+  await page.waitForTimeout(300);
+  await pressKeys(page, "y", "k");
+  await page.waitForTimeout(600);
+  expect(await status(page)).not.toContain("Row");
+  expect((await getVimState(page)).mode).toBe("normal");
+});

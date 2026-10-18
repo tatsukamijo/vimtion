@@ -40,6 +40,9 @@ const databaseOf = (el: Element | null | undefined): Element | null => {
   return database;
 };
 
+/** Whether `line` is a database's title (with or without visible rows). */
+export const isDatabaseLine = (line: Element | undefined): boolean => !!databaseOf(line);
+
 /** The database whose title `line` is (null for any other line). */
 export const databaseOfLine = (line: Element | undefined): Element | null => {
   const database = databaseOf(line);
@@ -97,6 +100,7 @@ const NEW_BUTTON_TEXTS = ["new", "new page"];
  * mode there.
  */
 export const newRow = (database: Element, onOpened: () => void): boolean => {
+  // (onOpened runs about 500ms later; the caller holds typeahead until then.)
   const buttons = Array.from(database.querySelectorAll<HTMLElement>('[role="button"]'));
   const button =
     NEW_BUTTON_TEXTS.map((t) =>
@@ -116,6 +120,10 @@ export interface RowKeyContext {
   setActiveLine: (idx: number) => void;
   updateInfoContainer: () => void;
   enterInsertAfterNewRow: () => void;
+  /** Continue in the side peek once it shows the page `blockId`. */
+  afterPeekOpens: (blockId: string) => void;
+  beginBusy: () => void;
+  endBusy: () => void;
 }
 
 /**
@@ -124,6 +132,8 @@ export interface RowKeyContext {
  */
 export const handleRowKey = (e: KeyboardEvent, ctx: RowKeyContext): boolean => {
   if (!inRowMode() || !row) return false;
+  // Shift / Ctrl ... on their own (before Shift+Enter, O) keep row mode.
+  if (["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) return true;
   const database = databaseOf(row);
   const rows = database ? rowsOf(database) : [];
   const i = rows.indexOf(row);
@@ -153,12 +163,19 @@ export const handleRowKey = (e: KeyboardEvent, ctx: RowKeyContext): boolean => {
       const target = row;
       exitRowMode();
       openCollectionItem(target, e.shiftKey, ctx.updateInfoContainer);
+      if (!e.shiftKey && target.dataset.blockId) ctx.afterPeekOpens(target.dataset.blockId);
       return true;
     }
     case "o":
     case "O":
       exitRowMode();
-      if (database) newRow(database, ctx.enterInsertAfterNewRow);
+      ctx.beginBusy();
+      if (!database || !newRow(database, () => {
+        ctx.enterInsertAfterNewRow();
+        ctx.endBusy();
+      })) {
+        ctx.endBusy();
+      }
       ctx.updateInfoContainer();
       return true;
     case "Escape":
@@ -200,13 +217,16 @@ export const returnToPeekedRow = (lines: { element: Element }[]): number => {
  * Ctrl+j / Ctrl+k: open the next / previous row of the database page shown
  * in the side peek (the peeked page is ?p=<id> in the URL).
  */
-export const stepPeekedRow = (step: 1 | -1, updateInfoContainer: () => void): boolean => {
+export const stepPeekedRow = (step: 1 | -1, updateInfoContainer: () => void): string | null => {
   const item = peekedRow();
   const database = databaseOf(item);
-  if (!item || !database) return false;
+  if (!item || !database) return null;
   const rows = rowsOf(database);
   const next = rows[rows.indexOf(item) + step];
-  if (!next) return false;
+  if (!next || !next.dataset.blockId) return null;
   openCollectionItem(next, false, updateInfoContainer);
-  return true;
+  return next.dataset.blockId;
 };
+
+/** Whether the side peek shows a database row of this page. */
+export const hasPeekedRow = (): boolean => !!databaseOf(peekedRow());

@@ -670,13 +670,14 @@ Block types not already in operators-block-types.spec.ts.
 | 1 | j / x / k act inside a side peek, and on the page after it closes | Pass |
 | 2 | Ctrl-h / Ctrl-l move between the page and the side peek, each keeping its cursor | Pass |
 
-## database-links.spec.ts (3 tests, fresh page per test)
+## database-links.spec.ts (4 tests, fresh page per test)
 
 | # | Test | Status |
 |---|------|--------|
 | 1 | gl hints database rows and opens one in a side peek | Pass |
 | 2 | j / k walk database rows; Enter opens one; Ctrl+j / Ctrl+k step; gq comes back to it | Pass |
 | 3 | o on a row adds a page to the database and starts on its title | Pass |
+| 4 | Shift+Enter on a row opens its page in a new tab, and yk below a database yanks lines | Pass |
 
 ## Related Docs
 
