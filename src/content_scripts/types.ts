@@ -48,7 +48,8 @@ export interface VimLine {
 
 // Link hint interface
 export interface LinkHint {
-  link: HTMLAnchorElement;
+  /** An <a href>, or a database row / card (opened by clicking it). */
+  link: HTMLElement;
   hint: string;
   overlay: HTMLElement;
 }
