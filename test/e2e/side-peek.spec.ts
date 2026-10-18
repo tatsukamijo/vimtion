@@ -26,9 +26,12 @@ const paragraph = (t: string) => ({
 });
 
 let pageId = "";
+let switchPageId = "";
 
 test.afterAll(async () => {
-  if (pageId) await notion("PATCH", `/v1/pages/${pageId}`, { archived: true }).catch(() => {});
+  for (const id of [pageId, switchPageId]) {
+    if (id) await notion("PATCH", `/v1/pages/${id}`, { archived: true }).catch(() => {});
+  }
 });
 
 test("j / x / k act inside a side peek, and on the page after it closes", async ({ extensionPage: page }) => {
@@ -78,4 +81,62 @@ test("j / x / k act inside a side peek, and on the page after it closes", async 
   await pressKeys(page, "Escape", "0", "x");
   await page.waitForTimeout(600);
   expect(await getActualCursorBlockText(page)).toBe("ain page line");
+});
+
+test("Ctrl-h / Ctrl-l move between the page and the side peek, each keeping its cursor", async ({
+  extensionPage: page,
+}) => {
+  const p = await notion("POST", "/v1/pages", {
+    parent: { page_id: process.env.NOTION_PARENT_PAGE_ID },
+    properties: { title: { title: [{ type: "text", text: { content: "Peek switch" } }] } },
+    children: [paragraph("page line one"), paragraph("page line two")],
+  });
+  switchPageId = p.id;
+  const db = await notion("POST", "/v1/databases", {
+    parent: { type: "page_id", page_id: p.id },
+    is_inline: true,
+    title: [{ type: "text", text: { content: "Logs" } }],
+    properties: { Name: { title: {} } },
+  });
+  const row = await notion("POST", "/v1/pages", {
+    parent: { database_id: db.id },
+    properties: { Name: { title: [{ type: "text", text: { content: "Today" } }] } },
+    children: ["peek line one", "peek line two"].map(paragraph),
+  });
+  const rowId = String(row.id).replace(/-/g, "");
+  await page.goto(`${p.url}?p=${rowId}&pm=s`, { waitUntil: "domcontentloaded" });
+  const peek = page.locator(".notion-peek-renderer");
+  await peek.getByText("peek line two").waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  await page.evaluate(() =>
+    document
+      .querySelectorAll(".vimtion-notification-overlay, .vimtion-update-notification")
+      .forEach((e) => e.remove()),
+  );
+  await peek.getByText("peek line one").click();
+  await pressKeys(page, "Escape", "j", "$");
+  await page.waitForTimeout(300);
+  expect(await getActualCursorBlockText(page)).toBe("peek line two");
+
+  // To the page: lands on a visible line there; then move and edit.
+  await pressKeys(page, "Control+h");
+  await page.waitForTimeout(400);
+  const landed = await getActualCursorBlockText(page);
+  expect(["Peek switch", "page line one", "page line two"]).toContain(landed);
+  await pressKeys(page, "g", "g", "j", "j", "0", "x");
+  await page.waitForTimeout(600);
+  expect(await page.getByText("age line two", { exact: true }).count()).toBe(1);
+
+  // Back to the peek: the cursor is where it was (end of "peek line two").
+  await pressKeys(page, "Control+l");
+  await page.waitForTimeout(400);
+  expect(await getActualCursorBlockText(page)).toBe("peek line two");
+  await pressKeys(page, "x");
+  await page.waitForTimeout(600);
+  expect(await peek.getByText("peek line tw", { exact: true }).count()).toBe(1);
+
+  // And back to the page line it left.
+  await pressKeys(page, "Control+h");
+  await page.waitForTimeout(400);
+  expect(await getActualCursorBlockText(page)).toBe("age line two");
 });

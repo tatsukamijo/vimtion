@@ -12,6 +12,7 @@ export {
   surfaceOf,
   currentSurface,
   setActiveSurface,
+  pageSurfaces,
 } from "./dom-utils";
 
 export {

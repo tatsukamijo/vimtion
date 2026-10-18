@@ -177,6 +177,7 @@ import {
   surfaceOf,
   currentSurface,
   setActiveSurface,
+  pageSurfaces,
 } from "./core";
 import { recordKey, repeatLastChange } from "./core/dot-repeat";
 import { repeatLastFind } from "./navigation/char-find";
@@ -823,6 +824,40 @@ document.addEventListener(
   },
   true,
 );
+
+// Ctrl-h / Ctrl-l: move between the page (left) and the page open in a side
+// peek (right), like Vim's Ctrl-w h / Ctrl-w l. Each side keeps its cursor.
+const surfaceCursor = new WeakMap<Element, { blockId: string | null; pos: number }>();
+
+const switchSurface = (toPeek: boolean): void => {
+  const { frame, peek } = pageSurfaces();
+  const target = toPeek ? peek : frame;
+  const from = currentSurface();
+  if (!target || !frame || !peek || target === from) return;
+  const { vim_info } = window;
+  const line = vim_info.lines[vim_info.active_line];
+  if (from && line) {
+    surfaceCursor.set(from, {
+      blockId: line.block_id ?? null,
+      pos: getCursorIndexInElement(line.element),
+    });
+  }
+  setActiveSurface(target);
+  refreshLines();
+  const saved = surfaceCursor.get(target);
+  let idx = saved?.blockId ? vim_info.lines.findIndex((l) => l.block_id === saved.blockId) : -1;
+  const back = idx !== -1;
+  if (!back) idx = getFirstVisibleLine();
+  setActiveLine(idx);
+  const el = vim_info.lines[vim_info.active_line]?.element;
+  if (el) {
+    const len = (el.textContent || "").length;
+    const pos = back && saved ? Math.min(saved.pos, Math.max(0, len - 1)) : 0;
+    setCursorPosition(el, pos);
+    vim_info.desired_column = columnInLine(el, pos);
+  }
+  updateInfoContainer();
+};
 
 let popupReturn: {
   blockId: string | null;
@@ -3510,6 +3545,12 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
   // Handle specific Ctrl key combinations for page navigation
   if (e.ctrlKey && !e.metaKey && !e.altKey) {
     const key = e.key.toLowerCase();
+
+    // Ctrl+h / Ctrl+l - to the page / the side peek beside it
+    if (key === "h" || key === "l") {
+      switchSurface(key === "l");
+      return true;
+    }
 
     // Ctrl+d - half page down
     if (key === "d") {

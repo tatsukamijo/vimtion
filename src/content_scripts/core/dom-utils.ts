@@ -46,6 +46,13 @@ export const currentSurface = (): Element | null => {
 };
 
 /** Work on `surface` from now on (the user focused or clicked into it). */
+/** The page and the side / center peek beside it, when each has lines. */
+export const pageSurfaces = (): { frame: Element | null; peek: Element | null } => {
+  const frame = document.querySelector(FRAME);
+  const peek = document.querySelector(PEEK);
+  return { frame: hasLines(frame) ? frame : null, peek: hasLines(peek) ? peek : null };
+};
+
 export const setActiveSurface = (surface: Element | null): void => {
   activeSurface = surface;
 };
