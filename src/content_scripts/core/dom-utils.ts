@@ -3,6 +3,15 @@
  * Low-level DOM manipulation helpers for Notion blocks and elements
  */
 
+import {
+  ClipboardPayload,
+  startCollecting,
+  finishCollecting,
+  cancelCollecting,
+  writeClipboard,
+} from "./clipboard";
+import { clearNavigationGuard } from "../cursor/position";
+
 /**
  * Clear background colors from all contenteditable elements
  * Used to reset visual selections and highlights
@@ -294,4 +303,62 @@ export const deleteCodeBlockWithKeyboardEvents = (
       document.dispatchEvent(backspaceEvent);
     }, 200);
   }, delay);
+};
+
+const NOTION_BLOCKS_TYPE = "text/_notion-blocks-v3-production";
+
+/**
+ * Line-wise yank with Notion's own clipboard data, so p / P bring back
+ * mentions, links and formatting. Notion copies the whole block when the
+ * caret is collapsed in it (as the cut in dd relies on); each line's block is
+ * copied that way into a private DataTransfer, and the copies are merged.
+ * Returns null (the plain-text yank stays) for code blocks, the page title
+ * or when Notion did not provide its block data.
+ */
+export const yankBlocksWithNotionData = async (
+  leaves: HTMLElement[],
+): Promise<ClipboardPayload | null> => {
+  const ids: string[] = [];
+  for (const leaf of leaves) {
+    if (leaf.closest(".notion-code-block, .notion-page-block")) return null;
+    const id = leaf.closest("[data-block-id]")?.getAttribute("data-block-id");
+    if (!id) return null;
+    if (!ids.includes(id)) ids.push(id);
+  }
+  // Each block takes a copy round trip (~60ms); keep long yanks plain.
+  if (ids.length === 0 || ids.length > 60) return null;
+  startCollecting();
+  for (const id of ids) {
+    const block = findBlock(id);
+    const leaf = block ? ownLeaf(block) : null;
+    if (!leaf) {
+      cancelCollecting();
+      return null;
+    }
+    // Vimtion's own guard would put the caret back on the line the last
+    // motion went to (Notion would then copy that block instead).
+    clearNavigationGuard();
+    placeCaretAtStart(leaf);
+    // Notion picks up the caret from the async selectionchange event.
+    await sleep(60);
+    const data = new DataTransfer();
+    leaf.dispatchEvent(
+      new ClipboardEvent("copy", { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+    // Notion must have copied exactly this block (not a stale selection).
+    try {
+      const copied = JSON.parse(data.getData(NOTION_BLOCKS_TYPE) || "{}").blocks ?? [];
+      if (copied.length !== 1 || copied[0].blockId !== id) {
+        cancelCollecting();
+        return null;
+      }
+    } catch {
+      cancelCollecting();
+      return null;
+    }
+  }
+  const merged = finishCollecting();
+  if (!merged) return null;
+  await writeClipboard(merged).catch(() => {});
+  return merged;
 };

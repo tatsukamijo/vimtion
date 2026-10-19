@@ -181,6 +181,14 @@ import {
 } from "./core";
 import { recordKey, repeatLastChange } from "./core/dot-repeat";
 import {
+  startCollecting,
+  finishCollecting,
+  writeClipboard,
+  notionDataFor,
+  pasteDataOf,
+} from "./core/clipboard";
+import { yankBlocksWithNotionData } from "./core/dom-utils";
+import {
   databaseOfLine,
   enterRowMode,
   exitRowMode,
@@ -2031,9 +2039,13 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
     case "s":
       changeVisualLineSelection();
       return true;
-    case "y":
+    case "y": {
+      const from = Math.min(vim_info.visual_start_line, vim_info.active_line);
+      const to = Math.max(vim_info.visual_start_line, vim_info.active_line);
       yankVisualLineSelection();
+      yankLinesWithNotionData(from, to);
       return true;
+    }
     case "J":
       // Move the selected block(s) down one position, keeping them selected.
       moveVisualLineSelection("down");
@@ -2558,12 +2570,17 @@ const deleteVisualLineSelection = () => {
   // Always try atomic deletion first (works for all block types including code blocks)
   const firstElement = vim_info.lines[firstLine].element;
   beginBusy();
+  startCollecting();
   deleteMultipleLinesAtomically(firstElement, lineCount).then((cuts) => {
     // Each block cut is one Notion undo step; u must undo them all together.
     vim_info.undo_count = Math.max(1, cuts);
     vim_info.yank_type = "line";
-    // Every cut replaced the clipboard; put the whole deleted range back.
-    if (cuts > 1) {
+    // Every cut replaced the clipboard; put the whole deleted range back,
+    // with Notion's data for p (the blocks were cut last-first).
+    const merged = finishCollecting(true);
+    if (merged && cuts > 1) {
+      writeClipboard(merged).catch(() => {});
+    } else if (cuts > 1) {
       navigator.clipboard.writeText(clipboardText).catch((err) => {
         console.error("[Vim-Notion] Failed to copy to clipboard:", err);
       });
@@ -2790,6 +2807,48 @@ const changeVisualLineSelection = () => {
 
 // yankVisualSelection and yankVisualLineSelection now created via factory below (after updateInfoContainer is defined)
 
+/**
+ * After a line-wise yank (which put the plain text on the clipboard), add
+ * Notion's own data for those lines so p / P keep mentions and formatting.
+ * The copies move the caret through the lines; it is put back after.
+ */
+const yankLinesWithNotionData = (from: number, to: number): void => {
+  const { vim_info } = window;
+  const leaves = vim_info.lines.slice(from, to + 1).map((l) => l.element as HTMLElement);
+  if (leaves.length === 0) return;
+  const back = vim_info.lines[vim_info.active_line]?.element as HTMLElement | undefined;
+  const pos = back ? getCursorIndexInElement(back) : 0;
+  beginBusy(0);
+  yankBlocksWithNotionData(leaves)
+    .catch((): null => null)
+    .then(() => {
+      if (back && back.isConnected) {
+        const idx = vim_info.lines.findIndex((l) => l.element === back);
+        if (idx !== -1) vim_info.active_line = idx;
+        back.focus({ preventScroll: true });
+        setCursorPosition(back, pos);
+      }
+      updateInfoContainer();
+      endBusy();
+    });
+};
+
+/** Hand Notion its own clipboard data (mentions, formatting) to paste. */
+const dispatchNotionPaste = (
+  element: HTMLElement,
+  text: string,
+  html: string,
+  notion: Record<string, string>,
+) => {
+  element.dispatchEvent(
+    new ClipboardEvent("paste", {
+      clipboardData: pasteDataOf(text, html, notion),
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+};
+
 const dispatchPasteEvent = (
   element: HTMLElement,
   html: string,
@@ -2832,7 +2891,12 @@ const pasteAfterCursor = async () => {
       currentElement.focus({ preventScroll: true });
 
       vim_info.mode = "insert";
-      dispatchPasteEvent(currentElement, "\n" + html, "\n" + text);
+      clearNavigationGuard();
+      // Lines yanked / deleted in Notion: Notion's own data adds them as
+      // blocks below, mentions and formatting intact.
+      const notion = notionDataFor(text);
+      if (notion) dispatchNotionPaste(currentElement, text, html, notion);
+      else dispatchPasteEvent(currentElement, "\n" + html, "\n" + text);
 
       setTimeout(() => {
         vim_info.mode = "normal";
@@ -2888,6 +2952,37 @@ const pasteBeforeCursor = async () => {
 
   try {
     const clipboardText = await navigator.clipboard.readText();
+
+    // Lines yanked / deleted in Notion: paste Notion's own data after the
+    // line above, so the blocks land above this one with mentions and
+    // formatting intact. (Not after the page title or inside a code block.)
+    const notion = vim_info.yank_type === "line" ? notionDataFor(clipboardText) : null;
+    const aboveIndex = vim_info.active_line - 1;
+    const above = vim_info.lines[aboveIndex]?.element;
+    if (
+      notion &&
+      above &&
+      !isWrapperLine(aboveIndex) &&
+      !above.closest(".notion-page-block, .notion-code-block")
+    ) {
+      // (The guard of a motion just before, e.g. G, would put the caret
+      // back on this line, and Notion would paste below it.)
+      clearNavigationGuard();
+      vim_info.mode = "insert";
+      above.focus({ preventScroll: true });
+      setCursorPosition(above, (above.textContent || "").length);
+      // Notion picks up the caret from the async selectionchange event.
+      await new Promise((r) => setTimeout(r, 60));
+      dispatchNotionPaste(above, clipboardText, "", notion);
+      setTimeout(() => {
+        vim_info.mode = "normal";
+        refreshLines();
+        const idx = vim_info.lines.findIndex((l) => l.element === above);
+        setActiveLine(idx === -1 ? vim_info.active_line : idx + 1);
+        updateInfoContainer();
+      }, 100);
+      return;
+    }
 
     // Check if clipboard contains a line (ends with newline)
     const isLinePaste = clipboardText.endsWith("\n");
@@ -3293,6 +3388,7 @@ const handlePendingOperator = (key: string): boolean => {
     switch (key) {
       case "y":
         yankCurrentLine();
+        yankLinesWithNotionData(window.vim_info.active_line, window.vim_info.active_line);
         return true;
       case "w":
         yankToNextWord();
