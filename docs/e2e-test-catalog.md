@@ -679,13 +679,15 @@ Block types not already in operators-block-types.spec.ts.
 | 3 | o on a row adds a page to the database and starts on its title | Pass |
 | 4 | Shift+Enter on a row opens its page in a new tab, and yk below a database yanks lines | Pass |
 
-## yank-mentions.spec.ts (3 tests, fresh page per test)
+## yank-mentions.spec.ts (5 tests, fresh page per test)
 
 | # | Test | Status |
 |---|------|--------|
 | 1 | Vjy then p (mention and bold kept) | Pass |
 | 2 | yy then P | Pass |
 | 3 | 2dd then p | Pass |
+| 4 | V over a nested list then p: each item once, children still nested | Pass |
+| 5 | P on a nested line pastes at that line's level | Pass |
 
 ## Related Docs
 

@@ -278,22 +278,14 @@ const collectionItemUrl = (item: HTMLElement): string | null => {
 /**
  * The row's "Open" button (shown on hover), found without its label, which
  * Notion translates: the innermost button with a peek icon (peekSide,
- * peekCenter, ...), else the innermost labelled button that is not the title.
+ * peekCenter, ...). Without one the page opens by its URL instead.
  */
 const findOpenButton = (item: HTMLElement): HTMLElement | null => {
   const innermost = Array.from(item.querySelectorAll<HTMLElement>('[role="button"]')).filter(
     (b) => !b.querySelector('[role="button"]') && b.getBoundingClientRect().width > 0,
   );
-  const byIcon = innermost.find((b) =>
-    /^peek/i.test(b.querySelector("svg")?.getAttribute("class") || ""),
-  );
-  if (byIcon) return byIcon;
-  const title = (collectionItemTarget(item).textContent || "").trim();
   return (
-    innermost.find((b) => {
-      const text = (b.textContent || "").trim();
-      return text !== "" && text !== title && !!b.querySelector("svg");
-    }) ?? null
+    innermost.find((b) => /^peek/i.test(b.querySelector("svg")?.getAttribute("class") || "")) ?? null
   );
 };
 

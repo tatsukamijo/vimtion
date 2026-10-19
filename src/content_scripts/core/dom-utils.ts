@@ -309,7 +309,8 @@ const NOTION_BLOCKS_TYPE = "text/_notion-blocks-v3-production";
 
 /**
  * Line-wise yank with Notion's own clipboard data, so p / P bring back
- * mentions, links and formatting. Notion copies the whole block when the
+ * mentions, links and formatting. A yanked line brings its nested lines (as
+ * a Notion copy does). Notion copies the whole block when the
  * caret is collapsed in it (as the cut in dd relies on); each line's block is
  * copied that way into a private DataTransfer, and the copies are merged.
  * Returns null (the plain-text yank stays) for code blocks, the page title
@@ -325,9 +326,23 @@ export const yankBlocksWithNotionData = async (
     if (!id) return null;
     if (!ids.includes(id)) ids.push(id);
   }
-  // Each block takes a copy round trip (~60ms); keep long yanks plain.
-  if (ids.length === 0 || ids.length > 60) return null;
-  startCollecting();
+  // Notion copies (and pastes) a block with its children, so a child whose
+  // parent is yanked too comes along with it; copying it again duplicated
+  // it. Copy only the topmost yanked blocks.
+  const topmost = ids.filter((id) => {
+    const block = findBlock(id);
+    for (let up = block?.parentElement?.closest("[data-block-id]"); up; up = up.parentElement?.closest("[data-block-id]")) {
+      const upId = up.getAttribute("data-block-id");
+      if (upId && ids.includes(upId)) return false;
+    }
+    return true;
+  });
+  ids.length = 0;
+  ids.push(...topmost);
+  // Each block takes a copy round trip (~60ms) while typed keys wait (at
+  // most 3s); keep long yanks plain.
+  if (ids.length === 0 || ids.length > 40) return null;
+  if (!startCollecting()) return null;
   for (const id of ids) {
     const block = findBlock(id);
     const leaf = block ? ownLeaf(block) : null;

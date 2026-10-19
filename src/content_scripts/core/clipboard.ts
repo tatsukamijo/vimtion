@@ -42,8 +42,9 @@ const payloadOf = (data: DataTransfer): ClipboardPayload => {
 const record = (e: ClipboardEvent) => {
   const data = e.clipboardData;
   if (!data) return;
-  last = payloadOf(data);
-  if (collected) collected.push(last);
+  // While collecting, only the merged result becomes the clipboard content.
+  if (collected) collected.push(payloadOf(data));
+  else last = payloadOf(data);
 };
 
 // Bubble phase on window: runs after Notion has filled the event's data.
@@ -76,9 +77,14 @@ export const preserveClipboardOnNextCut = (): void => {
   restoreOnNextCut = true;
 };
 
-/** Start keeping every copy / cut (one per block of a line-wise yank or dd). */
-export const startCollecting = (): void => {
+/**
+ * Start keeping every copy / cut (one per block of a line-wise yank or dd).
+ * False when a collection is already running.
+ */
+export const startCollecting = (): boolean => {
+  if (collected) return false;
   collected = [];
+  return true;
 };
 
 /** Stop collecting and drop what was collected (a failed yank). */
@@ -88,9 +94,9 @@ export const cancelCollecting = (): void => {
 
 /**
  * Merge what was collected into one line-wise payload (blocks in document
- * order; pass `reverse` when they were cut last-first). Each block is taken
- * without its children: a line yank holds just those lines. Null when a
- * block's Notion data is missing.
+ * order; pass `reverse` when they were cut last-first). Null when a block's
+ * Notion data is missing. (Notion pastes a copied block with its children:
+ * it rebuilds each block from its id, whatever the copied data says.)
  */
 export const finishCollecting = (reverse = false): ClipboardPayload | null => {
   const items = collected ?? [];
@@ -100,12 +106,6 @@ export const finishCollecting = (reverse = false): ClipboardPayload | null => {
   try {
     const parsed = items.map((p) => JSON.parse(p.notion[NOTION_BLOCKS]));
     const blocks = parsed.flatMap((d) => d.blocks ?? []);
-    blocks.forEach((b: any) => {
-      const own = b?.blockSubtree?.block?.[b.blockId];
-      if (!own) return;
-      if (own.value) delete own.value.content;
-      b.blockSubtree.block = { [b.blockId]: own };
-    });
     const notion = { ...items[0].notion };
     notion[NOTION_BLOCKS] = JSON.stringify({ ...parsed[0], blocks, wasContiguousSelection: true });
     const merged: ClipboardPayload = {

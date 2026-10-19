@@ -186,6 +186,7 @@ import {
   writeClipboard,
   notionDataFor,
   pasteDataOf,
+  preserveClipboardOnNextCut,
 } from "./core/clipboard";
 import { yankBlocksWithNotionData } from "./core/dom-utils";
 import {
@@ -899,11 +900,21 @@ const closePeek = (): void => {
   if (!peek) return;
   if (currentSurface() === peek) switchSurface(false);
   // The ">>" button at the start of the peek's header (found by its icon:
-  // the label is translated); else the first button there.
-  const close =
-    peek.querySelector<SVGElement>("svg.arrowChevronDoubleForward")?.closest<HTMLElement>('[role="button"]') ??
-    peek.querySelector<HTMLElement>('[role="button"]');
-  close?.click();
+  // the label is translated); else Notion's Esc, which closes a peek.
+  const close = peek
+    .querySelector<SVGElement>("svg.arrowChevronDoubleForward")
+    ?.closest<HTMLElement>('[role="button"]');
+  if (close) {
+    close.click();
+  } else {
+    const { vim_info } = window;
+    const mode = vim_info.mode;
+    vim_info.mode = "insert";
+    peek.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true, cancelable: true }),
+    );
+    vim_info.mode = mode;
+  }
   // Closing can move focus; put the caret back on the page's line.
   setTimeout(() => {
     setActiveLine(window.vim_info.active_line);
@@ -2833,6 +2844,57 @@ const yankLinesWithNotionData = (from: number, to: number): void => {
     });
 };
 
+/**
+ * Whether Notion's block data can be pasted after `el` (it inserts the
+ * blocks after that block): not into a code block or the page title.
+ */
+const acceptsBlockPaste = (el: Element, index: number): boolean =>
+  !isWrapperLine(index) && !el.closest(".notion-code-block, .notion-page-block");
+
+/** The block element of a line, and whether it has nested blocks. */
+const blockOfLine = (el: Element) => el.closest("[data-block-id]");
+const parentBlockOf = (el: Element) => blockOfLine(el)?.parentElement?.closest("[data-block-id]") ?? null;
+// (Every Notion block is .notion-selectable; one inside is a nested block.)
+const hasChildBlocks = (el: Element) => !!blockOfLine(el)?.querySelector(".notion-selectable");
+
+const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * P with Notion's block data where the line above is not a plain sibling
+ * (or there is none): open an empty line above at this line's level (O),
+ * paste after it, then remove the empty line, keeping the clipboard.
+ */
+const pasteBlocksAbove = async (text: string, notion: Record<string, string>) => {
+  const { vim_info } = window;
+  beginBusy(0);
+  try {
+    openLineAbove();
+    // Wait for O to finish (it holds the typeahead queue itself).
+    for (let t = 0; t < 40 && busyDepth() > 1; t++) await sleepMs(25);
+    const empty = vim_info.lines[vim_info.active_line]?.element as HTMLElement | undefined;
+    if (!empty || (empty.textContent || "") !== "") return;
+    // The pasted lines will start right after the line above the empty one.
+    const before = vim_info.lines[vim_info.active_line - 1]?.element;
+    clearNavigationGuard();
+    vim_info.mode = "insert";
+    empty.focus({ preventScroll: true });
+    setCursorPosition(empty, 0);
+    await sleepMs(60);
+    dispatchNotionPaste(empty, text, "", notion);
+    await sleepMs(300);
+    preserveClipboardOnNextCut();
+    await deleteMultipleLinesAtomically(empty, 1);
+    refreshLines();
+    const beforeIdx = before ? vim_info.lines.findIndex((l) => l.element === before) : -1;
+    vim_info.mode = "normal";
+    if (beforeIdx !== -1) setActiveLine(beforeIdx + 1);
+  } finally {
+    vim_info.mode = "normal";
+    updateInfoContainer();
+    endBusy();
+  }
+};
+
 /** Hand Notion its own clipboard data (mentions, formatting) to paste. */
 const dispatchNotionPaste = (
   element: HTMLElement,
@@ -2894,11 +2956,20 @@ const pasteAfterCursor = async () => {
       clearNavigationGuard();
       // Lines yanked / deleted in Notion: Notion's own data adds them as
       // blocks below, mentions and formatting intact.
-      const notion = notionDataFor(text);
-      if (notion) dispatchNotionPaste(currentElement, text, html, notion);
-      else dispatchPasteEvent(currentElement, "\n" + html, "\n" + text);
+      const notion = acceptsBlockPaste(currentElement, vim_info.active_line)
+        ? notionDataFor(text)
+        : null;
+      beginBusy(0);
+      if (notion) {
+        // Notion picks up the caret from the async selectionchange event.
+        await new Promise((r) => setTimeout(r, 60));
+        dispatchNotionPaste(currentElement, text, html, notion);
+      } else {
+        dispatchPasteEvent(currentElement, "\n" + html, "\n" + text);
+      }
 
       setTimeout(() => {
+        endBusy();
         vim_info.mode = "normal";
         refreshLines();
         const newLineIndex = Math.min(
@@ -2959,15 +3030,21 @@ const pasteBeforeCursor = async () => {
     const notion = vim_info.yank_type === "line" ? notionDataFor(clipboardText) : null;
     const aboveIndex = vim_info.active_line - 1;
     const above = vim_info.lines[aboveIndex]?.element;
+    // Only when the line above is a plain sibling of this one: pasting after
+    // it must land at this line's level, and must not fill an empty line.
     if (
       notion &&
       above &&
-      !isWrapperLine(aboveIndex) &&
-      !above.closest(".notion-page-block, .notion-code-block")
+      acceptsBlockPaste(above, aboveIndex) &&
+      acceptsBlockPaste(currentElement, vim_info.active_line) &&
+      (above.textContent || "") !== "" &&
+      parentBlockOf(above) === parentBlockOf(currentElement) &&
+      !hasChildBlocks(above)
     ) {
       // (The guard of a motion just before, e.g. G, would put the caret
       // back on this line, and Notion would paste below it.)
       clearNavigationGuard();
+      beginBusy(0);
       vim_info.mode = "insert";
       above.focus({ preventScroll: true });
       setCursorPosition(above, (above.textContent || "").length);
@@ -2975,12 +3052,18 @@ const pasteBeforeCursor = async () => {
       await new Promise((r) => setTimeout(r, 60));
       dispatchNotionPaste(above, clipboardText, "", notion);
       setTimeout(() => {
+        endBusy();
         vim_info.mode = "normal";
         refreshLines();
         const idx = vim_info.lines.findIndex((l) => l.element === above);
         setActiveLine(idx === -1 ? vim_info.active_line : idx + 1);
         updateInfoContainer();
       }, 100);
+      return;
+    }
+
+    if (notion && acceptsBlockPaste(currentElement, vim_info.active_line)) {
+      await pasteBlocksAbove(clipboardText, notion);
       return;
     }
 
