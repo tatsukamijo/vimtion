@@ -28,9 +28,10 @@ const LONG =
 const LINES = ["Proposed idea", LONG, `${LONG} Again.`, "last line"];
 let pageId = "";
 let shrinkPageId = "";
+let shiftPageId = "";
 
 test.afterAll(async () => {
-  for (const id of [pageId, shrinkPageId]) {
+  for (const id of [pageId, shrinkPageId, shiftPageId]) {
     if (id) await notion("PATCH", `/v1/pages/${id}`, { archived: true }).catch(() => {});
   }
 });
@@ -133,5 +134,43 @@ test("visual-line keeps working when lines at the end disappear under it", async
   await pressKeys(page, "Escape");
   await page.waitForTimeout(300);
   expect(await body(page)).toEqual(["one", "two", "three"]);
+});
+
+test("Vd deletes the highlighted lines when lines above them disappear", async ({
+  extensionPage: page,
+}) => {
+  const p = await notion("POST", "/v1/pages", {
+    parent: { page_id: process.env.NOTION_PARENT_PAGE_ID },
+    properties: { title: { title: [{ type: "text", text: { content: "Shift" } }] } },
+    children: ["top one", "top two", "sel one", "sel two", "sel three", "bottom"].map((l) => ({
+      object: "block",
+      type: "paragraph",
+      paragraph: { rich_text: [{ type: "text", text: { content: l } }] },
+    })),
+  });
+  shiftPageId = p.id;
+  const kids = (await notion("GET", `/v1/blocks/${p.id}/children`)).results as { id: string }[];
+  await page.goto(p.url, { waitUntil: "domcontentloaded" });
+  await page.getByText("bottom", { exact: true }).waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  await page.evaluate(() =>
+    document
+      .querySelectorAll(".vimtion-notification-overlay, .vimtion-update-notification")
+      .forEach((e) => e.remove()),
+  );
+  await waitForVimStateReady(page, 10_000);
+  await page.getByText("sel one", { exact: true }).click();
+  await pressKeys(page, "Escape", "V", "j", "j");
+  await page.waitForTimeout(400);
+
+  // Two lines above the selection go away (another client, a re-render).
+  await notion("DELETE", `/v1/blocks/${kids[0].id}`);
+  await notion("DELETE", `/v1/blocks/${kids[1].id}`);
+  await page.getByText("top two", { exact: true }).waitFor({ state: "detached", timeout: 30_000 });
+  await page.waitForTimeout(800);
+
+  await pressKeys(page, "d");
+  await page.waitForTimeout(1500);
+  expect(await body(page)).toEqual(["bottom"]);
 });
 
