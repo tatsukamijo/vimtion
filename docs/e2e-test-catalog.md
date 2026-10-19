@@ -679,6 +679,14 @@ Block types not already in operators-block-types.spec.ts.
 | 3 | o on a row adds a page to the database and starts on its title | Pass |
 | 4 | Shift+Enter on a row opens its page in a new tab, and yk below a database yanks lines | Pass |
 
+## yank-mentions.spec.ts (3 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | Vjy then p (mention and bold kept) | Pass |
+| 2 | yy then P | Pass |
+| 3 | 2dd then p | Pass |
+
 ## Related Docs
 
 - [Known Bugs](known-bugs.md) — BUG-001 through BUG-014, BUG-029, BUG-035, BUG-036

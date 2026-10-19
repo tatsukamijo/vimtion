@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`gq`** closes the side peek and puts the cursor on the row of the page that was open.
 
 ### Fixed
+- Line-wise yank and delete (`yy`, `V`…`y`, `3yy`, `dd`, `2dd`) and put (`p` / `P`) keep mentions, link previews, links and formatting. Pasted lines used to turn a mention into a bare URL.
+- Opening database rows, adding rows and `gq` work in every Notion language (Japanese, Korean, ...): Notion's buttons are found by their icons, not their English labels.
 - `j` / `k` from one database's title to another database's title no longer bounces back (Notion moved the focus back to the first title).
 
 ## [1.10.0] - 2026-10-17
