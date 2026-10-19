@@ -276,6 +276,28 @@ const collectionItemUrl = (item: HTMLElement): string | null => {
 };
 
 /**
+ * The row's "Open" button (shown on hover), found without its label, which
+ * Notion translates: the innermost button with a peek icon (peekSide,
+ * peekCenter, ...), else the innermost labelled button that is not the title.
+ */
+const findOpenButton = (item: HTMLElement): HTMLElement | null => {
+  const innermost = Array.from(item.querySelectorAll<HTMLElement>('[role="button"]')).filter(
+    (b) => !b.querySelector('[role="button"]') && b.getBoundingClientRect().width > 0,
+  );
+  const byIcon = innermost.find((b) =>
+    /^peek/i.test(b.querySelector("svg")?.getAttribute("class") || ""),
+  );
+  if (byIcon) return byIcon;
+  const title = (collectionItemTarget(item).textContent || "").trim();
+  return (
+    innermost.find((b) => {
+      const text = (b.textContent || "").trim();
+      return text !== "" && text !== title && !!b.querySelector("svg");
+    }) ?? null
+  );
+};
+
+/**
  * Open a database page with the row's own "Open" button, which Notion shows
  * on hover and which follows the database's "open pages in" setting (side
  * peek, center peek or full page). Notion ignores script clicks on the title
@@ -305,12 +327,7 @@ export const openCollectionItem = (
   target.dispatchEvent(new MouseEvent("mousemove", at));
   disableNotionUnsavedWarning();
   setTimeout(() => {
-    // The innermost one: Notion nests a wrapper with the same text.
-    const open = Array.from(item.querySelectorAll<HTMLElement>('[role="button"]'))
-      .filter(
-        (b) => (b.textContent || "").trim().toLowerCase() === "open" && b.getBoundingClientRect().width > 0,
-      )
-      .pop();
+    const open = findOpenButton(item);
     if (open) open.click();
     else if (url) window.location.assign(url);
     target.dispatchEvent(new MouseEvent("mouseout", at));

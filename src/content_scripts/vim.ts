@@ -890,7 +890,11 @@ const closePeek = (): void => {
   const { peek } = pageSurfaces();
   if (!peek) return;
   if (currentSurface() === peek) switchSurface(false);
-  const close = peek.querySelector<HTMLElement>('[aria-label="Close"]');
+  // The ">>" button at the start of the peek's header (found by its icon:
+  // the label is translated); else the first button there.
+  const close =
+    peek.querySelector<SVGElement>("svg.arrowChevronDoubleForward")?.closest<HTMLElement>('[role="button"]') ??
+    peek.querySelector<HTMLElement>('[role="button"]');
   close?.click();
   // Closing can move focus; put the caret back on the page's line.
   setTimeout(() => {

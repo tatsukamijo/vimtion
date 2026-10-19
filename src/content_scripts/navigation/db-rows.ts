@@ -92,8 +92,6 @@ export const rowStatusText = (): string => {
   return `Row ${rows.indexOf(row) + 1}/${rows.length}`;
 };
 
-const NEW_BUTTON_TEXTS = ["new", "new page"];
-
 /**
  * Add a page to `database` with its "New" button, which opens the new page
  * (in a side peek by default) with its title focused; continue in insert
@@ -101,13 +99,12 @@ const NEW_BUTTON_TEXTS = ["new", "new page"];
  */
 export const newRow = (database: Element, onOpened: () => void): boolean => {
   // (onOpened runs about 500ms later; the caller holds typeahead until then.)
-  const buttons = Array.from(database.querySelectorAll<HTMLElement>('[role="button"]'));
+  // The blue "New" button (its label is translated, its container is not);
+  // the dropdown arrow beside it is the button with an icon.
   const button =
-    NEW_BUTTON_TEXTS.map((t) =>
-      buttons.find(
-        (b) => (b.textContent || "").trim().toLowerCase() === t && b.getBoundingClientRect().width > 0,
-      ),
-    ).find(Boolean) ?? null;
+    Array.from(
+      database.querySelectorAll<HTMLElement>('.notion-collection-view-item-add [role="button"]'),
+    ).find((b) => !b.querySelector("svg") && b.getBoundingClientRect().width > 0) ?? null;
   if (!button) return false;
   button.click();
   setTimeout(onOpened, 500);
