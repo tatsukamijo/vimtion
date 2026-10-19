@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.11.1] - 2026-10-19
 
 ### Fixed
+- Outside insert mode no keystroke can type into the page any more: a key that reached Notion around Vimtion's handling (seen with `V` + `j` over long paragraphs) emptied the selected blocks and typed the letters.
 - After `Ctrl+h` / `Ctrl+l`, `gq` came back to the database title instead of the opened row (Ctrl on its own ended row mode), and closing a peek could drop the row cursor when Notion re-rendered the row.
 
 ## [1.11.0] - 2026-10-18

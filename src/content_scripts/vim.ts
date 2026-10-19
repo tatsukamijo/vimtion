@@ -1324,6 +1324,32 @@ document.addEventListener(
   true,
 );
 
+// Safety net: outside insert mode no keystroke may type into the page. If a
+// key ever reaches Notion without Vimtion's keydown handling it (focus where
+// no line listener sits), typing over a visual-line selection used to empty
+// every selected block and type the letters into the first one. Vimtion's own
+// edits use execCommand / synthetic events, which fire no trusted beforeinput;
+// IME composition (insertCompositionText) is left alone.
+document.addEventListener(
+  "beforeinput",
+  (e: InputEvent) => {
+    if (!e.isTrusted || e.inputType !== "insertText") return;
+    const { vim_info } = window;
+    if (vim_info.mode === "insert") return;
+    const t = e.target as HTMLElement | null;
+    const host = t?.closest?.('[contenteditable="true"]');
+    if (!host || !isDocumentEditable(host)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    console.warn(
+      `[Vimtion] blocked typing "${e.data}" in ${vim_info.mode} mode (focus: ${
+        (document.activeElement as HTMLElement | null)?.className || document.activeElement?.tagName
+      })`,
+    );
+  },
+  true,
+);
+
 const replayDeferred = (item: Deferred) => {
   const { vim_info } = window;
   if (item.kind === "click") {

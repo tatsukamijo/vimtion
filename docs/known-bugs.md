@@ -779,3 +779,11 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
 - **Root cause**: BUG-091 limited lines to editables inside `.notion-frame`. A side or centre peek renders in `.notion-peek-renderer`, outside that frame, so none of its lines were Vimtion's and every key went to Notion.
 - **Fix**: Lines come from one page surface: the main frame or a peek. An open peek is the default; focus moving into the other surface switches to it; a closing (empty) peek falls back to the frame. Inside a peek, the overlay/dialog exclusions do not apply (a centre peek lives in Notion's overlay), but comment boxes and the AI prompt are still excluded.
 - **Verified**: peek opens → lines are the peek's (cursor on its title); `j`/`x`/`k` act in the peek; clicking the page behind switches to it and back; closing the peek returns to the page and `j` works.
+
+## BUG-096: `V` + `j` over long paragraphs emptied the selected blocks and typed "jjj"
+
+- **Detected**: 2026-10-19 (user report: `Shift+V` then `j j j ...` near the bottom of a long page; Notion's "Multiple Types" text toolbar appeared, then the selected blocks were emptied and the next letters typed into the first one).
+- **Status**: **MITIGATED** on `fix/row-mode-rerender` (1.11.1). The trigger is not reproduced (headless and headed driver, long wrapped paragraphs, H1, databases, sub-page links, held keys and zero-gap bursts all keep the keys in Vimtion).
+- **Root cause (partial)**: a key reached Notion without Vimtion's keydown handling it, so Notion typed over the cross-block text selection. Where focus was at that moment is unknown.
+- **Fix**: a capture-phase `beforeinput` guard blocks trusted `insertText` into page editables whenever Vimtion is not in insert mode (IME `insertCompositionText` is left alone; Vimtion's own edits fire no trusted beforeinput). It logs `[Vimtion] blocked typing "..." in <mode> mode (focus: ...)` to the console, which names the focus target for the next report.
+- **Verified**: `test/e2e/typing-guard.spec.ts` sends text without a keydown (what Notion would insert if Vimtion never saw the key) in visual-line and normal mode; the page is unchanged. Without the guard the selection is replaced by "jjj".
