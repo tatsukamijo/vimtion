@@ -5,6 +5,7 @@
 
 import { updateBlockCursor } from "../cursor";
 import { refreshSearchHighlights, searchStatusText } from "../navigation/search";
+import { rowStatusText } from "../navigation/db-rows";
 
 /**
  * Bridge: mirror a sanitized snapshot of vim_info to document.body.dataset
@@ -64,7 +65,9 @@ export const updateInfoContainer = () => {
   refreshSearchHighlights();
   const search = searchStatusText();
   const searchInfo = search ? ` | ${search}` : "";
-  mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}${searchInfo}${pendingCount}`;
+  const rowInfo = rowStatusText();
+  const rowPart = rowInfo ? ` | ${rowInfo}` : "";
+  mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}${rowPart}${searchInfo}${pendingCount}`;
 
   // Update body class for cursor styling
   document.body.classList.remove(

@@ -3,6 +3,15 @@
  * Low-level DOM manipulation helpers for Notion blocks and elements
  */
 
+import {
+  ClipboardPayload,
+  startCollecting,
+  finishCollecting,
+  cancelCollecting,
+  writeClipboard,
+} from "./clipboard";
+import { clearNavigationGuard } from "../cursor/position";
+
 /**
  * Clear background colors from all contenteditable elements
  * Used to reset visual selections and highlights
@@ -46,6 +55,13 @@ export const currentSurface = (): Element | null => {
 };
 
 /** Work on `surface` from now on (the user focused or clicked into it). */
+/** The page and the side / center peek beside it, when each has lines. */
+export const pageSurfaces = (): { frame: Element | null; peek: Element | null } => {
+  const frame = document.querySelector(FRAME);
+  const peek = document.querySelector(PEEK);
+  return { frame: hasLines(frame) ? frame : null, peek: hasLines(peek) ? peek : null };
+};
+
 export const setActiveSurface = (surface: Element | null): void => {
   activeSurface = surface;
 };
@@ -287,4 +303,77 @@ export const deleteCodeBlockWithKeyboardEvents = (
       document.dispatchEvent(backspaceEvent);
     }, 200);
   }, delay);
+};
+
+const NOTION_BLOCKS_TYPE = "text/_notion-blocks-v3-production";
+
+/**
+ * Line-wise yank with Notion's own clipboard data, so p / P bring back
+ * mentions, links and formatting. A yanked line brings its nested lines (as
+ * a Notion copy does). Notion copies the whole block when the
+ * caret is collapsed in it (as the cut in dd relies on); each line's block is
+ * copied that way into a private DataTransfer, and the copies are merged.
+ * Returns null (the plain-text yank stays) for code blocks, the page title
+ * or when Notion did not provide its block data.
+ */
+export const yankBlocksWithNotionData = async (
+  leaves: HTMLElement[],
+): Promise<ClipboardPayload | null> => {
+  const ids: string[] = [];
+  for (const leaf of leaves) {
+    if (leaf.closest(".notion-code-block, .notion-page-block")) return null;
+    const id = leaf.closest("[data-block-id]")?.getAttribute("data-block-id");
+    if (!id) return null;
+    if (!ids.includes(id)) ids.push(id);
+  }
+  // Notion copies (and pastes) a block with its children, so a child whose
+  // parent is yanked too comes along with it; copying it again duplicated
+  // it. Copy only the topmost yanked blocks.
+  const topmost = ids.filter((id) => {
+    const block = findBlock(id);
+    for (let up = block?.parentElement?.closest("[data-block-id]"); up; up = up.parentElement?.closest("[data-block-id]")) {
+      const upId = up.getAttribute("data-block-id");
+      if (upId && ids.includes(upId)) return false;
+    }
+    return true;
+  });
+  ids.length = 0;
+  ids.push(...topmost);
+  // Each block takes a copy round trip (~60ms) while typed keys wait (at
+  // most 3s); keep long yanks plain.
+  if (ids.length === 0 || ids.length > 40) return null;
+  if (!startCollecting()) return null;
+  for (const id of ids) {
+    const block = findBlock(id);
+    const leaf = block ? ownLeaf(block) : null;
+    if (!leaf) {
+      cancelCollecting();
+      return null;
+    }
+    // Vimtion's own guard would put the caret back on the line the last
+    // motion went to (Notion would then copy that block instead).
+    clearNavigationGuard();
+    placeCaretAtStart(leaf);
+    // Notion picks up the caret from the async selectionchange event.
+    await sleep(60);
+    const data = new DataTransfer();
+    leaf.dispatchEvent(
+      new ClipboardEvent("copy", { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+    // Notion must have copied exactly this block (not a stale selection).
+    try {
+      const copied = JSON.parse(data.getData(NOTION_BLOCKS_TYPE) || "{}").blocks ?? [];
+      if (copied.length !== 1 || copied[0].blockId !== id) {
+        cancelCollecting();
+        return null;
+      }
+    } catch {
+      cancelCollecting();
+      return null;
+    }
+  }
+  const merged = finishCollecting();
+  if (!merged) return null;
+  await writeClipboard(merged).catch(() => {});
+  return merged;
 };

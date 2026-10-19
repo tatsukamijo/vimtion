@@ -177,8 +177,29 @@ import {
   surfaceOf,
   currentSurface,
   setActiveSurface,
+  pageSurfaces,
 } from "./core";
 import { recordKey, repeatLastChange } from "./core/dot-repeat";
+import {
+  startCollecting,
+  finishCollecting,
+  writeClipboard,
+  notionDataFor,
+  pasteDataOf,
+  preserveClipboardOnNextCut,
+} from "./core/clipboard";
+import { yankBlocksWithNotionData } from "./core/dom-utils";
+import {
+  databaseOfLine,
+  enterRowMode,
+  exitRowMode,
+  handleRowKey,
+  hasPeekedRow,
+  inRowMode,
+  isDatabaseLine,
+  returnToPeekedRow,
+  stepPeekedRow,
+} from "./navigation/db-rows";
 import { repeatLastFind } from "./navigation/char-find";
 import {
   openSearch,
@@ -819,6 +840,170 @@ document.addEventListener(
     const leaf = target.closest('[contenteditable="true"]');
     const idx = vim_info.lines.findIndex((l) => l.element === leaf);
     if (idx !== -1 && !isWrapperLine(idx)) vim_info.active_line = idx;
+    updateInfoContainer();
+  },
+  true,
+);
+
+// Ctrl-h / Ctrl-l: move between the page (left) and the page open in a side
+// peek (right), like Vim's Ctrl-w h / Ctrl-w l. Each side keeps its cursor.
+const surfaceCursor = new WeakMap<
+  Element,
+  { blockId: string | null; pos: number; inRow: boolean }
+>();
+
+const switchSurface = (toPeek: boolean): void => {
+  const { frame, peek } = pageSurfaces();
+  const target = toPeek ? peek : frame;
+  const from = currentSurface();
+  if (!target || !frame || !peek || target === from) return;
+  const { vim_info } = window;
+  const line = vim_info.lines[vim_info.active_line];
+  if (from && line) {
+    surfaceCursor.set(from, {
+      blockId: line.block_id ?? null,
+      pos: getCursorIndexInElement(line.element),
+      inRow: inRowMode(),
+    });
+  }
+  exitRowMode();
+  setActiveSurface(target);
+  refreshLines();
+  const saved = surfaceCursor.get(target);
+  let idx = saved?.blockId ? vim_info.lines.findIndex((l) => l.block_id === saved.blockId) : -1;
+  const back = idx !== -1;
+  if (!toPeek && (!back || saved?.inRow)) {
+    // The first time on the page, or when the cursor was on a row: on the
+    // row of the page now open in the peek.
+    const title = returnToPeekedRow(vim_info.lines);
+    if (title !== -1) {
+      setActiveLine(title);
+      updateInfoContainer();
+      return;
+    }
+  }
+  if (!back) idx = getFirstVisibleLine();
+  setActiveLine(idx);
+  const el = vim_info.lines[vim_info.active_line]?.element;
+  if (el) {
+    const len = (el.textContent || "").length;
+    const pos = back && saved ? Math.min(saved.pos, Math.max(0, len - 1)) : 0;
+    setCursorPosition(el, pos);
+    vim_info.desired_column = columnInLine(el, pos);
+  }
+  updateInfoContainer();
+};
+
+// gq: close the side peek and continue on the page behind it.
+const closePeek = (): void => {
+  const { peek } = pageSurfaces();
+  if (!peek) return;
+  if (currentSurface() === peek) switchSurface(false);
+  // The ">>" button at the start of the peek's header (found by its icon:
+  // the label is translated); else Notion's Esc, which closes a peek.
+  const close = peek
+    .querySelector<SVGElement>("svg.arrowChevronDoubleForward")
+    ?.closest<HTMLElement>('[role="button"]');
+  if (close) {
+    close.click();
+  } else {
+    const { vim_info } = window;
+    const mode = vim_info.mode;
+    vim_info.mode = "insert";
+    peek.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true, cancelable: true }),
+    );
+    vim_info.mode = mode;
+  }
+  // Closing can move focus; put the caret back on the page's line.
+  setTimeout(() => {
+    setActiveLine(window.vim_info.active_line);
+    updateInfoContainer();
+  }, 200);
+};
+
+// After a row was opened (Enter on a row, Ctrl+j / Ctrl+k), continue on the
+// title of its page in the peek once the peek shows it. Typed keys wait.
+const afterPeekOpens = (blockId: string): void => {
+  const id = blockId.replace(/-/g, "");
+  const started = Date.now();
+  beginBusy(0);
+  const check = () => {
+    const { peek } = pageSurfaces();
+    const shown =
+      new URLSearchParams(window.location.search).get("p") === id &&
+      peek?.querySelector(`[data-block-id="${blockId}"] [contenteditable="true"]`);
+    if (peek && shown) {
+      setActiveSurface(peek);
+      refreshLines();
+      const title = (shown as Element).closest('[contenteditable="true"]');
+      const idx = window.vim_info.lines.findIndex((l) => l.element === title);
+      setActiveLine(idx === -1 ? 0 : idx);
+      updateInfoContainer();
+      endBusy();
+    } else if (Date.now() - started > 2500) {
+      // Opened somewhere else (full page, new tab): nothing to do here.
+      endBusy();
+    } else {
+      setTimeout(check, 50);
+    }
+  };
+  setTimeout(check, 50);
+};
+
+// o in row mode: Notion opens the new page with its title focused.
+const enterInsertAfterNewRow = (): void => {
+  const active = document.activeElement as HTMLElement | null;
+  const leaf = active?.isContentEditable ? active.closest('[contenteditable="true"]') : null;
+  if (!leaf) return;
+  refreshLines();
+  const { vim_info } = window;
+  const idx = vim_info.lines.findIndex((l) => l.element === leaf);
+  if (idx !== -1) vim_info.active_line = idx;
+  vim_info.mode = "insert";
+  updateInfoContainer();
+};
+
+// Moving onto a database's title from inside a keydown on another database's
+// title does not stick: Notion puts the focus back on the title the key was
+// pressed on a moment later. Put it back on the new line when that happens
+// (keys typed meanwhile wait in the typeahead queue).
+const setActiveLineFromDatabase = (idx: number): void => {
+  setActiveLine(idx);
+  const target = window.vim_info.lines[window.vim_info.active_line]?.element;
+  if (!target) return;
+  beginBusy(0);
+  const reassert = (delays: number[]) => {
+    const [delay, ...rest] = delays;
+    setTimeout(() => {
+      const stillThere = window.vim_info.lines[window.vim_info.active_line]?.element === target;
+      if (stillThere && document.activeElement !== target) {
+        setActiveLine(window.vim_info.active_line);
+        updateInfoContainer();
+      }
+      if (rest.length > 0 && stillThere) reassert(rest);
+      else endBusy();
+    }, delay);
+  };
+  reassert([40, 80, 120]);
+};
+
+const rowKeyContext = {
+  lineIndex: (el: Element) => window.vim_info.lines.findIndex((l) => l.element === el),
+  setActiveLine: setActiveLineFromDatabase,
+  updateInfoContainer: () => updateInfoContainer(),
+  enterInsertAfterNewRow,
+  afterPeekOpens,
+  beginBusy: () => beginBusy(0),
+  endBusy: () => endBusy(),
+};
+
+// A click anywhere ends row mode (the click put the caret where it wanted).
+document.addEventListener(
+  "mousedown",
+  () => {
+    if (!inRowMode()) return;
+    exitRowMode();
     updateInfoContainer();
   },
   true,
@@ -1865,9 +2050,13 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
     case "s":
       changeVisualLineSelection();
       return true;
-    case "y":
+    case "y": {
+      const from = Math.min(vim_info.visual_start_line, vim_info.active_line);
+      const to = Math.max(vim_info.visual_start_line, vim_info.active_line);
       yankVisualLineSelection();
+      yankLinesWithNotionData(from, to);
       return true;
+    }
     case "J":
       // Move the selected block(s) down one position, keeping them selected.
       moveVisualLineSelection("down");
@@ -2392,12 +2581,17 @@ const deleteVisualLineSelection = () => {
   // Always try atomic deletion first (works for all block types including code blocks)
   const firstElement = vim_info.lines[firstLine].element;
   beginBusy();
+  startCollecting();
   deleteMultipleLinesAtomically(firstElement, lineCount).then((cuts) => {
     // Each block cut is one Notion undo step; u must undo them all together.
     vim_info.undo_count = Math.max(1, cuts);
     vim_info.yank_type = "line";
-    // Every cut replaced the clipboard; put the whole deleted range back.
-    if (cuts > 1) {
+    // Every cut replaced the clipboard; put the whole deleted range back,
+    // with Notion's data for p (the blocks were cut last-first).
+    const merged = finishCollecting(true);
+    if (merged && cuts > 1) {
+      writeClipboard(merged).catch(() => {});
+    } else if (cuts > 1) {
       navigator.clipboard.writeText(clipboardText).catch((err) => {
         console.error("[Vim-Notion] Failed to copy to clipboard:", err);
       });
@@ -2624,6 +2818,99 @@ const changeVisualLineSelection = () => {
 
 // yankVisualSelection and yankVisualLineSelection now created via factory below (after updateInfoContainer is defined)
 
+/**
+ * After a line-wise yank (which put the plain text on the clipboard), add
+ * Notion's own data for those lines so p / P keep mentions and formatting.
+ * The copies move the caret through the lines; it is put back after.
+ */
+const yankLinesWithNotionData = (from: number, to: number): void => {
+  const { vim_info } = window;
+  const leaves = vim_info.lines.slice(from, to + 1).map((l) => l.element as HTMLElement);
+  if (leaves.length === 0) return;
+  const back = vim_info.lines[vim_info.active_line]?.element as HTMLElement | undefined;
+  const pos = back ? getCursorIndexInElement(back) : 0;
+  beginBusy(0);
+  yankBlocksWithNotionData(leaves)
+    .catch((): null => null)
+    .then(() => {
+      if (back && back.isConnected) {
+        const idx = vim_info.lines.findIndex((l) => l.element === back);
+        if (idx !== -1) vim_info.active_line = idx;
+        back.focus({ preventScroll: true });
+        setCursorPosition(back, pos);
+      }
+      updateInfoContainer();
+      endBusy();
+    });
+};
+
+/**
+ * Whether Notion's block data can be pasted after `el` (it inserts the
+ * blocks after that block): not into a code block or the page title.
+ */
+const acceptsBlockPaste = (el: Element, index: number): boolean =>
+  !isWrapperLine(index) && !el.closest(".notion-code-block, .notion-page-block");
+
+/** The block element of a line, and whether it has nested blocks. */
+const blockOfLine = (el: Element) => el.closest("[data-block-id]");
+const parentBlockOf = (el: Element) => blockOfLine(el)?.parentElement?.closest("[data-block-id]") ?? null;
+// (Every Notion block is .notion-selectable; one inside is a nested block.)
+const hasChildBlocks = (el: Element) => !!blockOfLine(el)?.querySelector(".notion-selectable");
+
+const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * P with Notion's block data where the line above is not a plain sibling
+ * (or there is none): open an empty line above at this line's level (O),
+ * paste after it, then remove the empty line, keeping the clipboard.
+ */
+const pasteBlocksAbove = async (text: string, notion: Record<string, string>) => {
+  const { vim_info } = window;
+  beginBusy(0);
+  try {
+    openLineAbove();
+    // Wait for O to finish (it holds the typeahead queue itself).
+    for (let t = 0; t < 40 && busyDepth() > 1; t++) await sleepMs(25);
+    const empty = vim_info.lines[vim_info.active_line]?.element as HTMLElement | undefined;
+    if (!empty || (empty.textContent || "") !== "") return;
+    // The pasted lines will start right after the line above the empty one.
+    const before = vim_info.lines[vim_info.active_line - 1]?.element;
+    clearNavigationGuard();
+    vim_info.mode = "insert";
+    empty.focus({ preventScroll: true });
+    setCursorPosition(empty, 0);
+    await sleepMs(60);
+    dispatchNotionPaste(empty, text, "", notion);
+    await sleepMs(300);
+    preserveClipboardOnNextCut();
+    await deleteMultipleLinesAtomically(empty, 1);
+    refreshLines();
+    const beforeIdx = before ? vim_info.lines.findIndex((l) => l.element === before) : -1;
+    vim_info.mode = "normal";
+    if (beforeIdx !== -1) setActiveLine(beforeIdx + 1);
+  } finally {
+    vim_info.mode = "normal";
+    updateInfoContainer();
+    endBusy();
+  }
+};
+
+/** Hand Notion its own clipboard data (mentions, formatting) to paste. */
+const dispatchNotionPaste = (
+  element: HTMLElement,
+  text: string,
+  html: string,
+  notion: Record<string, string>,
+) => {
+  element.dispatchEvent(
+    new ClipboardEvent("paste", {
+      clipboardData: pasteDataOf(text, html, notion),
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+};
+
 const dispatchPasteEvent = (
   element: HTMLElement,
   html: string,
@@ -2666,9 +2953,23 @@ const pasteAfterCursor = async () => {
       currentElement.focus({ preventScroll: true });
 
       vim_info.mode = "insert";
-      dispatchPasteEvent(currentElement, "\n" + html, "\n" + text);
+      clearNavigationGuard();
+      // Lines yanked / deleted in Notion: Notion's own data adds them as
+      // blocks below, mentions and formatting intact.
+      const notion = acceptsBlockPaste(currentElement, vim_info.active_line)
+        ? notionDataFor(text)
+        : null;
+      beginBusy(0);
+      if (notion) {
+        // Notion picks up the caret from the async selectionchange event.
+        await new Promise((r) => setTimeout(r, 60));
+        dispatchNotionPaste(currentElement, text, html, notion);
+      } else {
+        dispatchPasteEvent(currentElement, "\n" + html, "\n" + text);
+      }
 
       setTimeout(() => {
+        endBusy();
         vim_info.mode = "normal";
         refreshLines();
         const newLineIndex = Math.min(
@@ -2722,6 +3023,49 @@ const pasteBeforeCursor = async () => {
 
   try {
     const clipboardText = await navigator.clipboard.readText();
+
+    // Lines yanked / deleted in Notion: paste Notion's own data after the
+    // line above, so the blocks land above this one with mentions and
+    // formatting intact. (Not after the page title or inside a code block.)
+    const notion = vim_info.yank_type === "line" ? notionDataFor(clipboardText) : null;
+    const aboveIndex = vim_info.active_line - 1;
+    const above = vim_info.lines[aboveIndex]?.element;
+    // Only when the line above is a plain sibling of this one: pasting after
+    // it must land at this line's level, and must not fill an empty line.
+    if (
+      notion &&
+      above &&
+      acceptsBlockPaste(above, aboveIndex) &&
+      acceptsBlockPaste(currentElement, vim_info.active_line) &&
+      (above.textContent || "") !== "" &&
+      parentBlockOf(above) === parentBlockOf(currentElement) &&
+      !hasChildBlocks(above)
+    ) {
+      // (The guard of a motion just before, e.g. G, would put the caret
+      // back on this line, and Notion would paste below it.)
+      clearNavigationGuard();
+      beginBusy(0);
+      vim_info.mode = "insert";
+      above.focus({ preventScroll: true });
+      setCursorPosition(above, (above.textContent || "").length);
+      // Notion picks up the caret from the async selectionchange event.
+      await new Promise((r) => setTimeout(r, 60));
+      dispatchNotionPaste(above, clipboardText, "", notion);
+      setTimeout(() => {
+        endBusy();
+        vim_info.mode = "normal";
+        refreshLines();
+        const idx = vim_info.lines.findIndex((l) => l.element === above);
+        setActiveLine(idx === -1 ? vim_info.active_line : idx + 1);
+        updateInfoContainer();
+      }, 100);
+      return;
+    }
+
+    if (notion && acceptsBlockPaste(currentElement, vim_info.active_line)) {
+      await pasteBlocksAbove(clipboardText, notion);
+      return;
+    }
 
     // Check if clipboard contains a line (ends with newline)
     const isLinePaste = clipboardText.endsWith("\n");
@@ -3081,6 +3425,9 @@ const handlePendingOperator = (key: string): boolean => {
       case "g":
         jumpToTop();
         return true;
+      case "q":
+        closePeek();
+        return true;
       case "l":
         // Save cursor position before entering link hint mode
         // (so we can restore it when navigating back)
@@ -3124,6 +3471,7 @@ const handlePendingOperator = (key: string): boolean => {
     switch (key) {
       case "y":
         yankCurrentLine();
+        yankLinesWithNotionData(window.vim_info.active_line, window.vim_info.active_line);
         return true;
       case "w":
         yankToNextWord();
@@ -3511,6 +3859,31 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
   if (e.ctrlKey && !e.metaKey && !e.altKey) {
     const key = e.key.toLowerCase();
 
+    // Ctrl+h / Ctrl+l - to the page / the side peek beside it
+    if (!e.shiftKey && (key === "h" || key === "l")) {
+      const { frame, peek } = pageSurfaces();
+      if (frame && peek) {
+        switchSurface(key === "l");
+        return true;
+      }
+    }
+
+    // Ctrl+j / Ctrl+k - next / previous database row in the side peek
+    if (!e.shiftKey && (key === "j" || key === "k") && hasPeekedRow()) {
+      exitRowMode();
+      const opened = stepPeekedRow(key === "j" ? 1 : -1, updateInfoContainer);
+      if (opened) afterPeekOpens(opened);
+      updateInfoContainer();
+      return true;
+    }
+
+    // Any other Ctrl command (Ctrl+d / u / f / b move the cursor) leaves the
+    // database rows.
+    if (inRowMode()) {
+      exitRowMode();
+      updateInfoContainer();
+    }
+
     // Ctrl+d - half page down
     if (key === "d") {
       scrollHalfPage(1);
@@ -3558,6 +3931,9 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
 
   const { vim_info } = window;
   const { active_line, pending_operator } = vim_info;
+
+  // Row mode (the cursor on a database row) takes the keys it knows.
+  if (!pending_operator && handleRowKey(e, rowKeyContext)) return true;
 
   // Handle link selection mode
   if (linkSelectionMode) {
@@ -4179,7 +4555,21 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
         moveCursorDownInCodeBlock();
         return true;
       }
-      setActiveLine(active_line + 1);
+      // On a database's title: into its rows.
+      // (Not for Vimtion's own synthetic j / k, e.g. d3k selecting lines.)
+      if (
+        e.isTrusted &&
+        vim_info.lines[active_line] &&
+        enterRowMode(vim_info.lines[active_line].element, "first")
+      ) {
+        updateInfoContainer();
+        return true;
+      }
+      if (isDatabaseLine(vim_info.lines[active_line]?.element)) {
+        setActiveLineFromDatabase(active_line + 1);
+      } else {
+        setActiveLine(active_line + 1);
+      }
       updateInfoContainer();
       return true;
     case "k":
@@ -4191,7 +4581,21 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
         moveCursorUpInCodeBlock();
         return true;
       }
-      setActiveLine(active_line - 1);
+      // Coming up to a database: onto its last row.
+      {
+        const above = vim_info.lines[active_line - 1]?.element;
+        if (e.isTrusted && above && databaseOfLine(above)) {
+          setActiveLineFromDatabase(active_line - 1);
+          enterRowMode(above, "last");
+          updateInfoContainer();
+          return true;
+        }
+      }
+      if (isDatabaseLine(vim_info.lines[active_line]?.element)) {
+        setActiveLineFromDatabase(active_line - 1);
+      } else {
+        setActiveLine(active_line - 1);
+      }
       updateInfoContainer();
       return true;
     case "l":

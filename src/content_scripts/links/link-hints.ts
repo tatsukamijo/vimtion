@@ -55,7 +55,7 @@ export const enterLinkHintMode = (updateInfoContainer: () => void) => {
  * Create hint overlay element positioned at link location
  */
 export const createHintOverlay = (
-  link: HTMLAnchorElement,
+  link: HTMLElement,
   hint: string,
 ): HTMLElement => {
   const overlay = document.createElement("div");
@@ -76,10 +76,12 @@ export const createHintOverlay = (
     pointer-events: none;
   `;
 
-  // Position overlay at top-left of link
-  const rect = link.getBoundingClientRect();
+  // Position overlay at top-left of link. A table row's hint goes over the
+  // page icon at the start of its title cell, leaving the title readable.
+  const rect = (isAnchor(link) ? link : collectionItemTarget(link)).getBoundingClientRect();
+  const cell = isAnchor(link) ? null : link.querySelector(".notion-table-view-cell");
   overlay.style.top = `${rect.top}px`;
-  overlay.style.left = `${rect.left}px`;
+  overlay.style.left = `${cell ? cell.getBoundingClientRect().left : rect.left}px`;
 
   document.body.appendChild(overlay);
   return overlay;
@@ -135,7 +137,9 @@ export const filterHintsByInput = (
 
   // If we have an exact match, navigate to it
   if (matchedHint) {
-    navigateToLink(matchedHint.link, shiftKey, updateInfoContainer);
+    const { link } = matchedHint as LinkHint;
+    if (isAnchor(link)) navigateToLink(link, shiftKey, updateInfoContainer);
+    else openCollectionItem(link, shiftKey, updateInfoContainer);
   }
 };
 
@@ -243,11 +247,99 @@ export const navigateToLink = (
   }
 };
 
+const isAnchor = (el: HTMLElement): el is HTMLAnchorElement =>
+  el instanceof HTMLAnchorElement;
+
+/** Database rows (table / list views) and cards (board / gallery). */
+const COLLECTION_ITEM = ".notion-collection-item";
+
 /**
- * Detect all visible links in the document (content, sidebar, and other areas)
+ * What to click to open a database page: the title text in a table row
+ * (clicking another cell would edit it), the item itself elsewhere.
  */
-export const detectAllLinks = (): HTMLAnchorElement[] => {
-  const links: HTMLAnchorElement[] = [];
+const collectionItemTarget = (item: HTMLElement): HTMLElement => {
+  const cell = item.querySelector<HTMLElement>(".notion-table-view-cell");
+  if (!cell) return item;
+  const leaves = Array.from(cell.querySelectorAll<HTMLElement>("*")).filter(
+    (e) =>
+      e.childElementCount === 0 &&
+      (e.textContent || "").trim() !== "" &&
+      e.getBoundingClientRect().width > 0,
+  );
+  return leaves[0] ?? cell;
+};
+
+/** Notion page URL of a database item (its block id is the page id). */
+const collectionItemUrl = (item: HTMLElement): string | null => {
+  const id = item.dataset.blockId;
+  return id ? `${window.location.origin}/${id.replace(/-/g, "")}` : null;
+};
+
+/**
+ * The row's "Open" button (shown on hover), found without its label, which
+ * Notion translates: the innermost button with a peek icon (peekSide,
+ * peekCenter, ...). Without one the page opens by its URL instead.
+ */
+const findOpenButton = (item: HTMLElement): HTMLElement | null => {
+  const innermost = Array.from(item.querySelectorAll<HTMLElement>('[role="button"]')).filter(
+    (b) => !b.querySelector('[role="button"]') && b.getBoundingClientRect().width > 0,
+  );
+  return (
+    innermost.find((b) => /^peek/i.test(b.querySelector("svg")?.getAttribute("class") || "")) ?? null
+  );
+};
+
+/**
+ * Open a database page with the row's own "Open" button, which Notion shows
+ * on hover and which follows the database's "open pages in" setting (side
+ * peek, center peek or full page). Notion ignores script clicks on the title
+ * itself. With Shift, or if there is no button, open the page by its URL.
+ */
+export const openCollectionItem = (
+  item: HTMLElement,
+  openInNewTab: boolean,
+  updateInfoContainer: () => void,
+) => {
+  const { vim_info } = window;
+  removeAllHintOverlays();
+  vim_info.mode = "normal";
+  updateInfoContainer();
+
+  const url = collectionItemUrl(item);
+  if (openInNewTab) {
+    if (url) window.open(url, "_blank");
+    return;
+  }
+  const target = collectionItemTarget(item);
+  const box = target.getBoundingClientRect();
+  const at = { bubbles: true, clientX: box.left + 1, clientY: box.top + box.height / 2, view: window };
+  target.dispatchEvent(new PointerEvent("pointerover", at));
+  target.dispatchEvent(new MouseEvent("mouseover", at));
+  target.dispatchEvent(new PointerEvent("pointermove", at));
+  target.dispatchEvent(new MouseEvent("mousemove", at));
+  disableNotionUnsavedWarning();
+  setTimeout(() => {
+    const open = findOpenButton(item);
+    if (open) open.click();
+    else if (url) window.location.assign(url);
+    target.dispatchEvent(new MouseEvent("mouseout", at));
+  }, 50);
+  setTimeout(() => {
+    restoreNotionUnsavedWarning();
+  }, 150);
+};
+
+const inViewport = (el: Element) => {
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight;
+};
+
+/**
+ * Detect all visible links in the document (content, sidebar, and other
+ * areas), plus the database rows and cards on screen, which have no <a>.
+ */
+export const detectAllLinks = (): HTMLElement[] => {
+  const links: HTMLElement[] = [];
 
   // Strategy 1: Find all <a> tags with href in the main content area
   const contentEditableLinks = document.querySelectorAll<HTMLAnchorElement>(
@@ -284,6 +376,17 @@ export const detectAllLinks = (): HTMLAnchorElement[] => {
     if (!links.includes(link)) {
       links.push(link);
       otherLinkCount++;
+    }
+  });
+
+  // Strategy 4: database rows and cards (no <a>; a long database would add
+  // hundreds, so only those on screen).
+  document.querySelectorAll<HTMLElement>(COLLECTION_ITEM).forEach((item) => {
+    // Board / gallery cards that are links already have a hint. (A link in
+    // one of a row's cells keeps its own hint; the row gets one too.)
+    if (item.closest("a[href]")) return;
+    if (item.dataset.blockId && inViewport(item)) {
+      links.push(item);
     }
   });
 

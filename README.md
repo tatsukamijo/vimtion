@@ -93,6 +93,10 @@ To access the Options page:
 **Find**: `f{char}` `F{char}` `t{char}` `T{char}` (find/till character) • `;` `,` (repeat) • `%` (matching bracket)
 **Search**: `/` `?` (search forward/backward) • `n` `N` (next/previous) • `*` `#` (word under cursor) — every match is highlighted as you type, the status bar shows `[2/5]`, and `Esc` clears the highlight
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
+
+**Databases**: `j` `k` move onto and between database rows (the row is highlighted, the status bar shows `Row 2/5`) • `Enter` opens the row the way the database opens pages (side peek by default), `Shift+Enter` in a new tab • `o` adds a page to the database and starts on its title • `Esc` leaves the rows
+
+**Side peek**: `Ctrl+h` (to the page on the left; the first time, onto the row of the open page) • `Ctrl+l` (to the page open in the side peek) • `Ctrl+j` `Ctrl+k` (open the next / previous row's page in the peek) • `gq` (close the peek, back on its row); each side keeps its cursor
 **Counts**: prefix motions and commands with a number: `3j` `5w` `4x` `2dd` `d3w` `3dw` `y2b` `c2w` `10G` `3fx` `2u`
 
 ### Link Navigation
@@ -107,6 +111,7 @@ https://github.com/user-attachments/assets/04dae08b-8e01-4bcd-bd33-18f00de14d9f
 
 Vimium-style navigation with keyboard hints:
 - Press `gl` to show hints for all links on the page
+- Database rows and cards get hints too: a hint opens the page the way the database is set to open it (side peek, center peek or full page)
 - Type hint characters to filter and navigate instantly
 - `Shift+hint` opens the link in a new tab
 - Cursor position is automatically saved and restored when navigating back with `Shift+H`
