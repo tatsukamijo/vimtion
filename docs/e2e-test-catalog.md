@@ -703,3 +703,10 @@ Block types not already in operators-block-types.spec.ts.
 - [Known Bugs](known-bugs.md) — BUG-001 through BUG-014, BUG-029, BUG-035, BUG-036
 - [Bug Investigation](test-overhaul/bug-investigation.md) — full latent-bug catalog (BUG-014 through BUG-043)
 - [Missing Features](missing-features.md) — MISSING-001 through MISSING-019
+
+## toggle-enter.spec.ts (2 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | Enter opens and closes a toggle, keeping the cursor's column | Pass |
+| 2 | Enter opens a nested toggle and a toggle heading | Pass |

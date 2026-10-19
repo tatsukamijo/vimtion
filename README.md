@@ -95,6 +95,8 @@ To access the Options page:
 **Search**: `/` `?` (search forward/backward) • `n` `N` (next/previous) • `*` `#` (word under cursor) — every match is highlighted as you type, the status bar shows `[2/5]`, and `Esc` clears the highlight
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
 
+**Toggles and to-dos**: `Enter` opens / closes a toggle or toggle heading • `Enter` checks / unchecks a to-do; the cursor stays where it was
+
 **Databases**: `j` `k` move onto and between database rows (the row is highlighted, the status bar shows `Row 2/5`) • `Enter` opens the row the way the database opens pages (side peek by default), `Shift+Enter` in a new tab • `o` adds a page to the database and starts on its title • `Esc` leaves the rows
 
 **Side peek**: `Ctrl+h` (to the page on the left; the first time, onto the row of the open page) • `Ctrl+l` (to the page open in the side peek) • `Ctrl+j` `Ctrl+k` (open the next / previous row's page in the peek) • `gq` (close the peek, back on its row); each side keeps its cursor
