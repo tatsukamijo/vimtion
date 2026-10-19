@@ -1510,7 +1510,42 @@ const focusActiveLineForInsert = () => {
 };
 
 const handleKeydown = (e: KeyboardEvent) => {
+  try {
+    handleKeydownInner(e);
+  } catch (err) {
+    // A command that throws must not let its key through to Notion: over a
+    // visual-line selection the key typed over every selected block.
+    // (In insert mode the key is the user's text: let it through.)
+    if (window.vim_info.mode !== "insert") {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+    console.error("[Vimtion] key handler failed:", err);
+    clampLineIndexes();
+    updateInfoContainer();
+  }
+};
+
+/**
+ * Keep active_line / visual_start_line inside vim_info.lines. The lines are
+ * rebuilt whenever Notion re-renders (empty blocks at the end of a page come
+ * and go), and an index left past the end ("Line 27/26") made the next key
+ * read lines[27].element and throw.
+ */
+const clampLineIndexes = () => {
   const { vim_info } = window;
+  const last = vim_info.lines.length - 1;
+  if (last < 0) return;
+  if (vim_info.active_line > last) vim_info.active_line = last;
+  if (vim_info.active_line < 0) vim_info.active_line = 0;
+  if (vim_info.visual_start_line > last) vim_info.visual_start_line = last;
+  if (vim_info.visual_start_line < 0) vim_info.visual_start_line = 0;
+};
+
+const handleKeydownInner = (e: KeyboardEvent) => {
+  const { vim_info } = window;
+  clampLineIndexes();
 
   // Pass through every keydown that originates inside an active IME
   // composition. `e.isComposing` and `keyCode === 229` are belt-and-

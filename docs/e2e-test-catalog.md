@@ -690,11 +690,12 @@ Block types not already in operators-block-types.spec.ts.
 | 4 | V over a nested list then p: each item once, children still nested | Pass |
 | 5 | P on a nested line pastes at that line's level | Pass |
 
-## typing-guard.spec.ts (1 test, fresh page)
+## typing-guard.spec.ts (2 tests, fresh page per test)
 
 | # | Test | Status |
 |---|------|--------|
 | 1 | typing outside insert mode never replaces a visual-line selection | Pass |
+| 2 | visual-line keeps working when lines at the end disappear under it | Pass |
 
 ## Related Docs
 

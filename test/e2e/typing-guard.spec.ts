@@ -27,9 +27,12 @@ const LONG =
   "Instead of requiring every robot capability to exist as a predefined primitive, we propose letting an agent discover unfamiliar manipulation skills through slow, closed-loop interaction.";
 const LINES = ["Proposed idea", LONG, `${LONG} Again.`, "last line"];
 let pageId = "";
+let shrinkPageId = "";
 
 test.afterAll(async () => {
-  if (pageId) await notion("PATCH", `/v1/pages/${pageId}`, { archived: true }).catch(() => {});
+  for (const id of [pageId, shrinkPageId]) {
+    if (id) await notion("PATCH", `/v1/pages/${id}`, { archived: true }).catch(() => {});
+  }
 });
 
 const body = (page: Page) =>
@@ -81,3 +84,54 @@ test("typing outside insert mode never replaces a visual-line selection", async 
   await page.waitForTimeout(600);
   expect(await body(page)).toEqual(before);
 });
+
+test("visual-line keeps working when lines at the end disappear under it", async ({
+  extensionPage: page,
+}) => {
+  const p = await notion("POST", "/v1/pages", {
+    parent: { page_id: process.env.NOTION_PARENT_PAGE_ID },
+    properties: { title: { title: [{ type: "text", text: { content: "Shrink" } }] } },
+    children: ["one", "two", "three", "tail a", "tail b"].map((l) => ({
+      object: "block",
+      type: "paragraph",
+      paragraph: { rich_text: [{ type: "text", text: { content: l } }] },
+    })),
+  });
+  shrinkPageId = p.id;
+  const kids = (await notion("GET", `/v1/blocks/${p.id}/children`)).results as { id: string }[];
+  await page.goto(p.url, { waitUntil: "domcontentloaded" });
+  await page.getByText("tail b", { exact: true }).waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  await page.evaluate(() =>
+    document
+      .querySelectorAll(".vimtion-notification-overlay, .vimtion-update-notification")
+      .forEach((e) => e.remove()),
+  );
+  await waitForVimStateReady(page, 10_000);
+  await page.getByText("two", { exact: true }).click();
+  await pressKeys(page, "Escape", "V", "j", "j", "j");
+  await page.waitForTimeout(400);
+  expect((await getVimState(page)).statusText).toContain("VISUAL-LINE");
+
+  // The last two lines (the cursor's among them) go away under the selection.
+  await notion("DELETE", `/v1/blocks/${kids[3].id}`);
+  await notion("DELETE", `/v1/blocks/${kids[4].id}`);
+  await page.getByText("tail b", { exact: true }).waitFor({ state: "detached", timeout: 30_000 });
+  await page.waitForTimeout(800);
+
+  const errors: string[] = [];
+  page.on("console", (m) => {
+    if (m.type() === "error" && m.text().includes("Vimtion")) errors.push(m.text());
+  });
+  page.on("pageerror", (err) => errors.push(String(err)));
+  await pressKeys(page, "k");
+  await page.waitForTimeout(400);
+  const state = await getVimState(page);
+  expect(state.mode).toBe("visual-line");
+  expect(state.activeLine).toBeLessThanOrEqual(state.lineCount);
+  expect(errors).toEqual([]);
+  await pressKeys(page, "Escape");
+  await page.waitForTimeout(300);
+  expect(await body(page)).toEqual(["one", "two", "three"]);
+});
+
