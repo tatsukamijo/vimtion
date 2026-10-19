@@ -195,6 +195,8 @@ import {
   exitRowMode,
   handleRowKey,
   hasPeekedRow,
+  currentRowId,
+  enterRowModeOn,
   inRowMode,
   isDatabaseLine,
   returnToPeekedRow,
@@ -899,6 +901,8 @@ const closePeek = (): void => {
   const { peek } = pageSurfaces();
   if (!peek) return;
   if (currentSurface() === peek) switchSurface(false);
+  // Closing re-renders the row; come back onto it once it has.
+  const rowId = currentRowId();
   // The ">>" button at the start of the peek's header (found by its icon:
   // the label is translated); else Notion's Esc, which closes a peek.
   const close = peek
@@ -916,10 +920,17 @@ const closePeek = (): void => {
     vim_info.mode = mode;
   }
   // Closing can move focus; put the caret back on the page's line.
+  beginBusy(0);
   setTimeout(() => {
     setActiveLine(window.vim_info.active_line);
+    if (rowId) {
+      refreshLines();
+      const title = enterRowModeOn(rowId, window.vim_info.lines);
+      if (title !== -1) window.vim_info.active_line = title;
+    }
     updateInfoContainer();
-  }, 200);
+    endBusy();
+  }, 400);
 };
 
 // After a row was opened (Enter on a row, Ctrl+j / Ctrl+k), continue on the
@@ -3878,8 +3889,8 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
     }
 
     // Any other Ctrl command (Ctrl+d / u / f / b move the cursor) leaves the
-    // database rows.
-    if (inRowMode()) {
+    // database rows. (Not Ctrl on its own: it comes before Ctrl+h / l.)
+    if (key !== "control" && inRowMode()) {
       exitRowMode();
       updateInfoContainer();
     }
