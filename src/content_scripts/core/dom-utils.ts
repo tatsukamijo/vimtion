@@ -309,8 +309,8 @@ const NOTION_BLOCKS_TYPE = "text/_notion-blocks-v3-production";
 
 /**
  * Line-wise yank with Notion's own clipboard data, so p / P bring back
- * mentions, links and formatting. A yanked line brings its nested lines (as
- * a Notion copy does). Notion copies the whole block when the
+ * mentions, links and formatting. Only when every nested line of a yanked
+ * block is yanked too (a Notion copy brings them all). Notion copies the whole block when the
  * caret is collapsed in it (as the cut in dd relies on); each line's block is
  * copied that way into a private DataTransfer, and the copies are merged.
  * Returns null (the plain-text yank stays) for code blocks, the page title
@@ -337,6 +337,18 @@ export const yankBlocksWithNotionData = async (
     }
     return true;
   });
+  // A Notion copy brings every nested line; when one of them is not yanked
+  // (yy on a parent), keep the plain-text yank so p adds exactly the yanked
+  // lines (as Vim does; dd keeps the children too).
+  for (const id of topmost) {
+    const nested: Element[] = Array.from(
+      findBlock(id)?.querySelectorAll(".notion-selectable[data-block-id]") ?? [],
+    );
+    for (const child of nested) {
+      const childId = child.getAttribute("data-block-id");
+      if (childId && childId !== id && !ids.includes(childId)) return null;
+    }
+  }
   ids.length = 0;
   ids.push(...topmost);
   // Each block takes a copy round trip (~60ms) while typed keys wait (at

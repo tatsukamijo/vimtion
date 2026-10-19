@@ -176,6 +176,13 @@ export const createRefreshLines = (handlers: EventHandlers) => {
     const previousActive = vim_info.lines[vim_info.active_line];
     const previousActiveElement = previousActive?.element ?? null;
     const previousActiveBlockId = previousActive?.block_id ?? null;
+    // The visual selection's start line, by identity too: lines appearing or
+    // disappearing above it (Notion re-rendering a database or an empty
+    // block) shifted its index, and d then deleted a different range than
+    // the highlighted one.
+    const previousStart = vim_info.lines[vim_info.visual_start_line];
+    const previousStartElement = previousStart?.element ?? null;
+    const previousStartBlockId = previousStart?.block_id ?? null;
 
     // Find new elements that aren't in our lines array yet
     const existingElements = new Set(
@@ -200,6 +207,18 @@ export const createRefreshLines = (handlers: EventHandlers) => {
       block_id:
         elem.closest("[data-block-id]")?.getAttribute("data-block-id") ?? null,
     }));
+
+    // Re-find the visual selection's start line.
+    const modeNow = vim_info.mode as string;
+    if (modeNow === "visual" || modeNow === "visual-line") {
+      let startIdx = previousStartElement
+        ? vim_info.lines.findIndex((l) => l.element === previousStartElement)
+        : -1;
+      if (startIdx === -1 && previousStartBlockId) {
+        startIdx = vim_info.lines.findIndex((l) => l.block_id === previousStartBlockId);
+      }
+      if (startIdx !== -1) vim_info.visual_start_line = startIdx;
+    }
 
     // Recover active line. Tiers, in priority order:
     //
@@ -258,10 +277,19 @@ export const createRefreshLines = (handlers: EventHandlers) => {
     // every time refreshLines fires — visible as V+j stalling at "2 lines
     // selected" because each j advance is undone on the next observer
     // tick. The visual reducers are the source of truth here.
+    // (The cursor's line itself is re-found by identity, as the start line
+    // is above: lines appearing or disappearing above it shifted its index.)
     if (
       vim_info.mode === "visual" ||
       vim_info.mode === "visual-line"
     ) {
+      let idx = previousActiveElement
+        ? vim_info.lines.findIndex((l) => l.element === previousActiveElement)
+        : -1;
+      if (idx === -1 && previousActiveBlockId) {
+        idx = vim_info.lines.findIndex((l) => l.block_id === previousActiveBlockId);
+      }
+      if (idx !== -1) vim_info.active_line = idx;
       updateInfoContainer();
       return;
     }

@@ -50,7 +50,29 @@ export const databaseOfLine = (line: Element | undefined): Element | null => {
 };
 
 export const inRowMode = (): boolean => {
-  if (row && !row.isConnected) exitRowMode();
+  if (row && !row.isConnected) {
+    // Notion re-renders a row (closing its peek turns CLOSE back into OPEN):
+    // find it again by its block id, else leave row mode.
+    const id = row.dataset.blockId;
+    const again = id
+      ? Array.from(document.querySelectorAll<HTMLElement>(`${ITEM}[data-block-id="${id}"]`)).find(
+          (r) => r.getBoundingClientRect().height > 0,
+        )
+      : undefined;
+    if (again) {
+      row = again;
+      row.classList.add(ROW_CLASS);
+      if (titleLine && !titleLine.isConnected) {
+        const database = databaseOf(again);
+        titleLine =
+          Array.from(document.querySelectorAll('[contenteditable="true"]')).find(
+            (el) => databaseOf(el) === database,
+          ) ?? null;
+      }
+    } else {
+      exitRowMode();
+    }
+  }
   return row !== null;
 };
 
@@ -82,6 +104,26 @@ export const enterRowMode = (line: Element, at: "first" | "last"): boolean => {
   titleLine = line;
   show(at === "first" ? rows[0] : rows[rows.length - 1]);
   return true;
+};
+
+/** The block id of the row under the cursor (null outside row mode). */
+export const currentRowId = (): string | null => (inRowMode() && row ? row.dataset.blockId ?? null : null);
+
+/**
+ * Row mode on the row `blockId` (after Notion re-rendered it, e.g. when its
+ * peek closed). Returns the database title's line index, or -1.
+ */
+export const enterRowModeOn = (blockId: string, lines: { element: Element }[]): number => {
+  const item = Array.from(document.querySelectorAll<HTMLElement>(`${ITEM}[data-block-id="${blockId}"]`)).find(
+    (r) => r.getBoundingClientRect().height > 0,
+  );
+  const database = databaseOf(item);
+  if (!item || !database) return -1;
+  const idx = lines.findIndex((l) => databaseOf(l.element) === database);
+  if (idx === -1) return -1;
+  titleLine = lines[idx].element;
+  show(item);
+  return idx;
 };
 
 /** "Row 2/5" for the status bar ("" outside row mode). */

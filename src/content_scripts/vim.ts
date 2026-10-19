@@ -195,6 +195,8 @@ import {
   exitRowMode,
   handleRowKey,
   hasPeekedRow,
+  currentRowId,
+  enterRowModeOn,
   inRowMode,
   isDatabaseLine,
   returnToPeekedRow,
@@ -899,6 +901,8 @@ const closePeek = (): void => {
   const { peek } = pageSurfaces();
   if (!peek) return;
   if (currentSurface() === peek) switchSurface(false);
+  // Closing re-renders the row; come back onto it once it has.
+  const rowId = currentRowId();
   // The ">>" button at the start of the peek's header (found by its icon:
   // the label is translated); else Notion's Esc, which closes a peek.
   const close = peek
@@ -916,10 +920,17 @@ const closePeek = (): void => {
     vim_info.mode = mode;
   }
   // Closing can move focus; put the caret back on the page's line.
+  beginBusy(0);
   setTimeout(() => {
     setActiveLine(window.vim_info.active_line);
+    if (rowId) {
+      refreshLines();
+      const title = enterRowModeOn(rowId, window.vim_info.lines);
+      if (title !== -1) window.vim_info.active_line = title;
+    }
     updateInfoContainer();
-  }, 200);
+    endBusy();
+  }, 400);
 };
 
 // After a row was opened (Enter on a row, Ctrl+j / Ctrl+k), continue on the
@@ -1313,6 +1324,32 @@ document.addEventListener(
   true,
 );
 
+// Safety net: outside insert mode no keystroke may type into the page. If a
+// key ever reaches Notion without Vimtion's keydown handling it (focus where
+// no line listener sits), typing over a visual-line selection used to empty
+// every selected block and type the letters into the first one. Vimtion's own
+// edits use execCommand / synthetic events, which fire no trusted beforeinput;
+// IME composition (insertCompositionText) is left alone.
+document.addEventListener(
+  "beforeinput",
+  (e: InputEvent) => {
+    if (!e.isTrusted || e.inputType !== "insertText") return;
+    const { vim_info } = window;
+    if (vim_info.mode === "insert") return;
+    const t = e.target as HTMLElement | null;
+    const host = t?.closest?.('[contenteditable="true"]');
+    if (!host || !isDocumentEditable(host)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    console.warn(
+      `[Vimtion] blocked typing "${e.data}" in ${vim_info.mode} mode (focus: ${
+        (document.activeElement as HTMLElement | null)?.className || document.activeElement?.tagName
+      })`,
+    );
+  },
+  true,
+);
+
 const replayDeferred = (item: Deferred) => {
   const { vim_info } = window;
   if (item.kind === "click") {
@@ -1473,7 +1510,42 @@ const focusActiveLineForInsert = () => {
 };
 
 const handleKeydown = (e: KeyboardEvent) => {
+  try {
+    handleKeydownInner(e);
+  } catch (err) {
+    // A command that throws must not let its key through to Notion: over a
+    // visual-line selection the key typed over every selected block.
+    // (In insert mode the key is the user's text: let it through.)
+    if (window.vim_info.mode !== "insert") {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+    console.error("[Vimtion] key handler failed:", err);
+    clampLineIndexes();
+    updateInfoContainer();
+  }
+};
+
+/**
+ * Keep active_line / visual_start_line inside vim_info.lines. The lines are
+ * rebuilt whenever Notion re-renders (empty blocks at the end of a page come
+ * and go), and an index left past the end ("Line 27/26") made the next key
+ * read lines[27].element and throw.
+ */
+const clampLineIndexes = () => {
   const { vim_info } = window;
+  const last = vim_info.lines.length - 1;
+  if (last < 0) return;
+  if (vim_info.active_line > last) vim_info.active_line = last;
+  if (vim_info.active_line < 0) vim_info.active_line = 0;
+  if (vim_info.visual_start_line > last) vim_info.visual_start_line = last;
+  if (vim_info.visual_start_line < 0) vim_info.visual_start_line = 0;
+};
+
+const handleKeydownInner = (e: KeyboardEvent) => {
+  const { vim_info } = window;
+  clampLineIndexes();
 
   // Pass through every keydown that originates inside an active IME
   // composition. `e.isComposing` and `keyCode === 229` are belt-and-
@@ -3878,8 +3950,8 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
     }
 
     // Any other Ctrl command (Ctrl+d / u / f / b move the cursor) leaves the
-    // database rows.
-    if (inRowMode()) {
+    // database rows. (Not Ctrl on its own: it comes before Ctrl+h / l.)
+    if (key !== "control" && inRowMode()) {
       exitRowMode();
       updateInfoContainer();
     }

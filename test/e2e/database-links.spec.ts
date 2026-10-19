@@ -261,3 +261,25 @@ test("Shift+Enter on a row opens its page in a new tab, and yk below a database 
   expect(await status(page)).not.toContain("Row");
   expect((await getVimState(page)).mode).toBe("normal");
 });
+
+test("Ctrl+h / Ctrl+l then gq keeps the row cursor on the opened row", async ({
+  extensionPage: page,
+}) => {
+  const order = await openDatabasePage(page, ["Monday", "Tuesday", "Wednesday"]);
+  await pressKeys(page, "j", "j", "j");
+  await page.waitForTimeout(400);
+  expect(await status(page)).toContain("Row 2/3");
+  await pressKeys(page, "Enter");
+  await page.locator(".notion-peek-renderer").getByText(`${order[1]} second`).waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(800);
+  // Ctrl on its own (sent before Ctrl+h / Ctrl+l) must not drop the row.
+  await pressKeys(page, "Control+h");
+  await page.waitForTimeout(500);
+  expect(await status(page)).toContain("Row 2/3");
+  await pressKeys(page, "Control+l");
+  await page.waitForTimeout(500);
+  await pressKeys(page, "g", "q");
+  await page.waitForTimeout(1000);
+  expect(await status(page)).toContain("Row 2/3");
+  expect(await rowUnderCursor(page)).toContain(order[1]);
+});

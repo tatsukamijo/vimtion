@@ -779,3 +779,19 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
 - **Root cause**: BUG-091 limited lines to editables inside `.notion-frame`. A side or centre peek renders in `.notion-peek-renderer`, outside that frame, so none of its lines were Vimtion's and every key went to Notion.
 - **Fix**: Lines come from one page surface: the main frame or a peek. An open peek is the default; focus moving into the other surface switches to it; a closing (empty) peek falls back to the frame. Inside a peek, the overlay/dialog exclusions do not apply (a centre peek lives in Notion's overlay), but comment boxes and the AI prompt are still excluded.
 - **Verified**: peek opens → lines are the peek's (cursor on its title); `j`/`x`/`k` act in the peek; clicking the page behind switches to it and back; closing the peek returns to the page and `j` works.
+
+## BUG-096: `V` + `j` over long paragraphs emptied the selected blocks and typed "jjj"
+
+- **Detected**: 2026-10-19 (user report: `Shift+V` then `j j j ...` near the bottom of a long page; Notion's "Multiple Types" text toolbar appeared, then the selected blocks were emptied and the next letters typed into the first one. With the 1.11.1 guard in place: the status bar read "Line 27/26", the console showed `Cannot read properties of undefined (reading 'element')` and blocked `j` / `k`; only Esc got out).
+- **Status**: **RESOLVED** on `fix/row-mode-rerender` (1.11.1).
+- **Root cause**: `vim_info.lines` is rebuilt whenever Notion re-renders (empty blocks at the end of a page come and go). Visual-line `j` / `k` check the line count only when they move, so after the list shrank `active_line` pointed past the end. The next key read `lines[active_line].element`, the handler threw before `preventDefault`, and the key went on to Notion, which typed over the cross-block selection.
+- **Fix**: before every key, `active_line` / `visual_start_line` are clamped into the current lines; a handler that throws outside insert mode swallows its key (and logs the error) instead of passing it to Notion. A capture-phase `beforeinput` guard also blocks trusted `insertText` into page editables whenever Vimtion is not in insert mode (IME composition is left alone), so no key that slips past Vimtion can type into the page.
+- **Verified**: `test/e2e/typing-guard.spec.ts`: text sent without a keydown in visual-line / normal mode leaves the page unchanged (without the guard "jjj" replaced the selection); deleting the last lines under a visual-line selection (via the API) then `k` keeps visual-line mode with a valid line and no error (without the clamp: "Line 7/5").
+
+## BUG-097: `V`…`d` deleted a different range than the highlighted one
+
+- **Detected**: 2026-10-19 (user report: visual-line selection over a long page, `d` left the first selected lines (heading, "Proposed idea", first paragraph) and deleted the rest).
+- **Status**: **RESOLVED** on `fix/row-mode-rerender` (1.11.1).
+- **Root cause**: in visual modes `visual_start_line` and `active_line` are indices into `vim_info.lines`, and `refreshLines` (run on Notion re-renders) neither re-found the start line nor, in visual modes, the cursor line. Lines appearing or disappearing above the selection (a database, an empty block) shifted both, so `d` cut a range offset from the highlight.
+- **Fix**: `refreshLines` keeps the start line and, in visual modes, the cursor line by element (falling back to block id) across the rebuild.
+- **Verified**: `test/e2e/typing-guard.spec.ts` "Vd deletes the highlighted lines when lines above them disappear": two lines above a `V`+`jj` selection are deleted via the API, then `d` removes exactly the selected three (before: two selected lines survived and the line below was deleted).

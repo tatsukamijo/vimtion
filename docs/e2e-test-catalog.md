@@ -670,7 +670,7 @@ Block types not already in operators-block-types.spec.ts.
 | 1 | j / x / k act inside a side peek, and on the page after it closes | Pass |
 | 2 | Ctrl-h / Ctrl-l move between the page and the side peek, each keeping its cursor | Pass |
 
-## database-links.spec.ts (4 tests, fresh page per test)
+## database-links.spec.ts (5 tests, fresh page per test)
 
 | # | Test | Status |
 |---|------|--------|
@@ -678,6 +678,7 @@ Block types not already in operators-block-types.spec.ts.
 | 2 | j / k walk database rows; Enter opens one; Ctrl+j / Ctrl+k step; gq comes back to it | Pass |
 | 3 | o on a row adds a page to the database and starts on its title | Pass |
 | 4 | Shift+Enter on a row opens its page in a new tab, and yk below a database yanks lines | Pass |
+| 5 | Ctrl+h / Ctrl+l then gq keeps the row cursor on the opened row | Pass |
 
 ## yank-mentions.spec.ts (5 tests, fresh page per test)
 
@@ -688,6 +689,14 @@ Block types not already in operators-block-types.spec.ts.
 | 3 | 2dd then p | Pass |
 | 4 | V over a nested list then p: each item once, children still nested | Pass |
 | 5 | P on a nested line pastes at that line's level | Pass |
+
+## typing-guard.spec.ts (3 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | typing outside insert mode never replaces a visual-line selection | Pass |
+| 2 | visual-line keeps working when lines at the end disappear under it | Pass |
+| 3 | Vd deletes the highlighted lines when lines above them disappear | Pass |
 
 ## Related Docs
 

@@ -5,6 +5,14 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-10-19
+
+### Fixed
+- `V` + `j` / `k` near the end of a page could empty the selected blocks and type the letters ("Line 27/26" in the status bar): when Notion re-rendered empty lines at the end, the cursor index pointed past the last line and the next key fell through to Notion. The index now stays in range, a failing command no longer passes its key on, and outside insert mode no keystroke can type into the page.
+- `V`…`d` (and other visual operators) could act on a different range than the highlighted one when Notion re-rendered lines above the selection while selecting; the selection now keeps its lines.
+- `yy` on a line with nested lines pasted the nested lines too; a yank keeps Notion's rich data only when all the nested lines are yanked with it, so `yy` + `p` adds exactly one line.
+- After `Ctrl+h` / `Ctrl+l`, `gq` came back to the database title instead of the opened row (Ctrl on its own ended row mode), and closing a peek could drop the row cursor when Notion re-rendered the row.
+
 ## [1.11.0] - 2026-10-18
 
 ### Added
