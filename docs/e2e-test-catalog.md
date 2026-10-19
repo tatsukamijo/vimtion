@@ -710,3 +710,9 @@ Block types not already in operators-block-types.spec.ts.
 |---|------|--------|
 | 1 | Enter opens and closes a toggle, keeping the cursor's column | Pass |
 | 2 | Enter opens a nested toggle and a toggle heading | Pass |
+
+## external-link-return.spec.ts (1 test, fresh page)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | Enter on an external link keeps the cursor on its line after coming back | Pass |

@@ -795,3 +795,11 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
 - **Root cause**: in visual modes `visual_start_line` and `active_line` are indices into `vim_info.lines`, and `refreshLines` (run on Notion re-renders) neither re-found the start line nor, in visual modes, the cursor line. Lines appearing or disappearing above the selection (a database, an empty block) shifted both, so `d` cut a range offset from the highlight.
 - **Fix**: `refreshLines` keeps the start line and, in visual modes, the cursor line by element (falling back to block id) across the rebuild.
 - **Verified**: `test/e2e/typing-guard.spec.ts` "Vd deletes the highlighted lines when lines above them disappear": two lines above a `V`+`jj` selection are deleted via the API, then `d` removes exactly the selected three (before: two selected lines survived and the line below was deleted).
+
+## BUG-098: After `Enter` on an external link, coming back to the tab put the cursor at the top
+
+- **Detected**: 2026-10-19 (user report: `Enter` on an external link, browse in the new tab, come back to Notion: the cursor is at the top of the page).
+- **Status**: **RESOLVED** on `feat/enter-toggle`.
+- **Root cause**: Notion opens an external link in a new tab, and the click left the page focused with no caret (selection empty). When the tab got focus back, the browser put a caret at the start of the page, and Vimtion followed it to the top.
+- **Fix**: after a link opens without leaving the page (`Enter`, `gl`, `Shift+Enter`), the caret is put back on the cursor's line, at its column, if it is no longer there.
+- **Verified**: `test/e2e/external-link-return.spec.ts`: `Enter` on an external link, bring the new tab to the front, come back: the cursor is on the link's line and `j` goes to the next line (before: the caret was in no line).

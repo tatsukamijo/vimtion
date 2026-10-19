@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **`Enter` on a toggle** opens or closes it (toggle headings too), like clicking its triangle; the cursor stays where it was on the line.
 
+### Fixed
+- After `Enter` on an external link (which opens in a new tab), coming back to Notion put the cursor at the top of the page; it now stays on the link's line.
+
 ## [1.11.1] - 2026-10-19
 
 ### Fixed
