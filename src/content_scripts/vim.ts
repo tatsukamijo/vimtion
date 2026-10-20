@@ -4424,6 +4424,36 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
           }
         }
 
+        // A toggle (or toggle heading): open / close it with its own
+        // triangle (aria-expanded; a nested toggle's triangle belongs to its
+        // own block).
+        const toggleButton = Array.from(
+          blockElement?.querySelectorAll<HTMLElement>(
+            '[role="button"][aria-expanded]',
+          ) ?? [],
+        ).find((b) => b.closest("[data-block-id]") === blockElement);
+        if (toggleButton) {
+          const cursorPos = getCursorIndexInElement(currentLine.element);
+          const head = currentLine.element;
+          toggleButton.click();
+          setTimeout(() => {
+            // The click moves focus to the triangle; put the caret back on
+            // the toggle's line (its children appear / vanish below it).
+            clearNavigationGuard();
+            refreshLines();
+            const idx = vim_info.lines.findIndex((l) => l.element === head);
+            if (idx !== -1) vim_info.active_line = idx;
+            const line = vim_info.lines[vim_info.active_line];
+            if (line) {
+              setCursorPosition(line.element, cursorPos);
+              line.element.focus({ preventScroll: true });
+            }
+            updateBlockCursor();
+            updateInfoContainer();
+          }, 50);
+          return true;
+        }
+
         // Not a TODO item, continue with link navigation logic
         // Check if current line contains a link
         const currentLineElement =

@@ -5,7 +5,7 @@
 
 import type { LinkHint } from "../types";
 import { currentSettings } from "../state";
-import { updateBlockCursor } from "../cursor";
+import { updateBlockCursor, setCursorPosition, clearNavigationGuard } from "../cursor";
 import {
   disableNotionUnsavedWarning,
   restoreNotionUnsavedWarning,
@@ -175,6 +175,27 @@ export const navigateToLink = (
 
   // Disable unsaved changes warning before any navigation
   disableNotionUnsavedWarning();
+
+  // A link that opens elsewhere (a new tab; Notion opens external links in
+  // one) leaves this page without a caret, and focus coming back to the tab
+  // puts one at the top. Put it back on the cursor's line.
+  if (!isBlockLink) {
+    const from = window.location.href;
+    const line = vim_info.lines[vim_info.active_line]?.element;
+    const pos = vim_info.cursor_position;
+    [50, 300].forEach((ms) =>
+      setTimeout(() => {
+        if (window.location.href !== from || !line || !line.isConnected) return;
+        if (vim_info.mode !== "normal") return;
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 && line.contains(sel.anchorNode)) return;
+        clearNavigationGuard();
+        setCursorPosition(line, pos);
+        (line as HTMLElement).focus({ preventScroll: true });
+        updateBlockCursor();
+      }, ms),
+    );
+  }
 
   if (openInNewTab) {
     // Open link in new tab

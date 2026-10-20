@@ -95,6 +95,8 @@ To access the Options page:
 **Search**: `/` `?` (search forward/backward) • `n` `N` (next/previous) • `*` `#` (word under cursor) — every match is highlighted as you type, the status bar shows `[2/5]`, and `Esc` clears the highlight
 **Page navigation**: `Ctrl+d` (half down) • `Ctrl+u` (half up) • `Ctrl+f` (full down) • `Ctrl+b` (full up)
 
+**Toggles and to-dos**: `Enter` opens / closes a toggle or toggle heading • `Enter` checks / unchecks a to-do; the cursor stays where it was
+
 **Databases**: `j` `k` move onto and between database rows (the row is highlighted, the status bar shows `Row 2/5`) • `Enter` opens the row the way the database opens pages (side peek by default), `Shift+Enter` in a new tab • `o` adds a page to the database and starts on its title • `Esc` leaves the rows
 
 **Side peek**: `Ctrl+h` (to the page on the left; the first time, onto the row of the open page) • `Ctrl+l` (to the page open in the side peek) • `Ctrl+j` `Ctrl+k` (open the next / previous row's page in the peek) • `gq` (close the peek, back on its row); each side keeps its cursor
@@ -219,14 +221,11 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) and v
 
 ## ⚠️ Known Limitations
 
-### Multi-line Paste
-When you yank multiple lines using Visual line mode (`V` + selection + `y`), the text is correctly copied to your system clipboard with newlines preserved. However, the `p` command currently cannot properly paste multi-line content as separate Notion blocks.
+### Input methods (Japanese, Korean, Chinese)
+While an IME is on, normal-mode keys are kept out of the page but do not run as commands. Switch the IME to direct (alphanumeric) input to use Vim commands, and back for typing in insert mode.
 
-**Workaround**: After yanking multiple lines with `Vy`, use your browser's native paste command instead:
-- **macOS**: `Cmd+V`
-- **Windows/Linux**: `Ctrl+V`
-
-This will correctly create separate Notion blocks for each line. Single-line paste with `p` works as expected.
+### Yanking a line with nested lines
+`yy` on a line with nested lines copies that line alone as plain text, so a mention on it is pasted as a link. Yank the line together with its nested lines (`V` over all of them) to keep mentions and formatting.
 
 ### Unsupported Features
 
@@ -242,13 +241,19 @@ The following Vim features are not implemented:
 ## 🚧 Roadmap
 
 ### Planned Features
-- [ ] **Help page** (`?`): Display Vimium-style help overlay showing all keybindings
+- [ ] **Help page**: Vimium-style overlay showing all keybindings
 - [ ] **Visual block mode** (`Ctrl+v`): Rectangular/column selection
 - [ ] **Code block CLI mode**: Specify code block language from command
-- [x] **Line movement**: `Shift+J` / `Shift+K` in visual-line mode to move selected blocks down/up
 - [ ] **Visual-line performance**: Optimize `Shift+V` for better performance, currently a bit slow
 - [ ] **Table navigation**: Vim-like navigation within Notion tables (similar to page link handling)
+- [ ] **IME-aware normal mode**: Run Vim commands while a Japanese / Korean IME is on
+- [x] **Line movement**: `Shift+J` / `Shift+K` in visual-line mode to move selected blocks down/up
 - [x] **Repeat command** (`.`): Repeat the last command
+- [x] **Counts**: `3j`, `2dd`, `d3w`, `10G`
+- [x] **Search** (`/` `?` `n` `N` `*` `#`) with highlighted matches and a match counter
+- [x] **Databases and side peek**: row cursor, `gl` on rows, `Ctrl+h` / `Ctrl+l` / `Ctrl+j` / `Ctrl+k`, `gq`
+- [x] **Rich yank / put**: mentions, link previews and formatting survive `yy` / `dd` / `p`
+- [x] **Toggles**: `Enter` opens / closes a toggle
 
 Contributions and feature requests are welcome! Please open an issue on [GitHub](https://github.com/tatsukamijo/vimtion/issues).
 
