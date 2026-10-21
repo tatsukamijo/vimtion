@@ -716,3 +716,10 @@ Block types not already in operators-block-types.spec.ts.
 | # | Test | Status |
 |---|------|--------|
 | 1 | Enter on an external link keeps the cursor on its line after coming back | Pass |
+
+## sidebar.spec.ts (2 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | Ctrl+h walks the sidebar without touching the page; Ctrl+l and Esc come back | Pass |
+| 2 | Enter opens the highlighted page | Pass |
