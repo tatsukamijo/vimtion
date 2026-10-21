@@ -6,6 +6,7 @@
 import { updateBlockCursor } from "../cursor";
 import { refreshSearchHighlights, searchStatusText } from "../navigation/search";
 import { rowStatusText } from "../navigation/db-rows";
+import { sidebarStatusText } from "../navigation/sidebar";
 
 /**
  * Bridge: mirror a sanitized snapshot of vim_info to document.body.dataset
@@ -65,7 +66,7 @@ export const updateInfoContainer = () => {
   refreshSearchHighlights();
   const search = searchStatusText();
   const searchInfo = search ? ` | ${search}` : "";
-  const rowInfo = rowStatusText();
+  const rowInfo = sidebarStatusText() || rowStatusText();
   const rowPart = rowInfo ? ` | ${rowInfo}` : "";
   mode.innerText = `${getModeText(vim_info.mode)} | Line ${vim_info.active_line + 1}/${vim_info.lines.length}${rowPart}${searchInfo}${pendingCount}`;
 

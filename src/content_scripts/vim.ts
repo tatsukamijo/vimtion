@@ -202,6 +202,12 @@ import {
   returnToPeekedRow,
   stepPeekedRow,
 } from "./navigation/db-rows";
+import {
+  enterSidebarMode,
+  exitSidebarMode,
+  handleSidebarKey,
+  inSidebarMode,
+} from "./navigation/sidebar";
 import { repeatLastFind } from "./navigation/char-find";
 import {
   openSearch,
@@ -1013,12 +1019,18 @@ const rowKeyContext = {
 document.addEventListener(
   "mousedown",
   () => {
-    if (!inRowMode()) return;
+    if (!inRowMode() && !inSidebarMode()) return;
     exitRowMode();
+    exitSidebarMode();
     updateInfoContainer();
   },
   true,
 );
+
+const sidebarKeyContext = {
+  updateInfoContainer: () => updateInfoContainer(),
+  saveCursorPosition: () => saveCursorPosition(),
+};
 
 let popupReturn: {
   blockId: string | null;
@@ -3927,13 +3939,24 @@ const handlePendingOperator = (key: string): boolean => {
 };
 
 const normalReducerBase = (e: KeyboardEvent): boolean => {
+  // The sidebar cursor (Ctrl+h from the page) takes every key while it is on.
+  if (handleSidebarKey(e, sidebarKeyContext)) return true;
+
   // Handle specific Ctrl key combinations for page navigation
   if (e.ctrlKey && !e.metaKey && !e.altKey) {
     const key = e.key.toLowerCase();
 
-    // Ctrl+h / Ctrl+l - to the page / the side peek beside it
+    // Ctrl+h / Ctrl+l - to the page / the side peek beside it; Ctrl+h on
+    // the leftmost page goes on to the sidebar.
     if (!e.shiftKey && (key === "h" || key === "l")) {
       const { frame, peek } = pageSurfaces();
+      const onPeek = !!peek && currentSurface() === peek;
+      if (key === "h" && !onPeek) {
+        exitRowMode();
+        enterSidebarMode();
+        updateInfoContainer();
+        return true;
+      }
       if (frame && peek) {
         switchSurface(key === "l");
         return true;
@@ -4921,6 +4944,8 @@ const charwiseWithCount = (op: string, motion: string, n: number) => {
 
 const normalReducer = (e: KeyboardEvent): boolean => {
   const { vim_info } = window;
+  // No counts in the sidebar: its keys go straight to it.
+  if (inSidebarMode()) return normalReducerBase(e);
   const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
   const pending = vim_info.pending_operator;
 

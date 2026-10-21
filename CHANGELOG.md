@@ -5,6 +5,11 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`Ctrl+h` onto the sidebar**: from the page (the left one when a side peek is open), `Ctrl+h` highlights the open page in the left sidebar. `j` / `k`, `gg` / `G` and `Ctrl+d` / `Ctrl+u` move through it, `Enter` opens the page (`Shift+Enter` in a new tab), `l` / `h` expand and collapse, and `Ctrl+l` / `Esc` go back to the page with the cursor where it was. Other keys do nothing there, so they can't edit the page.
+
 ## [1.12.0] - 2026-10-19
 
 ### Added
