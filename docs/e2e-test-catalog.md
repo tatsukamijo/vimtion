@@ -723,3 +723,12 @@ Block types not already in operators-block-types.spec.ts.
 |---|------|--------|
 | 1 | Ctrl+h walks the sidebar without touching the page; Ctrl+l and Esc come back | Pass |
 | 2 | Enter opens the highlighted page | Pass |
+
+## page-links.spec.ts (4 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | j / k stop on sub-pages and links to pages | Pass |
+| 2 | editing keys do nothing on a page block; Esc leaves it | Pass |
+| 3 | Enter opens the page; Back comes to the line above it | Pass |
+| 4 | Shift+Enter opens the page in a new tab | Pass |

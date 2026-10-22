@@ -11,6 +11,7 @@
 
 import { beginBusy, endBusy, deferInput, isBusy } from "./busy";
 import { inRowMode } from "../navigation/db-rows";
+import { inPageLinkMode } from "../navigation/page-links";
 import { inSidebarMode } from "../navigation/sidebar";
 import { isDocumentEditable } from "./dom-utils";
 
@@ -50,7 +51,7 @@ export const recordKey = (e: KeyboardEvent): void => {
   const onPage = t === document.body || (!!editable && isDocumentEditable(editable));
   if (!onPage) return;
   // Keys taken by the database row cursor (o adds a row) are not text edits.
-  if (inRowMode() || inSidebarMode()) return;
+  if (inRowMode() || inSidebarMode() || inPageLinkMode()) return;
   const { vim_info } = window;
 
   // `.` itself is never part of a change; it closes the one in progress.

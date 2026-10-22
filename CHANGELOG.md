@@ -5,6 +5,11 @@ All notable changes to Vimtion will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`j` / `k` onto page links**: sub-pages and links to pages in the page are no longer skipped. `j` / `k` stop on them like on database rows (the block is highlighted, the status bar shows `Page 1/3`), `Enter` opens the page (`Shift+Enter` in a new tab) and `Esc` leaves. Editing keys do nothing while a page block is highlighted, so they can't change the line above it.
+
 ## [1.13.0] - 2026-10-21
 
 ### Added
