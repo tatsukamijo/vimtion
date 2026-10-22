@@ -65,6 +65,8 @@ async function waitForVimtionReady(page: Page, timeout: number): Promise<void> {
   await page.waitForTimeout(200);
 }
 
+const SHARED_PAGE_VIEWPORT_HEIGHT = 4000;
+
 export async function navigateToTestPage(
   page: Page,
   timeout = 30_000
@@ -83,6 +85,14 @@ export async function navigateToTestPage(
       return;
     }
   }
+
+  // Notion renders a long page lazily: only the blocks near the viewport are
+  // in the DOM, and blocks scrolled far away are removed again. The specs on
+  // the shared test page compare whole-page line lists and counts, so give
+  // them a viewport tall enough that the whole page is rendered (at 720px only
+  // the first ~25 of its ~90 lines exist). The page stays taller than this,
+  // so scrolling (Ctrl+d, zz ...) still has room.
+  await page.setViewportSize({ width: 1280, height: SHARED_PAGE_VIEWPORT_HEIGHT });
 
   // Retry page.goto on transient Notion failures (net::ERR_FAILED, timeouts, ABORTED).
   // These come from Notion's CDN / rate limiter intermittently and used to halt entire
