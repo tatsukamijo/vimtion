@@ -49,6 +49,7 @@ import {
   getAllBlockTexts,
   useCursorInvariant,
   assertCursorInvariant,
+  revealLeaf,
 } from "../helpers";
 
 /**
@@ -66,11 +67,7 @@ async function goToBlock(
   await firstLeaf.click();
   await page.waitForTimeout(50);
 
-  const leaf = page
-    .locator('[data-content-editable-leaf="true"]')
-    .filter({ hasText: targetText })
-    .first();
-  await leaf.scrollIntoViewIfNeeded();
+  const leaf = await revealLeaf(page, targetText);
   await leaf.click();
   await page.waitForTimeout(100);
   await page.keyboard.press("Escape");

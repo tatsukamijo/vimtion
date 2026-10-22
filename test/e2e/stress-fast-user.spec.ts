@@ -9,6 +9,7 @@ import {
   getAllBlockTexts,
   useCursorInvariant,
   useUiInvariant,
+  revealLeaf,
 } from "../helpers";
 
 /**
@@ -45,8 +46,7 @@ async function goToBlock(
   targetText: string,
 ): Promise<number> {
   // Click on the target block to place cursor there
-  const leaf = page.locator('[data-content-editable-leaf="true"]').filter({ hasText: targetText }).first();
-  await leaf.scrollIntoViewIfNeeded();
+  const leaf = await revealLeaf(page, targetText);
   await leaf.click();
   await page.waitForTimeout(100);
 
