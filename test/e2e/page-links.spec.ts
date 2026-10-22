@@ -2,7 +2,8 @@
  * j / k stop on the page's page blocks (sub-pages and links to pages) like on
  * database rows: the block is highlighted while the caret stays on the line
  * above it, editing keys do nothing, Enter opens the page (Shift+Enter in a
- * new tab) and Esc leaves.
+ * new tab; Back highlights the block again), dd cuts it (p puts it back, u
+ * undoes) and Esc leaves.
  */
 import { test, expect } from "../fixtures";
 import type { Page } from "@playwright/test";
@@ -116,7 +117,7 @@ async function step(page: Page, key: string, block: string, line: string) {
     expect(h.count).toBe(1);
     expect(h.mode).toBe(true);
     expect(`${h.kind}:${h.text}`).toBe(block);
-    expect((await getVimState(page)).statusText).toMatch(/Page \d+\/3/);
+    expect((await getVimState(page)).statusText).toMatch(/Page \d+\/\d+/);
   } else {
     expect(h.count).toBe(0);
     expect(h.mode).toBe(false);
@@ -147,7 +148,7 @@ test.describe("page blocks", () => {
     await openPage(page);
     await step(page, "j", "", "before pages");
     await step(page, "j", "page:Child one", "before pages");
-    await pressKeys(page, "x", "d", "d", "i", "a", "o", "p", "u");
+    await pressKeys(page, "x", "i", "a", "o", "p", "u");
     await page.waitForTimeout(600);
     expect(await body(page)).toEqual(PAGE);
     expect((await getVimState(page)).mode).toBe("normal");
@@ -159,7 +160,7 @@ test.describe("page blocks", () => {
     await step(page, "G", "", "last line");
   });
 
-  test("Enter opens the page; Back comes to the line above it", async ({ extensionPage: page }) => {
+  test("Enter opens the page; Back highlights it again", async ({ extensionPage: page }) => {
     const { two } = await openPage(page);
     const from = page.url();
     await pressKeys(page, "j", "j", "j");
@@ -175,6 +176,64 @@ test.describe("page blocks", () => {
     await page.getByText("last line", { exact: true }).waitFor({ timeout: 10_000 });
     await page.waitForTimeout(1500);
     expect(await getActualCursorBlockText(page)).toBe("before pages");
+    expect(await highlighted(page)).toMatchObject({ count: 1, kind: "page", text: "Child two" });
+    // And on from there.
+    await step(page, "j", "", "between");
+  });
+
+  test("dd cuts a page block; p puts it back; u undoes", async ({ extensionPage: page }) => {
+    await openPage(page);
+    await step(page, "j", "", "before pages");
+    await step(page, "j", "page:Child one", "before pages");
+    await pressKeys(page, "d", "d");
+    await page.waitForTimeout(1500);
+    // On to the block now in its place.
+    expect(await highlighted(page)).toMatchObject({ count: 1, kind: "page", text: "Child two" });
+    expect(await getActualCursorBlockText(page)).toBe("before pages");
+    let now = await body(page);
+    expect(now.filter((t) => t !== now[4])).toEqual(["first line", "before pages", "Child two", "between", "last line"]);
+    // The link to the cut page stays (Notion marks it as in the trash).
+    expect(now[4]).toMatch(/^Child one/);
+    expect(now).toHaveLength(6);
+
+    // p below the last line brings the page back there.
+    await pressKeys(page, "Escape");
+    await step(page, "G", "", "last line");
+    await pressKeys(page, "p");
+    await page.waitForTimeout(1500);
+    now = await body(page);
+    expect(now).toEqual(["first line", "before pages", "Child two", "between", "Child one", "last line", "Child one"]);
+    expect(await page.evaluate(() => {
+      const blocks = Array.from(document.querySelectorAll(".notion-page-content .notion-page-block"));
+      return blocks.map((b) => (b.textContent ?? "").trim());
+    })).toEqual(["Child two", "Child one"]);
+
+    // u takes the paste back, u again the cut.
+    await pressKeys(page, "u");
+    await page.waitForTimeout(1200);
+    await pressKeys(page, "u");
+    await page.waitForTimeout(1500);
+    expect(await body(page)).toEqual(PAGE);
+    expect((await getVimState(page)).mode).toBe("normal");
+  });
+
+  test("dd on the last page block goes on to the next line", async ({ extensionPage: page }) => {
+    await openPage(page);
+    await pressKeys(page, "j", "j", "j", "j", "j");
+    await page.waitForTimeout(250);
+    expect(await highlighted(page)).toMatchObject({ kind: "link", text: "Child one" });
+    await pressKeys(page, "d", "d");
+    await page.waitForTimeout(1500);
+    expect(await body(page)).toEqual(["first line", "before pages", "Child one", "Child two", "between", "last line"]);
+    expect((await highlighted(page)).count).toBe(0);
+    expect(await getActualCursorBlockText(page)).toBe("last line");
+    // A d then another key is not dd.
+    await step(page, "k", "", "between");
+    await step(page, "k", "page:Child two", "before pages");
+    await pressKeys(page, "d", "j");
+    await page.waitForTimeout(800);
+    expect(await body(page)).toEqual(["first line", "before pages", "Child one", "Child two", "between", "last line"]);
+    expect(await getActualCursorBlockText(page)).toBe("between");
   });
 
   test("Shift+Enter opens the page in a new tab", async ({ extensionPage: page, extensionContext: context }) => {

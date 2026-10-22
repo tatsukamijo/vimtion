@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **`j` / `k` onto page links**: sub-pages and links to pages in the page are no longer skipped. `j` / `k` stop on them like on database rows (the block is highlighted, the status bar shows `Page 1/3`), `Enter` opens the page (`Shift+Enter` in a new tab) and `Esc` leaves. Editing keys do nothing while a page block is highlighted, so they can't change the line above it.
+- **`j` / `k` onto page links**: sub-pages and links to pages in the page are no longer skipped. `j` / `k` stop on them like on database rows (the block is highlighted, the status bar shows `Page 1/3`), `Enter` opens the page (`Shift+Enter` in a new tab; Back comes back onto the block), `dd` cuts the block (`p` puts it back, moving the page; `u` undoes) and `Esc` leaves. Other editing keys do nothing while a page block is highlighted, so they can't change the line above it.
 
 ## [1.13.0] - 2026-10-21
 

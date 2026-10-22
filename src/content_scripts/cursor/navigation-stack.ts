@@ -10,7 +10,11 @@ import {
 } from "./position";
 import { updateBlockCursor } from "./block-cursor";
 
-export const saveCursorPosition = () => {
+/**
+ * @param pageLinkId - The page block highlighted on the cursor's line (its
+ *   highlight comes back with the cursor).
+ */
+export const saveCursorPosition = (pageLinkId: string | null = null) => {
   const { vim_info } = window;
   // Remove hash from URL to normalize it (block links have hashes)
   const currentUrl = window.location.href.split("#")[0];
@@ -53,6 +57,7 @@ export const saveCursorPosition = () => {
       active_line: vim_info.active_line,
       cursor_position: column,
       block_id: blockId !== "N/A" ? blockId : null,
+      page_link_id: pageLinkId,
     };
 
     sessionStorage.setItem(
@@ -68,7 +73,9 @@ export const saveCursorPosition = () => {
   }
 };
 
-export const restoreCursorPosition = () => {
+/** Returns the page block that was highlighted (null when none). */
+export const restoreCursorPosition = (): string | null => {
+  let pageLinkId: string | null = null;
   const currentUrl = window.location.href.split("#")[0];
 
   try {
@@ -80,6 +87,7 @@ export const restoreCursorPosition = () => {
 
       if (data) {
         const { vim_info } = window;
+        pageLinkId = data.page_link_id ?? null;
 
         // Try to find the element by block ID first (more reliable)
         let targetLineIndex = data.active_line;
@@ -148,4 +156,5 @@ export const restoreCursorPosition = () => {
   } catch (e) {
     // Ignore errors
   }
+  return pageLinkId;
 };

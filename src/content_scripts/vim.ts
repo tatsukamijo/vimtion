@@ -210,6 +210,7 @@ import {
 } from "./navigation/sidebar";
 import {
   enterPageLinkMode,
+  enterPageLinkModeOn,
   exitPageLinkMode,
   handlePageLinkKey,
   inPageLinkMode,
@@ -1055,6 +1056,22 @@ const setActiveLineNearDatabase = (idx: number): void => {
   }
 };
 
+// Back on the page a page block was opened from: highlight it again, the
+// caret on the line above it (the restored cursor's line). Notion may render
+// the block a moment after the lines.
+const rehighlightPageLink = (blockId: string, line = window.vim_info.active_line, tries = 6): void => {
+  const { vim_info } = window;
+  // Not once the cursor has moved on.
+  if (vim_info.mode !== "normal" || vim_info.active_line !== line || inRowMode() || inSidebarMode()) return;
+  const idx = enterPageLinkModeOn(blockId);
+  if (idx === -1) {
+    if (tries > 0) setTimeout(() => rehighlightPageLink(blockId, line, tries - 1), 150);
+    return;
+  }
+  if (idx !== vim_info.active_line) setActiveLine(idx);
+  updateInfoContainer();
+};
+
 const pageLinkKeyContext = {
   leaveDown: (idx: number) => setActiveLineNearDatabase(idx),
   leaveUp: (idx: number) => {
@@ -1064,7 +1081,21 @@ const pageLinkKeyContext = {
     if (line && databaseOfLine(line)) enterRowMode(line, "last");
   },
   updateInfoContainer: () => updateInfoContainer(),
-  saveCursorPosition: () => saveCursorPosition(),
+  saveCursorPosition: (pageLinkId: string | null) => saveCursorPosition(pageLinkId),
+  beginBusy: () => beginBusy(0),
+  endBusy: () => endBusy(),
+  afterCut: (blockId: string | null, fallback: number) => {
+    refreshLines();
+    const { lines } = window.vim_info;
+    const found = blockId
+      ? lines.findIndex((l) => l.element.closest("[data-block-id]")?.getAttribute("data-block-id") === blockId)
+      : -1;
+    const idx = found !== -1 ? found : Math.min(fallback, lines.length - 1);
+    if (idx < 0) return -1;
+    clearNavigationGuard();
+    setActiveLine(idx);
+    return idx;
+  },
 };
 
 let popupReturn: {
@@ -5514,9 +5545,13 @@ const openLineAboveInCodeBlockWrapped = () => {
         if (isIntentionalNavigation) {
           // Clear the flag immediately after reading it
           sessionStorage.removeItem("vimtion_intentional_navigation");
-          restoreCursorPosition();
-          // The restore re-places the caret once more after 100ms.
-          setTimeout(updateInfoContainer, 150);
+          const pageLinkId = restoreCursorPosition();
+          // The restore re-places the caret once more after 100ms; the page
+          // block that was opened is highlighted again (it may render late).
+          setTimeout(() => {
+            if (pageLinkId) rehighlightPageLink(pageLinkId);
+            updateInfoContainer();
+          }, 150);
         } else {
           // Clear saved position for current URL since it's a reload
           try {
