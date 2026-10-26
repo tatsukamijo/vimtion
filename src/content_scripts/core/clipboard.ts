@@ -29,7 +29,7 @@ let restoreOnNextCut = false;
 /** While collecting, every copy / cut is kept (multi-line yank and dd). */
 let collected: ClipboardPayload[] | null = null;
 
-const payloadOf = (data: DataTransfer): ClipboardPayload => {
+export const payloadOf = (data: DataTransfer): ClipboardPayload => {
   const notion: Record<string, string> = {};
   Array.from(data.types)
     .filter((t) => NOTION_TYPE.test(t))

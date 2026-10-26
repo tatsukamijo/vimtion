@@ -9,18 +9,16 @@ import {
   getCursorPosition,
   waitForBlockConversion,
   useCursorInvariant,
+  assertCursorInvariant,
   useUiInvariant,
+  revealLeaf,
 } from "../helpers";
 
 async function goToBlock(
   page: import("@playwright/test").Page,
   targetText: string,
 ): Promise<void> {
-  const leaf = page
-    .locator('[data-content-editable-leaf="true"]')
-    .filter({ hasText: targetText })
-    .first();
-  await leaf.scrollIntoViewIfNeeded();
+  const leaf = await revealLeaf(page, targetText);
   await leaf.click();
   await page.waitForTimeout(100);
   await page.keyboard.press("Escape");
@@ -537,44 +535,32 @@ test.describe("Code block navigation", () => {
     await page.waitForTimeout(200);
 
     const info = await getCodeBlockInfo(page);
-    const { lineCount } = getCodeLineFromOffset(info.text, 0);
+    const lineCount = realLineCount(info.text);
     console.log("BUG-029: code block has", lineCount, "lines");
 
-    // Push past the last real line — enough j's to land on ghost line if any,
-    // and to ensure `text.indexOf("\n", currentPos)` returns -1 on the next press.
-    for (let i = 1; i <= lineCount; i++) {
+    // Down to the code block's last line.
+    for (let i = 1; i < lineCount; i++) {
       await pressKeys(page, "j");
       await page.waitForTimeout(80);
     }
+    // Still on the code block's last line.
+    expect(await getActualCursorBlockText(page)).not.toContain("Text after code block");
 
-    const beforeIdx = await getActualCursorBlockIndex(page);
-    const beforeActive = (await getVimState(page)).activeLine;
-    // Capture the baseline offset between vim tracking and DOM leaf index. Notion
-    // pages typically have a fixed offset (e.g. page title is in vim_info.lines
-    // but not in [data-content-editable-leaf=true]). The bug, if any, should
-    // disturb this offset across the exit-j transition.
-    const beforeOffset = beforeActive - 1 - beforeIdx;
-    console.log("BUG-029 pre-exit-j: domIdx =", beforeIdx, "activeLine =", beforeActive, "offset =", beforeOffset);
-
-    // The exit press: should advance BOTH DOM cursor and active_line by the
-    // SAME amount (since one j press = one block forward).
+    // The exit press moves both the DOM caret and active_line out of the
+    // block. (Not by leaf index: Notion renders a long page lazily and drops
+    // blocks above as it scrolls, which shifts every index.)
     await pressKeys(page, "j");
     await page.waitForTimeout(200);
 
-    const afterIdx = await getActualCursorBlockIndex(page);
-    const afterActive = (await getVimState(page)).activeLine;
-    const afterOffset = afterActive - 1 - afterIdx;
-    console.log("BUG-029 post-exit-j: domIdx =", afterIdx, "activeLine =", afterActive, "offset =", afterOffset);
-
     // BUG-029 — see docs/known-bugs.md
-    // The exit branch (code-block.ts:22) increments `vim_info.active_line` by 1
-    // but does not call setActiveLine/updateBlockCursor — so DOM cursor either
-    // stays put OR advances by a different amount than active_line. The
-    // baseline offset between active_line and DOM index must be preserved
-    // across the transition.
-    expect(afterIdx, "BUG-029: DOM cursor advances out of code block").toBeGreaterThan(beforeIdx);
-    expect(afterActive, "BUG-029: status-bar active_line advances out of code block").toBeGreaterThan(beforeActive);
-    expect(afterOffset, "BUG-029: vim active_line ↔ DOM index offset preserved across exit-j").toBe(beforeOffset);
+    // The exit branch (code-block.ts:22) incremented `vim_info.active_line`
+    // without calling setActiveLine/updateBlockCursor, so the DOM caret stayed
+    // in the code block while active_line moved on.
+    expect(await getActualCursorBlockText(page), "BUG-029: DOM cursor advances out of code block").toContain(
+      "Text after code block",
+    );
+    // And active_line with it: vim's line is the line holding the DOM caret.
+    await assertCursorInvariant(page, { strict: true });
   });
 
   // =========================================================================

@@ -208,6 +208,13 @@ import {
   handleSidebarKey,
   inSidebarMode,
 } from "./navigation/sidebar";
+import {
+  enterPageLinkMode,
+  enterPageLinkModeOn,
+  exitPageLinkMode,
+  handlePageLinkKey,
+  inPageLinkMode,
+} from "./navigation/page-links";
 import { repeatLastFind } from "./navigation/char-find";
 import {
   openSearch,
@@ -875,6 +882,7 @@ const switchSurface = (toPeek: boolean): void => {
     });
   }
   exitRowMode();
+  exitPageLinkMode();
   setActiveSurface(target);
   refreshLines();
   const saved = surfaceCursor.get(target);
@@ -1008,6 +1016,10 @@ const setActiveLineFromDatabase = (idx: number): void => {
 const rowKeyContext = {
   lineIndex: (el: Element) => window.vim_info.lines.findIndex((l) => l.element === el),
   setActiveLine: setActiveLineFromDatabase,
+  leaveDown: (idx: number) => {
+    // A page block right after the database comes first.
+    if (!enterPageLinkMode(idx, "first")) setActiveLineFromDatabase(idx + 1);
+  },
   updateInfoContainer: () => updateInfoContainer(),
   enterInsertAfterNewRow,
   afterPeekOpens,
@@ -1019,9 +1031,10 @@ const rowKeyContext = {
 document.addEventListener(
   "mousedown",
   () => {
-    if (!inRowMode() && !inSidebarMode()) return;
+    if (!inRowMode() && !inSidebarMode() && !inPageLinkMode()) return;
     exitRowMode();
     exitSidebarMode();
+    exitPageLinkMode();
     updateInfoContainer();
   },
   true,
@@ -1030,6 +1043,59 @@ document.addEventListener(
 const sidebarKeyContext = {
   updateInfoContainer: () => updateInfoContainer(),
   saveCursorPosition: () => saveCursorPosition(),
+};
+
+// Onto line `idx` from a database title or onto one (see
+// setActiveLineFromDatabase).
+const setActiveLineNearDatabase = (idx: number): void => {
+  const { lines, active_line } = window.vim_info;
+  if (isDatabaseLine(lines[active_line]?.element) || isDatabaseLine(lines[idx]?.element)) {
+    setActiveLineFromDatabase(idx);
+  } else {
+    setActiveLine(idx);
+  }
+};
+
+// Back on the page a page block was opened from: highlight it again, the
+// caret on the line above it (the restored cursor's line). Notion may render
+// the block a moment after the lines.
+const rehighlightPageLink = (blockId: string, line = window.vim_info.active_line, tries = 6): void => {
+  const { vim_info } = window;
+  // Not once the cursor has moved on.
+  if (vim_info.mode !== "normal" || vim_info.active_line !== line || inRowMode() || inSidebarMode()) return;
+  const idx = enterPageLinkModeOn(blockId);
+  if (idx === -1) {
+    if (tries > 0) setTimeout(() => rehighlightPageLink(blockId, line, tries - 1), 150);
+    return;
+  }
+  if (idx !== vim_info.active_line) setActiveLine(idx);
+  updateInfoContainer();
+};
+
+const pageLinkKeyContext = {
+  leaveDown: (idx: number) => setActiveLineNearDatabase(idx),
+  leaveUp: (idx: number) => {
+    // Up into a database: onto its last row.
+    const line = window.vim_info.lines[idx]?.element;
+    setActiveLineNearDatabase(idx);
+    if (line && databaseOfLine(line)) enterRowMode(line, "last");
+  },
+  updateInfoContainer: () => updateInfoContainer(),
+  saveCursorPosition: (pageLinkId: string | null) => saveCursorPosition(pageLinkId),
+  beginBusy: () => beginBusy(0),
+  endBusy: () => endBusy(),
+  afterCut: (blockId: string | null, fallback: number) => {
+    refreshLines();
+    const { lines } = window.vim_info;
+    const found = blockId
+      ? lines.findIndex((l) => l.element.closest("[data-block-id]")?.getAttribute("data-block-id") === blockId)
+      : -1;
+    const idx = found !== -1 ? found : Math.min(fallback, lines.length - 1);
+    if (idx < 0) return -1;
+    clearNavigationGuard();
+    setActiveLine(idx);
+    return idx;
+  },
 };
 
 let popupReturn: {
@@ -3953,6 +4019,7 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
       const onPeek = !!peek && currentSurface() === peek;
       if (key === "h" && !onPeek) {
         exitRowMode();
+        exitPageLinkMode();
         enterSidebarMode();
         updateInfoContainer();
         return true;
@@ -3966,6 +4033,7 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
     // Ctrl+j / Ctrl+k - next / previous database row in the side peek
     if (!e.shiftKey && (key === "j" || key === "k") && hasPeekedRow()) {
       exitRowMode();
+      exitPageLinkMode();
       const opened = stepPeekedRow(key === "j" ? 1 : -1, updateInfoContainer);
       if (opened) afterPeekOpens(opened);
       updateInfoContainer();
@@ -3974,8 +4042,9 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
 
     // Any other Ctrl command (Ctrl+d / u / f / b move the cursor) leaves the
     // database rows. (Not Ctrl on its own: it comes before Ctrl+h / l.)
-    if (key !== "control" && inRowMode()) {
+    if (key !== "control" && (inRowMode() || inPageLinkMode())) {
       exitRowMode();
+      exitPageLinkMode();
       updateInfoContainer();
     }
 
@@ -4029,6 +4098,9 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
 
   // Row mode (the cursor on a database row) takes the keys it knows.
   if (!pending_operator && handleRowKey(e, rowKeyContext)) return true;
+
+  // A page block highlighted (j / k onto a sub-page or a link to a page).
+  if (!pending_operator && handlePageLinkKey(e, pageLinkKeyContext)) return true;
 
   // Handle link selection mode
   if (linkSelectionMode) {
@@ -4690,6 +4762,11 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
         updateInfoContainer();
         return true;
       }
+      // Onto a page block below (a sub-page, a link to a page).
+      if (e.isTrusted && enterPageLinkMode(active_line, "first")) {
+        updateInfoContainer();
+        return true;
+      }
       if (isDatabaseLine(vim_info.lines[active_line]?.element)) {
         setActiveLineFromDatabase(active_line + 1);
       } else {
@@ -4704,6 +4781,12 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
         isInsideCodeBlock(vim_info.lines[active_line].element)
       ) {
         moveCursorUpInCodeBlock();
+        return true;
+      }
+      // Coming up to a page block: onto it, the caret on the line above it.
+      if (e.isTrusted && active_line > 0 && enterPageLinkMode(active_line - 1, "last")) {
+        setActiveLineNearDatabase(active_line - 1);
+        updateInfoContainer();
         return true;
       }
       // Coming up to a database: onto its last row.
@@ -5462,9 +5545,13 @@ const openLineAboveInCodeBlockWrapped = () => {
         if (isIntentionalNavigation) {
           // Clear the flag immediately after reading it
           sessionStorage.removeItem("vimtion_intentional_navigation");
-          restoreCursorPosition();
-          // The restore re-places the caret once more after 100ms.
-          setTimeout(updateInfoContainer, 150);
+          const pageLinkId = restoreCursorPosition();
+          // The restore re-places the caret once more after 100ms; the page
+          // block that was opened is highlighted again (it may render late).
+          setTimeout(() => {
+            if (pageLinkId) rehighlightPageLink(pageLinkId);
+            updateInfoContainer();
+          }, 150);
         } else {
           // Clear saved position for current URL since it's a reload
           try {

@@ -99,6 +99,8 @@ To access the Options page:
 
 **Databases**: `j` `k` move onto and between database rows (the row is highlighted, the status bar shows `Row 2/5`) • `Enter` opens the row the way the database opens pages (side peek by default), `Shift+Enter` in a new tab • `o` adds a page to the database and starts on its title • `Esc` leaves the rows
 
+**Page links**: `j` `k` stop on sub-pages and links to pages in the page (the block is highlighted, the status bar shows `Page 1/3`) • `Enter` opens the page, `Shift+Enter` in a new tab (Back comes back onto the block) • `dd` cuts the block, `p` puts it back elsewhere • `Esc` leaves the block
+
 **Sidebar**: `Ctrl+h` from the page (from the leftmost one when a side peek is open) highlights the open page in the left sidebar • `j` `k` `gg` `G` `Ctrl+d` `Ctrl+u` move • `Enter` opens the page (`Shift+Enter` in a new tab) • `l` `h` expand / collapse • `Ctrl+l` or `Esc` back to the page, cursor where it was
 
 **Side peek**: `Ctrl+h` (to the page on the left; the first time, onto the row of the open page) • `Ctrl+l` (to the page open in the side peek) • `Ctrl+j` `Ctrl+k` (open the next / previous row's page in the peek) • `gq` (close the peek, back on its row); each side keeps its cursor

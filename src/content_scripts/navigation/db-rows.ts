@@ -157,6 +157,8 @@ export interface RowKeyContext {
   /** Index of `el` in vim_info.lines (-1 if gone). */
   lineIndex: (el: Element) => number;
   setActiveLine: (idx: number) => void;
+  /** Past the last row: on to what follows the database titled by line `idx`. */
+  leaveDown: (idx: number) => void;
   updateInfoContainer: () => void;
   enterInsertAfterNewRow: () => void;
   /** Continue in the side peek once it shows the page `blockId`. */
@@ -185,7 +187,7 @@ export const handleRowKey = (e: KeyboardEvent, ctx: RowKeyContext): boolean => {
         show(rows[i + 1]);
       } else {
         exitRowMode();
-        if (titleIndex !== -1) ctx.setActiveLine(titleIndex + 1);
+        if (titleIndex !== -1) ctx.leaveDown(titleIndex);
       }
       ctx.updateInfoContainer();
       return true;

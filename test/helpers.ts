@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 export {
   pressKeys,
@@ -65,6 +65,8 @@ async function waitForVimtionReady(page: Page, timeout: number): Promise<void> {
   await page.waitForTimeout(200);
 }
 
+const SHARED_PAGE_VIEWPORT_HEIGHT = 4000;
+
 export async function navigateToTestPage(
   page: Page,
   timeout = 30_000
@@ -83,6 +85,14 @@ export async function navigateToTestPage(
       return;
     }
   }
+
+  // Notion renders a long page lazily: only the blocks near the viewport are
+  // in the DOM, and blocks scrolled far away are removed again. The specs on
+  // the shared test page compare whole-page line lists and counts, so give
+  // them a viewport tall enough that the whole page is rendered (at 720px only
+  // the first ~25 of its ~90 lines exist). The page stays taller than this,
+  // so scrolling (Ctrl+d, zz ...) still has room.
+  await page.setViewportSize({ width: 1280, height: SHARED_PAGE_VIEWPORT_HEIGHT });
 
   // Retry page.goto on transient Notion failures (net::ERR_FAILED, timeouts, ABORTED).
   // These come from Notion's CDN / rate limiter intermittently and used to halt entire
@@ -130,6 +140,48 @@ export async function navigateToTestPage(
   }
 
   await waitForVimtionReady(page, timeout);
+}
+
+/**
+ * The first editable leaf containing `text` (case-insensitive, like
+ * `filter({ hasText })`), scrolled into view.
+ *
+ * Notion renders a long page lazily: only the blocks near the viewport exist,
+ * and blocks scrolled far away are removed again. So a block further up or
+ * down the shared test page is not in the DOM until the page has been
+ * scrolled to it. Scroll with the mouse wheel, as a user does (a scroll set
+ * from script is pulled back to the caret's block): up to the top, then down
+ * until the block is rendered.
+ */
+export async function revealLeaf(page: Page, text: string): Promise<Locator> {
+  const leaf = page.locator('[data-content-editable-leaf="true"]').filter({ hasText: text }).first();
+  if ((await leaf.count()) === 0) {
+    const scroller = page.locator(".notion-frame .notion-scroller").first();
+    const box = await scroller.boundingBox();
+    if (box) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      const at = () => scroller.evaluate((el) => el.scrollTop);
+      // Up to the top.
+      for (let i = 0; i < 40 && (await leaf.count()) === 0; i++) {
+        const before = await at();
+        await page.mouse.wheel(0, -box.height);
+        await page.waitForTimeout(250);
+        if (before === 0 && (await at()) === 0) break;
+      }
+      // Then down, a bit less than a screen at a time.
+      for (let i = 0; i < 100 && (await leaf.count()) === 0; i++) {
+        const before = await at();
+        await page.mouse.wheel(0, box.height * 0.7);
+        await page.waitForTimeout(250);
+        if ((await at()) === before) {
+          await page.waitForTimeout(500); // the bottom: the last blocks may still be rendering
+          break;
+        }
+      }
+    }
+  }
+  await leaf.scrollIntoViewIfNeeded();
+  return leaf;
 }
 
 export async function reloadAndWait(

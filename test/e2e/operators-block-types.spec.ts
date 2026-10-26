@@ -5,17 +5,14 @@ import {
   pressKeys,
   getVimState,
   getAllBlockTexts,
+  revealLeaf,
 } from "../helpers";
 
 async function goToBlock(
   page: import("@playwright/test").Page,
   targetText: string,
 ): Promise<void> {
-  const leaf = page
-    .locator('[data-content-editable-leaf="true"]')
-    .filter({ hasText: targetText })
-    .first();
-  await leaf.scrollIntoViewIfNeeded();
+  const leaf = await revealLeaf(page, targetText);
   await leaf.click();
   await page.waitForTimeout(100);
   await page.keyboard.press("Escape");

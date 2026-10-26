@@ -6,6 +6,7 @@ import {
   getVimState,
   getActualCursorBlockIndex,
   getAllBlockTexts,
+  revealLeaf,
 } from "../helpers";
 
 async function fastKeys(
@@ -21,9 +22,7 @@ async function goToBlock(
   page: import("@playwright/test").Page,
   targetText: string,
 ): Promise<number> {
-  const leaf = page.locator('[data-content-editable-leaf="true"]')
-    .filter({ hasText: targetText }).first();
-  await leaf.scrollIntoViewIfNeeded();
+  const leaf = await revealLeaf(page, targetText);
   await leaf.click();
   await page.waitForTimeout(100);
   await fastKeys(page, "Escape");
