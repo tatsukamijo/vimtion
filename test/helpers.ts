@@ -77,9 +77,12 @@ export async function navigateToTestPage(
     );
   }
 
-  // If already on the test page with Vimtion ready, skip navigation
+  // If already on the test page with Vimtion ready, skip navigation. Match the
+  // test page's own id: a spec that ran on a fresh page leaves the tab there
+  // (and archives that page afterwards).
   const currentUrl = page.url();
-  if (/notion\.(so|com)/.test(currentUrl)) {
+  const testPageId = TEST_PAGE_URL.match(/[0-9a-f]{32}/)?.[0];
+  if (testPageId && currentUrl.includes(testPageId)) {
     const text = await page.locator(".vim-mode").textContent().catch(() => "");
     if (text && text.includes("Line")) {
       return;
