@@ -12,6 +12,7 @@ export interface VimtionSettings {
   visualHighlightColor: string;
   showUpdateNotifications: boolean;
   linkHintsEnabled: boolean;
+  linkHintKey: "gl" | "f" | "F";
   hintCharacters: string;
   hintBackgroundColor: string;
   hintTextColor: string;
@@ -29,6 +30,7 @@ export const DEFAULT_SETTINGS: VimtionSettings = {
   visualHighlightColor: "#ff4458",
   showUpdateNotifications: true,
   linkHintsEnabled: true,
+  linkHintKey: "gl",
   hintCharacters: "asdfghjklqwertyuiopzxcvbnm",
   hintBackgroundColor: "#333333",
   hintTextColor: "#ffffff",

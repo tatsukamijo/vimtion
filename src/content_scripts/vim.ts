@@ -4004,6 +4004,10 @@ const handlePendingOperator = (key: string): boolean => {
   return true;
 };
 
+// Whether a bare normal-mode key is bound to link hints instead of find-char.
+const isLinkHintKey = (key: string): boolean =>
+  currentSettings.linkHintsEnabled && currentSettings.linkHintKey === key;
+
 const normalReducerBase = (e: KeyboardEvent): boolean => {
   // The sidebar cursor (Ctrl+h from the page) takes every key while it is on.
   if (handleSidebarKey(e, sidebarKeyContext)) return true;
@@ -4924,10 +4928,15 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
       }, 50);
       return true;
     case "f":
-      window.vim_info.pending_operator = "f";
-      return true;
     case "F":
-      window.vim_info.pending_operator = "F";
+      // f / F can be rebound to link hints (Vimium-style) in the options;
+      // gl keeps working either way.
+      if (isLinkHintKey(e.key)) {
+        saveCursorPosition();
+        enterLinkHintMode(updateInfoContainer);
+        return true;
+      }
+      window.vim_info.pending_operator = e.key;
       return true;
     case "t":
       window.vim_info.pending_operator = "t";
@@ -5143,7 +5152,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
   }
 
   // --- a command that waits for more keys keeps the count ---
-  if (["f", "F", "t", "T", "g"].includes(e.key)) {
+  if (["f", "F", "t", "T", "g"].includes(e.key) && !isLinkHintKey(e.key)) {
     const handled = normalReducerBase(e);
     vim_info.pending_count = n;
     return handled;

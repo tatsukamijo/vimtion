@@ -680,6 +680,15 @@ Block types not already in operators-block-types.spec.ts.
 | 4 | Shift+Enter on a row opens its page in a new tab, and yk below a database yanks lines | Pass |
 | 5 | Ctrl+h / Ctrl+l then gq keeps the row cursor on the opened row | Pass |
 
+## link-hint-key.spec.ts (4 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | f shows hints when bound; gl still does; df still deletes | Pass |
+| 2 | F shows hints when bound; f still finds forward | Pass |
+| 3 | a count before the bound f does not leak into the next command | Pass |
+| 4 | with link hints disabled, a bound f falls back to find-char | Pass |
+
 ## yank-mentions.spec.ts (5 tests, fresh page per test)
 
 | # | Test | Status |
