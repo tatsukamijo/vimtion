@@ -140,6 +140,40 @@ test.describe("visual-line Tab / Shift+Tab", () => {
     expect((await getVimState(page)).mode).toBe("visual-line");
   });
 
+  test("a list holding a callout (its text a paragraph inside it) indents as one", async ({
+    extensionPage: page,
+  }) => {
+    const callout = {
+      object: "block",
+      type: "callout",
+      callout: {
+        rich_text: [],
+        icon: { type: "emoji", emoji: "💬" },
+        children: [{ object: "block", type: "paragraph", paragraph: { rich_text: text("callout text") } }],
+      },
+    };
+    await openFreshPage(page, [
+      bullet("first"),
+      bullet("For this work", [bullet("Problem"), callout, bullet("too hard")]),
+      bullet("after"),
+    ]);
+    // For this work .. too hard (4 lines).
+    await pressKeys(page, "j", "V", "j", "j", "j", "Tab");
+    await settle(page);
+
+    expect(await parentOf(page, "For this work")).toBe("first");
+    expect(await parentOf(page, "Problem")).toBe("For this work");
+    expect(await parentOf(page, "too hard")).toBe("For this work");
+    expect(await page.locator(".notion-callout-block", { hasText: "callout text" }).count()).toBe(1);
+    expect(await parentOf(page, "after")).toBe("");
+    expect((await getVimState(page)).mode).toBe("visual-line");
+
+    await pressKeys(page, "Shift+Tab");
+    await settle(page);
+    expect(await parentOf(page, "For this work")).toBe("");
+    expect(await parentOf(page, "Problem")).toBe("For this work");
+  });
+
   test("a parent selected with its child indents as one subtree", async ({ extensionPage: page }) => {
     await openFreshPage(page, [bullet("top"), bullet("parent", [bullet("child")]), bullet("after")]);
     await pressKeys(page, "j", "V", "j", "Tab");
