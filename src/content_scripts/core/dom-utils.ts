@@ -155,6 +155,31 @@ const findBlock = (blockId: string): Element | null =>
   ).find((b) => ownLeaf(b) !== null) ?? null;
 
 /**
+ * Whether every block nested in `blockId` that has a line of its own is in
+ * `ids`. A nested block without one (a callout whose text is a paragraph
+ * inside it) has nothing to select: its lines decide.
+ */
+const allNestedLinesIn = (blockId: string, ids: string[]): boolean => {
+  const block = findBlock(blockId);
+  if (!block) return false;
+  return Array.from(block.querySelectorAll(".notion-selectable[data-block-id]")).every((child) => {
+    const childId = child.getAttribute("data-block-id");
+    return !childId || childId === blockId || !ownLeaf(child) || ids.includes(childId);
+  });
+};
+
+/** The ids of the blocks `blockId` is nested in, innermost first. */
+const ancestorIds = (blockId: string): string[] => {
+  const out: string[] = [];
+  const block = findBlock(blockId);
+  for (let up = block?.parentElement?.closest("[data-block-id]"); up; up = up.parentElement?.closest("[data-block-id]")) {
+    const upId = up.getAttribute("data-block-id");
+    if (upId) out.push(upId);
+  }
+  return out;
+};
+
+/**
  * Outdent one block by sending Shift+Tab to its leaf. Notion handles Tab in
  * its keydown handler and accepts this synthetic event (unlike Backspace on a
  * block selection). Vimtion's own listener must see insert mode so it lets the
@@ -216,14 +241,20 @@ export const deleteMultipleLinesAtomically = async (
     .slice(firstLineIndex, lastLineIndex + 1)
     .map((line) => line.element.closest("[data-block-id]")?.getAttribute("data-block-id"))
     .filter((id): id is string => !!id);
-  const uniqueIds = blockIds.filter((id, i) => blockIds.indexOf(id) === i);
+  const deleted = blockIds.filter((id, i) => blockIds.indexOf(id) === i);
+  // A block whose nested lines are all deleted too goes in one cut: Notion
+  // cuts a block with its children, including wrappers that have no line of
+  // their own (a callout around a paragraph). Cut line by line, such a
+  // wrapper was left behind, empty, and lifted out of its parent.
+  const whole = deleted.filter((id) => allNestedLinesIn(id, deleted));
+  const uniqueIds = deleted.filter((id) => !ancestorIds(id).some((up) => whole.includes(up)));
 
   let edits = 0;
   for (let k = uniqueIds.length - 1; k >= 0; k--) {
     const blockId = uniqueIds[k];
 
     // Lift surviving children (last-first) so only this line is deleted.
-    for (let guard = 0; guard < 200; guard++) {
+    for (let guard = 0; guard < 200 && !whole.includes(blockId); guard++) {
       const block = findBlock(blockId);
       const children = block ? directChildBlocks(block) : [];
       const lastChild = children[children.length - 1];
@@ -329,26 +360,11 @@ export const yankBlocksWithNotionData = async (
   // Notion copies (and pastes) a block with its children, so a child whose
   // parent is yanked too comes along with it; copying it again duplicated
   // it. Copy only the topmost yanked blocks.
-  const topmost = ids.filter((id) => {
-    const block = findBlock(id);
-    for (let up = block?.parentElement?.closest("[data-block-id]"); up; up = up.parentElement?.closest("[data-block-id]")) {
-      const upId = up.getAttribute("data-block-id");
-      if (upId && ids.includes(upId)) return false;
-    }
-    return true;
-  });
+  const topmost = ids.filter((id) => !ancestorIds(id).some((up) => ids.includes(up)));
   // A Notion copy brings every nested line; when one of them is not yanked
   // (yy on a parent), keep the plain-text yank so p adds exactly the yanked
   // lines (as Vim does; dd keeps the children too).
-  for (const id of topmost) {
-    const nested: Element[] = Array.from(
-      findBlock(id)?.querySelectorAll(".notion-selectable[data-block-id]") ?? [],
-    );
-    for (const child of nested) {
-      const childId = child.getAttribute("data-block-id");
-      if (childId && childId !== id && !ids.includes(childId)) return null;
-    }
-  }
+  if (!topmost.every((id) => allNestedLinesIn(id, ids))) return null;
   ids.length = 0;
   ids.push(...topmost);
   // Each block takes a copy round trip (~60ms) while typed keys wait (at

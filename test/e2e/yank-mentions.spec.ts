@@ -234,3 +234,95 @@ const nested = (page: Page) =>
       return "  ".repeat(depth) + text + (e.querySelector(".notion-page-mention-token") ? " [M]" : "");
     }),
   );
+
+/**
+ * A fresh page: "Thoughts" with nested "Problem", a callout and "too hard",
+ * then "end". The callout's text is its own title or, as Notion's editor
+ * makes it now, a paragraph inside it. Opened, cursor on "Thoughts".
+ */
+async function openCalloutPage(page: Page, textAsChild: boolean) {
+  const text = (s: string) => [{ type: "text", text: { content: s } }];
+  const bullet = (s: string, children?: unknown[]) => ({
+    object: "block",
+    type: "bulleted_list_item",
+    bulleted_list_item: { rich_text: text(s), ...(children ? { children } : {}) },
+  });
+  const callout = {
+    object: "block",
+    type: "callout",
+    callout: textAsChild
+      ? {
+          rich_text: [],
+          icon: { type: "emoji", emoji: "💬" },
+          children: [{ object: "block", type: "paragraph", paragraph: { rich_text: text("callout text") } }],
+        }
+      : { rich_text: text("callout text"), icon: { type: "emoji", emoji: "💬" } },
+  };
+  const p = await notion("POST", "/v1/pages", {
+    parent: { page_id: process.env.NOTION_PARENT_PAGE_ID },
+    properties: { title: { title: text("Callout lines") } },
+    children: [
+      bullet("Thoughts", [bullet("Problem"), callout, bullet("too hard")]),
+      { object: "block", type: "paragraph", paragraph: { rich_text: text("end") } },
+    ],
+  });
+  created.push(p.id);
+  await page.goto(p.url, { waitUntil: "domcontentloaded" });
+  await page.getByText("end", { exact: true }).waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  await page.evaluate(() =>
+    document
+      .querySelectorAll(".vimtion-notification-overlay, .vimtion-update-notification")
+      .forEach((e) => e.remove()),
+  );
+  await waitForVimStateReady(page, 10_000);
+  await page.getByText("Thoughts", { exact: true }).click();
+  await pressKeys(page, "Escape", "0");
+  await page.waitForTimeout(300);
+  expect(await getActualCursorBlockText(page)).toBe("Thoughts");
+}
+
+/** Body lines, "[callout]" marking a line inside a callout. */
+const calloutLines = (page: Page) =>
+  page.evaluate(() =>
+    Array.from(document.querySelectorAll(".notion-page-content [data-content-editable-leaf]")).map(
+      (e) => (e.textContent ?? "") + (e.closest(".notion-callout-block") ? " [callout]" : ""),
+    ),
+  );
+
+test.describe("yank / put keep a callout a callout", () => {
+  for (const textAsChild of [false, true]) {
+    test(`V over a list with a callout then p (callout text ${textAsChild ? "in a child block" : "as its title"})`, async ({
+      extensionPage: page,
+    }) => {
+      await openCalloutPage(page, textAsChild);
+      const before = await calloutLines(page);
+      expect(before).toEqual(["Thoughts", "Problem", "callout text [callout]", "too hard", "end"]);
+      // Thoughts .. too hard.
+      await pressKeys(page, "V", "j", "j", "j", "y");
+      await page.waitForTimeout(1500);
+      await pressKeys(page, "G", "p");
+      await page.waitForTimeout(2000);
+      const after = await calloutLines(page);
+      expect(after.some((l) => l.includes("<aside>"))).toBe(false);
+      expect(after).toEqual([...before, ...before.slice(0, 4)]);
+    });
+
+    test(`V over a list with a callout then d and p (callout text ${textAsChild ? "in a child block" : "as its title"})`, async ({
+      extensionPage: page,
+    }) => {
+      await openCalloutPage(page, textAsChild);
+      const before = await calloutLines(page);
+      await pressKeys(page, "V", "j", "j", "j", "d");
+      await page.waitForTimeout(2500);
+      // No empty callout left behind.
+      expect(await calloutLines(page)).toEqual(["end"]);
+      expect(await page.locator(".notion-page-content .notion-callout-block").count()).toBe(0);
+      await pressKeys(page, "p");
+      await page.waitForTimeout(2000);
+      const after = await calloutLines(page);
+      expect(after.some((l) => l.includes("<aside>"))).toBe(false);
+      expect(after).toEqual(["end", ...before.slice(0, 4)]);
+    });
+  }
+});

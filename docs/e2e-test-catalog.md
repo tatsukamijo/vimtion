@@ -680,7 +680,7 @@ Block types not already in operators-block-types.spec.ts.
 | 4 | Shift+Enter on a row opens its page in a new tab, and yk below a database yanks lines | Pass |
 | 5 | Ctrl+h / Ctrl+l then gq keeps the row cursor on the opened row | Pass |
 
-## yank-mentions.spec.ts (5 tests, fresh page per test)
+## yank-mentions.spec.ts (9 tests, fresh page per test)
 
 | # | Test | Status |
 |---|------|--------|
@@ -689,6 +689,10 @@ Block types not already in operators-block-types.spec.ts.
 | 3 | 2dd then p | Pass |
 | 4 | V over a nested list then p: each item once, children still nested | Pass |
 | 5 | P on a nested line pastes at that line's level | Pass |
+| 6 | V over a list with a callout then p (callout text as its title) | Pass |
+| 7 | V over a list with a callout then d and p (callout text as its title) | Pass |
+| 8 | V over a list with a callout then p (callout text in a child block): no `<aside>` lines (BUG-099) | Pass |
+| 9 | V over a list with a callout then d and p (callout text in a child block): no empty callout left (BUG-100) | Pass |
 
 ## typing-guard.spec.ts (3 tests, fresh page per test)
 
