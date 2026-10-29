@@ -639,6 +639,17 @@ Block types not already in operators-block-types.spec.ts.
 | 14 | V + large selection (5j) + d + u restores all | Pass |
 | 15 | V + d stays in normal mode after delete | Pass |
 
+## visual-line-indent.spec.ts (6 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | Tab indents every selected bullet, Shift+Tab outdents them, selection kept | Pass |
+| 2 | one Tab indents one level, even when the block above has children | Pass |
+| 3 | a nested list with links (several levels selected) indents as one | Pass |
+| 4 | a parent selected with its child indents as one subtree | Pass |
+| 5 | selected upward (V k) works the same | Pass |
+| 6 | a selection with a code block in it is left as it is | Pass |
+
 ## visual-line.spec.ts (1 test, serial)
 
 ### Pending operator state leaks

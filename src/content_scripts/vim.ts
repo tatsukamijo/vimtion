@@ -2215,6 +2215,12 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
       // Move the selected block(s) up one position, keeping them selected.
       moveVisualLineSelection("up");
       return true;
+    case "Tab":
+      // Our own synthetic Tab (below) is for Notion.
+      if (!e.isTrusted) return false;
+      // Indent / outdent the selected block(s), keeping them selected.
+      shiftVisualLineSelection(e.shiftKey);
+      return true;
     default:
       return true; // Block other keys in visual-line mode
   }
@@ -2622,6 +2628,45 @@ const moveVisualLineSelection = (direction: "up" | "down") => {
     scrollActiveLineIntoView();
     updateInfoContainer();
   }, 50);
+};
+
+// Tab / Shift+Tab: indent / outdent every selected block at once with
+// Notion's own Tab on the multi-block selection, then re-anchor the selection
+// onto the same blocks (Notion re-renders them under their new parent).
+const shiftVisualLineSelection = (outdent: boolean) => {
+  const { vim_info } = window;
+  const startLine = vim_info.visual_start_line;
+  const endLine = vim_info.active_line;
+  const [firstLine, lastLine] =
+    startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
+
+  // In a code block Tab replaces the selected text with a tab.
+  for (let i = firstLine; i <= lastLine; i++) {
+    if (isInsideCodeBlock(vim_info.lines[i].element)) return;
+  }
+
+  const startBlockId = vim_info.lines[startLine].block_id;
+  const endBlockId = vim_info.lines[endLine].block_id;
+
+  (document.activeElement ?? document).dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Tab",
+      code: "Tab",
+      keyCode: 9,
+      which: 9,
+      shiftKey: outdent,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+
+  setTimeout(() => {
+    refreshLines();
+    vim_info.visual_start_line = findLineByBlockId(startBlockId, startLine);
+    vim_info.active_line = findLineByBlockId(endBlockId, endLine);
+    updateVisualLineSelection();
+    updateInfoContainer();
+  }, 80);
 };
 
 const deleteVisualLineSelection = () => {

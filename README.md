@@ -254,6 +254,7 @@ The following Vim features are not implemented:
 - [ ] **Table navigation**: Vim-like navigation within Notion tables (similar to page link handling)
 - [ ] **IME-aware normal mode**: Run Vim commands while a Japanese / Korean IME is on
 - [x] **Line movement**: `Shift+J` / `Shift+K` in visual-line mode to move selected blocks down/up
+- [x] **Block indent**: `Tab` / `Shift+Tab` in visual-line mode to indent/outdent every selected block (selection kept, so it can be repeated)
 - [x] **Repeat command** (`.`): Repeat the last command
 - [x] **Counts**: `3j`, `2dd`, `d3w`, `10G`
 - [x] **Search** (`/` `?` `n` `N` `*` `#`) with highlighted matches and a match counter
