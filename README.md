@@ -117,9 +117,10 @@ https://github.com/user-attachments/assets/04dae08b-8e01-4bcd-bd33-18f00de14d9f
 
 
 Vimium-style navigation with keyboard hints:
-- Press `gl` to show hints for all links on the page
+- Press `gl` to show hints for all links and clickable controls on the page
 - Prefer Vimium's `f`? Set **Link Hint Key** to `f` (or `F`) in the options page; that key then shows hints instead of finding a character, and `gl` keeps working
 - Database rows and cards get hints too: a hint opens the page the way the database is set to open it (side peek, center peek or full page)
+- Buttons and controls get hints too (a database's New / New page, toggle arrows, to-do checkboxes, the sidebar's new-page button, Share, ...): a hint clicks it. Buttons Notion only shows on hover are skipped
 - Type hint characters to filter and navigate instantly
 - `Shift+hint` opens the link in a new tab
 - Cursor position is automatically saved and restored when navigating back with `Shift+H`

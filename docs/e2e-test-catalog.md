@@ -680,6 +680,15 @@ Block types not already in operators-block-types.spec.ts.
 | 4 | Shift+Enter on a row opens its page in a new tab, and yk below a database yanks lines | Pass |
 | 5 | Ctrl+h / Ctrl+l then gq keeps the row cursor on the opened row | Pass |
 
+## link-hints-clickables.spec.ts (4 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | the database's New page button gets a hint, and picking it adds a row | Pass |
+| 2 | a toggle's arrow gets a hint, and picking it opens the toggle | Pass |
+| 3 | a to-do's checkbox gets a hint, and picking it checks the to-do | Pass |
+| 4 | a database row gets one hint; its hover-only buttons and the hidden Add icon get none | Pass |
+
 ## link-hint-key.spec.ts (4 tests, fresh page per test)
 
 | # | Test | Status |

@@ -78,8 +78,9 @@ export const createHintOverlay = (
 
   // Position overlay at top-left of link. A table row's hint goes over the
   // page icon at the start of its title cell, leaving the title readable.
-  const rect = (isAnchor(link) ? link : collectionItemTarget(link)).getBoundingClientRect();
-  const cell = isAnchor(link) ? null : link.querySelector(".notion-table-view-cell");
+  const item = isCollectionItem(link);
+  const rect = (item ? collectionItemTarget(link) : link).getBoundingClientRect();
+  const cell = item ? link.querySelector(".notion-table-view-cell") : null;
   overlay.style.top = `${rect.top}px`;
   overlay.style.left = `${cell ? cell.getBoundingClientRect().left : rect.left}px`;
 
@@ -139,7 +140,8 @@ export const filterHintsByInput = (
   if (matchedHint) {
     const { link } = matchedHint as LinkHint;
     if (isAnchor(link)) navigateToLink(link, shiftKey, updateInfoContainer);
-    else openCollectionItem(link, shiftKey, updateInfoContainer);
+    else if (isCollectionItem(link)) openCollectionItem(link, shiftKey, updateInfoContainer);
+    else clickElement(link, updateInfoContainer);
   }
 };
 
@@ -274,6 +276,21 @@ const isAnchor = (el: HTMLElement): el is HTMLAnchorElement =>
 /** Database rows (table / list views) and cards (board / gallery). */
 const COLLECTION_ITEM = ".notion-collection-item";
 
+const isCollectionItem = (el: HTMLElement): boolean => el.matches(COLLECTION_ITEM);
+
+/** Buttons and other controls that have no <a href> (New, New page, toggles, ...). */
+const CLICKABLE = [
+  "button",
+  '[role="button"]',
+  '[role="tab"]',
+  '[role="menuitem"]',
+  '[role="option"]',
+  '[role="switch"]',
+  '[role="checkbox"]',
+  'input[type="checkbox"]',
+  'input[type="radio"]',
+].join(", ");
+
 /**
  * What to click to open a database page: the title text in a table row
  * (clicking another cell would edit it), the item itself elsewhere.
@@ -356,6 +373,43 @@ const inViewport = (el: Element) => {
 };
 
 /**
+ * Whether a control can be clicked as the user sees it: not faded out (Notion
+ * keeps hover-only buttons in the DOM at opacity 0) and not covered by
+ * something else. A to-do's checkbox is a transparent input laid over the
+ * drawn box, so for inputs it is the parent that has to be visible.
+ */
+const isClickableOnScreen = (el: HTMLElement): boolean => {
+  const shown = el instanceof HTMLInputElement ? el.parentElement : el;
+  if (!shown || !(shown as any).checkVisibility({ opacityProperty: true, visibilityProperty: true })) {
+    return false;
+  }
+  const r = el.getBoundingClientRect();
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return !!hit && (hit === el || el.contains(hit));
+};
+
+/**
+ * Click a control the way a pointer would. Notion's buttons listen to
+ * pointer / mouse down as well as click, so el.click() alone misses some.
+ */
+export const clickElement = (el: HTMLElement, updateInfoContainer: () => void) => {
+  const { vim_info } = window;
+  removeAllHintOverlays();
+  vim_info.mode = "normal";
+  updateInfoContainer();
+
+  const box = el.getBoundingClientRect();
+  const at = { bubbles: true, cancelable: true, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, view: window };
+  el.dispatchEvent(new PointerEvent("pointerover", at));
+  el.dispatchEvent(new MouseEvent("mouseover", at));
+  el.dispatchEvent(new PointerEvent("pointerdown", at));
+  el.dispatchEvent(new MouseEvent("mousedown", at));
+  el.dispatchEvent(new PointerEvent("pointerup", at));
+  el.dispatchEvent(new MouseEvent("mouseup", at));
+  el.click();
+};
+
+/**
  * Detect all visible links in the document (content, sidebar, and other
  * areas), plus the database rows and cards on screen, which have no <a>.
  */
@@ -409,6 +463,15 @@ export const detectAllLinks = (): HTMLElement[] => {
     if (item.dataset.blockId && inViewport(item)) {
       links.push(item);
     }
+  });
+
+  // Strategy 5: buttons and other controls on screen. Ones inside a link or
+  // a database row are left out: the link / row has its own hint, and its
+  // inner buttons only show on hover.
+  document.querySelectorAll<HTMLElement>(CLICKABLE).forEach((el) => {
+    if (el.closest(`a[href], ${COLLECTION_ITEM}`)) return;
+    if (el.closest(".vim-link-hint, .vim-info-container")) return;
+    if (inViewport(el) && isClickableOnScreen(el)) links.push(el);
   });
 
   // Filter out invisible links (zero dimensions or off-screen)
