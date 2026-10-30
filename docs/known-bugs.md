@@ -803,3 +803,19 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
 - **Root cause**: Notion opens an external link in a new tab, and the click left the page focused with no caret (selection empty). When the tab got focus back, the browser put a caret at the start of the page, and Vimtion followed it to the top.
 - **Fix**: after a link opens without leaving the page (`Enter`, `gl`, `Shift+Enter`), the caret is put back on the cursor's line, at its column, if it is no longer there.
 - **Verified**: `test/e2e/external-link-return.spec.ts`: `Enter` on an external link, bring the new tab to the front, come back: the cursor is on the link's line and `j` goes to the next line (before: the caret was in no line).
+
+## BUG-099: Line-wise yank over a callout pasted it back as `<aside>` text
+
+- **Detected**: 2026-10-29 (user report: `V` over a nested list holding a callout, `y`, `p`: the callout came back as four paragraphs, `<aside>`, `💬`, its text, `</aside>`).
+- **Status**: **RESOLVED** on `fix/callout-yank-delete`.
+- **Root cause**: in Notion's current editor a callout's text is a paragraph block inside the callout, so the callout block has no line of its own. The line-wise yank only uses Notion's block data when every nested block of a yanked block is yanked too; the callout block never is (it is no line), so the yank fell back to the plain native copy, whose text is Notion's Markdown export (`<aside>…</aside>`), and `p` pasted that.
+- **Fix**: nested blocks without a line of their own are ignored in that check (their lines decide), so the yank keeps Notion's block data.
+- **Verified**: `test/e2e/yank-mentions.spec.ts` → "V over a list with a callout then p (callout text in a child block)" (failed before the fix with `<aside>` lines); the variant with the text as the callout's title passed before and after.
+
+## BUG-100: Line-wise delete over a callout left an empty callout behind
+
+- **Detected**: 2026-10-29 (found while testing BUG-099).
+- **Status**: **RESOLVED** on `fix/callout-yank-delete`.
+- **Root cause**: `d` cuts the deleted lines one block at a time, last first, and before cutting a block lifts its surviving children out of it. The callout around a paragraph is no line, so it was not cut; once its paragraph was cut it was an empty surviving child, lifted out of its parent and left on the page.
+- **Fix**: a deleted block whose nested lines are all deleted too is cut in one cut with its children (Notion's cut takes them, wrappers included); its nested blocks are not cut separately and nothing is lifted.
+- **Verified**: `test/e2e/yank-mentions.spec.ts` → "V over a list with a callout then d and p (callout text in a child block)" (failed before the fix with an empty callout line left above `end`).
