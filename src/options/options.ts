@@ -9,6 +9,7 @@ interface VimtionSettings {
   visualHighlightColor: string;
   showUpdateNotifications: boolean;
   linkHintsEnabled: boolean;
+  linkHintKey: "gl" | "f" | "F";
   hintCharacters: string;
   hintBackgroundColor: string;
   hintTextColor: string;
@@ -25,6 +26,7 @@ const DEFAULT_SETTINGS: VimtionSettings = {
   visualHighlightColor: "#ff4458",
   showUpdateNotifications: true,
   linkHintsEnabled: true,
+  linkHintKey: "gl",
   hintCharacters: "asdfghjklqwertyuiopzxcvbnm",
   hintBackgroundColor: "#333333",
   hintTextColor: "#ffffff",
@@ -65,6 +67,8 @@ function loadSettings() {
     // Link Hints
     (document.getElementById("linkHintsEnabled") as HTMLInputElement).checked =
       settings.linkHintsEnabled;
+    (document.getElementById("linkHintKey") as HTMLSelectElement).value =
+      settings.linkHintKey;
     (document.getElementById("hintCharacters") as HTMLInputElement).value =
       settings.hintCharacters;
     (document.getElementById("hintBackgroundColor") as HTMLInputElement).value =
@@ -116,6 +120,9 @@ function saveSettings() {
     linkHintsEnabled: (
       document.getElementById("linkHintsEnabled") as HTMLInputElement
     ).checked,
+    linkHintKey: (
+      document.getElementById("linkHintKey") as HTMLSelectElement
+    ).value as VimtionSettings["linkHintKey"],
     hintCharacters: (
       document.getElementById("hintCharacters") as HTMLInputElement
     ).value,

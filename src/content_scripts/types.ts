@@ -12,6 +12,7 @@ export interface VimtionSettings {
   visualHighlightColor: string;
   showUpdateNotifications: boolean;
   linkHintsEnabled: boolean;
+  linkHintKey: "gl" | "f" | "F";
   hintCharacters: string;
   hintBackgroundColor: string;
   hintTextColor: string;
@@ -29,6 +30,7 @@ export const DEFAULT_SETTINGS: VimtionSettings = {
   visualHighlightColor: "#ff4458",
   showUpdateNotifications: true,
   linkHintsEnabled: true,
+  linkHintKey: "gl",
   hintCharacters: "asdfghjklqwertyuiopzxcvbnm",
   hintBackgroundColor: "#333333",
   hintTextColor: "#ffffff",
@@ -48,7 +50,7 @@ export interface VimLine {
 
 // Link hint interface
 export interface LinkHint {
-  /** An <a href>, or a database row / card (opened by clicking it). */
+  /** An <a href>, a database row / card, or a button or other control (clicked). */
   link: HTMLElement;
   hint: string;
   overlay: HTMLElement;

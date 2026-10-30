@@ -94,6 +94,16 @@
         </div>
 
         <div class="setting-item">
+          <label for="linkHintKey">Link Hint Key</label>
+          <select id="linkHintKey" class="select-input">
+            <option value="gl">gl (default)</option>
+            <option value="f">f (Vimium-style, replaces find-char forward)</option>
+            <option value="F">F (replaces find-char backward)</option>
+          </select>
+          <p class="setting-description">Key that shows link hints in normal mode. gl always works; choosing f or F gives up that find-char motion in normal mode (df, ct, etc. after an operator are unaffected)</p>
+        </div>
+
+        <div class="setting-item">
           <label for="hintCharacters">Hint Characters</label>
           <input type="text" id="hintCharacters" value="asdfghjklqwertyuiopzxcvbnm" class="color-text-input" style="width: 100%; max-width: 400px;">
           <p class="setting-description">Characters used to generate link hints (in priority order)</p>
