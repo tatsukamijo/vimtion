@@ -2215,6 +2215,12 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
       // Move the selected block(s) up one position, keeping them selected.
       moveVisualLineSelection("up");
       return true;
+    case "Tab":
+      // Our own synthetic Tab (below) is for Notion.
+      if (!e.isTrusted) return false;
+      // Indent / outdent the selected block(s), keeping them selected.
+      shiftVisualLineSelection(e.shiftKey);
+      return true;
     default:
       return true; // Block other keys in visual-line mode
   }
@@ -2622,6 +2628,45 @@ const moveVisualLineSelection = (direction: "up" | "down") => {
     scrollActiveLineIntoView();
     updateInfoContainer();
   }, 50);
+};
+
+// Tab / Shift+Tab: indent / outdent every selected block at once with
+// Notion's own Tab on the multi-block selection, then re-anchor the selection
+// onto the same blocks (Notion re-renders them under their new parent).
+const shiftVisualLineSelection = (outdent: boolean) => {
+  const { vim_info } = window;
+  const startLine = vim_info.visual_start_line;
+  const endLine = vim_info.active_line;
+  const [firstLine, lastLine] =
+    startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
+
+  // In a code block Tab replaces the selected text with a tab.
+  for (let i = firstLine; i <= lastLine; i++) {
+    if (isInsideCodeBlock(vim_info.lines[i].element)) return;
+  }
+
+  const startBlockId = vim_info.lines[startLine].block_id;
+  const endBlockId = vim_info.lines[endLine].block_id;
+
+  (document.activeElement ?? document).dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Tab",
+      code: "Tab",
+      keyCode: 9,
+      which: 9,
+      shiftKey: outdent,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+
+  setTimeout(() => {
+    refreshLines();
+    vim_info.visual_start_line = findLineByBlockId(startBlockId, startLine);
+    vim_info.active_line = findLineByBlockId(endBlockId, endLine);
+    updateVisualLineSelection();
+    updateInfoContainer();
+  }, 80);
 };
 
 const deleteVisualLineSelection = () => {
@@ -4004,6 +4049,10 @@ const handlePendingOperator = (key: string): boolean => {
   return true;
 };
 
+// Whether a bare normal-mode key is bound to link hints instead of find-char.
+const isLinkHintKey = (key: string): boolean =>
+  currentSettings.linkHintsEnabled && currentSettings.linkHintKey === key;
+
 const normalReducerBase = (e: KeyboardEvent): boolean => {
   // The sidebar cursor (Ctrl+h from the page) takes every key while it is on.
   if (handleSidebarKey(e, sidebarKeyContext)) return true;
@@ -4924,10 +4973,15 @@ const normalReducerBase = (e: KeyboardEvent): boolean => {
       }, 50);
       return true;
     case "f":
-      window.vim_info.pending_operator = "f";
-      return true;
     case "F":
-      window.vim_info.pending_operator = "F";
+      // f / F can be rebound to link hints (Vimium-style) in the options;
+      // gl keeps working either way.
+      if (isLinkHintKey(e.key)) {
+        saveCursorPosition();
+        enterLinkHintMode(updateInfoContainer);
+        return true;
+      }
+      window.vim_info.pending_operator = e.key;
       return true;
     case "t":
       window.vim_info.pending_operator = "t";
@@ -5143,7 +5197,7 @@ const normalReducer = (e: KeyboardEvent): boolean => {
   }
 
   // --- a command that waits for more keys keeps the count ---
-  if (["f", "F", "t", "T", "g"].includes(e.key)) {
+  if (["f", "F", "t", "T", "g"].includes(e.key) && !isLinkHintKey(e.key)) {
     const handled = normalReducerBase(e);
     vim_info.pending_count = n;
     return handled;
