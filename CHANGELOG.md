@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-11-06
+
 ### Added
+- **`gl` on buttons**: every clickable control on screen gets a hint, not only links and database rows: a database's New / New page, toggle arrows, to-do checkboxes, the sidebar's new-page button, Share, ... Picking one clicks it, so these no longer need the mouse. Buttons that only show on hover, covered ones, and buttons inside a link or a database row get no hint.
+- **Link Hint Key** (Options → Link Hints): `gl` (default), `f` (like Vimium) or `F`. `gl` always works. The chosen key no longer finds a character in normal mode; after an operator (`df`, `cF`, ...) it still does, and with link hints off it is find-char again.
+- **`Tab` / `Shift+Tab` in visual-line mode** indent / outdent every selected block and keep the selection, so they can be pressed again. A selection holding a code block is left alone.
 - **`j` / `k` onto page links**: sub-pages and links to pages in the page are no longer skipped. `j` / `k` stop on them like on database rows (the block is highlighted, the status bar shows `Page 1/3`), `Enter` opens the page (`Shift+Enter` in a new tab; Back comes back onto the block), `dd` cuts the block (`p` puts it back, moving the page; `u` undoes) and `Esc` leaves. Other editing keys do nothing while a page block is highlighted, so they can't change the line above it.
+
+### Fixed
+- `V`…`y` then `p` over lines holding a callout pasted it back as `<aside>`, `💬`, its text and `</aside>` lines; it now comes back as a callout.
+- `V`…`d` over lines holding a callout left an empty callout behind.
 
 ## [1.13.0] - 2026-10-21
 
