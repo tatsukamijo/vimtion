@@ -2112,6 +2112,10 @@ const visualReducer = (e: KeyboardEvent): boolean => {
     case "y":
       yankVisualSelection();
       return true;
+    case "p":
+    case "P":
+      pasteOverVisualSelection();
+      return true;
     default:
       return true; // Block other keys
   }
@@ -3208,6 +3212,64 @@ const pasteAfterCursor = async () => {
     }
   } catch (err) {
     console.error("[Vim-Notion] Failed to paste:", err);
+  }
+};
+
+/**
+ * Visual p / P: replace the selection with the clipboard. The clipboard is
+ * left as it was (Vim's v_P, for both keys), so the same text can be put
+ * again.
+ */
+const pasteOverVisualSelection = async () => {
+  const { vim_info } = window;
+  if (vim_info.active_line !== vim_info.visual_start_line) return;
+  const element = vim_info.lines[vim_info.active_line].element;
+  const start = getCursorIndexInElement(element);
+  let pasted = false;
+
+  beginBusy(0);
+  try {
+    let html = "";
+    let text = "";
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      if (item.types.includes("text/html")) {
+        html = await (await item.getType("text/html")).text();
+      }
+      if (item.types.includes("text/plain")) {
+        text = await (await item.getType("text/plain")).text();
+      }
+    }
+    if (!text) return;
+
+    // Delete rather than cut, so the clipboard keeps its content. (Pasting
+    // over the selection would not do: Notion pastes a URL over selected
+    // text as a link on it.) On an empty line v selects its line break,
+    // which stays.
+    if ((element.textContent || "").length > 0) document.execCommand("delete");
+    clearNavigationGuard();
+    vim_info.mode = "insert";
+    element.focus({ preventScroll: true });
+    setCursorPosition(element, start);
+    // Notion picks up the caret from the async selectionchange event.
+    await sleepMs(60);
+    dispatchPasteEvent(element, html || text, text);
+    pasted = true;
+    await sleepMs(100);
+  } catch (err) {
+    console.error("[Vim-Notion] Failed to paste:", err);
+  } finally {
+    endBusy();
+    vim_info.mode = "normal";
+    // Notion leaves the caret after the pasted text; Vim rests on the last
+    // pasted character. (Nothing pasted: on the selection start.)
+    const current = element.isConnected
+      ? element
+      : vim_info.lines[vim_info.active_line].element;
+    const target = pasted ? Math.max(0, getCursorIndexInElement(current) - 1) : start;
+    setCursorPosition(current, target);
+    vim_info.desired_column = columnInLine(current, target);
+    updateInfoContainer();
   }
 };
 
