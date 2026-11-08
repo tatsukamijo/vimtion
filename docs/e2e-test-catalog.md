@@ -768,3 +768,13 @@ Block types not already in operators-block-types.spec.ts.
 | 4 | dd cuts a page block; p puts it back; u undoes | Pass |
 | 5 | dd on the last page block goes on to the next line | Pass |
 | 6 | Shift+Enter opens the page in a new tab | Pass |
+
+## visual-put.spec.ts (5 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | viwp replaces a word with a URL and keeps the URL in the clipboard | Pass |
+| 2 | viwP in the middle of a line replaces only the word | Pass |
+| 3 | v with a motion: vep over part of a line | Pass |
+| 4 | u undoes the put in one step | Pass |
+| 5 | viwp inside a code block replaces the word, not the block | Pass |
