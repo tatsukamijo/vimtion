@@ -819,3 +819,12 @@ Full suite on ed2bb05 (stopped at ~410/428): 14 failures. 4 are the known flakes
 - **Root cause**: `d` cuts the deleted lines one block at a time, last first, and before cutting a block lifts its surviving children out of it. The callout around a paragraph is no line, so it was not cut; once its paragraph was cut it was an empty surviving child, lifted out of its parent and left on the page.
 - **Fix**: a deleted block whose nested lines are all deleted too is cut in one cut with its children (Notion's cut takes them, wrappers included); its nested blocks are not cut separately and nothing is lifted.
 - **Verified**: `test/e2e/yank-mentions.spec.ts` → "V over a list with a callout then d and p (callout text in a child block)" (failed before the fix with an empty callout line left above `end`).
+
+## BUG-101: `V` … `d` over a whole code block leaves the code block behind
+
+- **Detected**: 2026-11-13 (found while adding `p` / `P` to visual-line mode).
+- **Status**: **OPEN**.
+- **Reproduction**: a page with `before`, a code block, `after`, `end`. On `before`: `V` `j` `j` `d`. `before` and `after` are deleted, the code block stays.
+- **Root cause**: blocks are removed with a cut while the caret is collapsed in the block (`cutWholeBlock`). Notion does not follow a caret set from script into a code block: its own selection stays on the block it was on before, so the cut for the code block does nothing there, or cuts that other block (seen in a probe: with the caret placed in the code block, the cut removed the paragraph Notion still had as its selection).
+- **Consequence for visual-line `p` / `P`**: a selection that holds a whole code block is left unchanged (nothing put, nothing deleted) rather than replaced in part or with the wrong block cut. Code lines selected with `V` inside one code block are replaced normally.
+- **Test**: `test/e2e/visual-line-put.spec.ts` → "Vjjd over a whole code block deletes it (known bug: it is left behind)" (fails); "a selection holding a whole code block is left unchanged" covers the put.
