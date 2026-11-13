@@ -217,7 +217,7 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) and v
 - **Operate**: `d` `y` `c` or use Notion shortcuts (Cmd+B, Cmd+I, etc.)
 - **Put**: `p` / `P` replace the selection with the clipboard and leave the clipboard as it was, so `viwp` can put the same text again
 
-**Line-wise (`V`)**: Select with `j` `k` `gg` `G` `{` `}`, then `d` `y` `c`
+**Line-wise (`V`)**: Select with `j` `k` `gg` `G` `{` `}`, then `d` `y` `c`, or `p` / `P` to replace the selected lines with the clipboard as whole lines (`yy`, then `Vp` on another line)
 
 **Example**: With cursor inside `(example text)`:
 - `vi(` → selects `example text`
