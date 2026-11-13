@@ -3425,7 +3425,8 @@ const pasteOverVisualLineSelection = async () => {
         // filled instead, and keeps its own type): give it some, the line
         // is cut below.
         // (No undo step of its own: Notion undoes it with the paste.)
-        document.execCommand("insertText", false, "x");
+        // (A space: it counts as text for Notion and is not seen.)
+        document.execCommand("insertText", false, " ");
         await sleepMs(60);
         dispatchNotionPaste(anchor, text, "", blocks);
       } else if (plain !== "") {
@@ -3460,7 +3461,7 @@ const pasteOverVisualLineSelection = async () => {
     if (!put) {
       // Nothing was put after the selection's own (empty) first line:
       // take the text given to it away again.
-      if (anchor && !opened && blocks && (anchor.textContent || "") === "x") {
+      if (anchor && !opened && blocks && (anchor.textContent || "") === " ") {
         deleteCharRange(anchor, 0, 1);
       }
       return;
