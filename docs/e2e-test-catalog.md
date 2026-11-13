@@ -2,7 +2,7 @@
 
 All Playwright E2E tests for Vimtion. Update this file when adding, removing, or renaming tests.
 
-**Total: 488 tests** (26 spec files catalogued)
+**Total: 491 tests** (26 spec files catalogued)
 
 ---
 
@@ -779,7 +779,7 @@ Block types not already in operators-block-types.spec.ts.
 | 4 | u undoes the put in one step | Pass |
 | 5 | viwp inside a code block replaces the word, not the block | Pass |
 
-## visual-line-put.spec.ts (27 tests, fresh page per test)
+## visual-line-put.spec.ts (30 tests, fresh page per test)
 
 | # | Test | Status |
 |---|------|--------|
@@ -808,5 +808,8 @@ Block types not already in operators-block-types.spec.ts.
 | 23 | ggVGp replaces the body and keeps the title | Pass |
 | 24 | u after a put leaves the edit before it alone (text) | Pass |
 | 25 | u after a put leaves the edit before it alone (yanked line) | Pass |
-| 26 | a selection holding a whole code block is left unchanged | Pass |
-| 27 | Vjjd over a whole code block deletes it (known bug: it is left behind) | **Fail** (BUG-101) |
+| 26 | lines copied elsewhere with html become one line each | Pass |
+| 27 | a URL over lines, then j: no menu takes the keys | Pass |
+| 28 | u after a put on an empty first line leaves the edit before it alone | Pass |
+| 29 | a selection holding a whole code block is left unchanged | Pass |
+| 30 | Vjjd over a whole code block deletes it (known bug: it is left behind) | **Fail** (BUG-101) |

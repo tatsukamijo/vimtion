@@ -434,6 +434,56 @@ test.describe("visual-line p / P", () => {
     expect(await body(page)).toEqual(["bc", "b", "c", "d"]);
   });
 
+  test("lines copied elsewhere with html become one line each", async ({ extensionPage: page }) => {
+    await openFreshPage(page, [para("one"), para("two"), para("three")]);
+    await page.evaluate(() =>
+      navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob(["<meta charset='utf-8'><div>X</div><div>Y</div>"], { type: "text/html" }),
+          "text/plain": new Blob(["X\nY"], { type: "text/plain" }),
+        }),
+      ]),
+    );
+
+    await pressKeys(page, "j", "V", "p");
+    await settle(page, 1500);
+    expect(await body(page)).toEqual(["one", "X", "Y", "three"]);
+    expect(await readClipboard(page)).toBe("X\nY");
+  });
+
+  test("a URL over lines, then j: no menu takes the keys", async ({ extensionPage: page }) => {
+    const url = "https://example.com/vimtion";
+    await openFreshPage(page, [para("a"), para("b"), para("c"), para("d")]);
+    await setClipboard(page, url);
+
+    await pressKeys(page, "j", "V", "j", "p");
+    await settle(page, 1500);
+    expect(await body(page)).toEqual(["a", url, "d"]);
+    expect((await getVimState(page)).mode).toBe("normal");
+    await pressKeys(page, "j");
+    await settle(page, 300);
+    expect(await activeLineText(page)).toBe("d");
+    expect(await body(page)).toEqual(["a", url, "d"]);
+    expect(await readClipboard(page)).toBe(url);
+  });
+
+  test("u after a put on an empty first line leaves the edit before it alone", async ({
+    extensionPage: page,
+  }) => {
+    await openFreshPage(page, [para("abc"), para(""), para("c"), para("d")]);
+    await pressKeys(page, "x");
+    await page.waitForTimeout(1500);
+    await pressKeys(page, "G", "y", "y");
+    await settle(page, 600);
+
+    await pressKeys(page, "g", "g", "j", "j", "V", "j", "p");
+    await settle(page, 2000);
+    expect(await body(page)).toEqual(["bc", "d", "d"]);
+    await pressKeys(page, "u");
+    await settle(page, 2000);
+    expect(await body(page)).toEqual(["bc", "", "c", "d"]);
+  });
+
   // Notion does not follow a caret set from script into a code block, so a
   // whole code block cannot be cut (Vd leaves it behind too, see
   // docs/known-bugs.md). The put leaves such a selection alone rather than

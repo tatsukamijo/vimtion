@@ -3424,15 +3424,21 @@ const pasteOverVisualLineSelection = async () => {
         // Notion adds its blocks after a line with text (an empty line is
         // filled instead, and keeps its own type): give it some, the line
         // is cut below.
+        // (No undo step of its own: Notion undoes it with the paste.)
         document.execCommand("insertText", false, "x");
-        // (In a line opened just now it is part of that same undo step.)
-        if (!opened) edits++;
         await sleepMs(60);
         dispatchNotionPaste(anchor, text, "", blocks);
       } else if (plain !== "") {
-        // (Notion starts a block at an empty line; a single line break
-        // stays inside one block.)
-        dispatchNotionPaste(anchor, html ? plain : plain.replace(/\r?\n/g, "\n\n"), html, {});
+        // Several lines go as text, with an empty line between them:
+        // Notion starts a block there, and keeps a single line break (in
+        // text or HTML) inside one block.
+        const several = /\n/.test(plain);
+        dispatchNotionPaste(
+          anchor,
+          several ? plain.replace(/\r?\n/g, "\n\n") : plain,
+          several ? "" : html,
+          {},
+        );
       }
     }
     await sleepMs(300);
@@ -3444,7 +3450,9 @@ const pasteOverVisualLineSelection = async () => {
     const isNew = (l: VimLine) => !idsBefore.has(l.block_id) && l.element !== anchor;
     const filled = !!anchor && !blocks && (anchor.textContent || "") !== "";
     const put = vim_info.lines.some(isNew) || filled || (!!anchor && !blocks && plain === "");
-    if (put && (blocks || plain !== "")) edits++;
+    // (Blocks put after the selection's own first line take no undo step
+    // besides the cuts, as measured against Notion's undo.)
+    if (put && (blocks ? opened : plain !== "")) edits++;
 
     // The anchor is one of the put lines when the text went into it.
     const keepAnchor = put && !blocks && (filled || !vim_info.lines.some(isNew));
@@ -3453,7 +3461,7 @@ const pasteOverVisualLineSelection = async () => {
       // Nothing was put after the selection's own (empty) first line:
       // take the text given to it away again.
       if (anchor && !opened && blocks && (anchor.textContent || "") === "x") {
-        if (deleteCharRange(anchor, 0, 1)) edits++;
+        deleteCharRange(anchor, 0, 1);
       }
       return;
     }
