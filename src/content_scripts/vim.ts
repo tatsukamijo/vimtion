@@ -2211,6 +2211,10 @@ const visualLineReducer = (e: KeyboardEvent): boolean => {
       yankLinesWithNotionData(from, to);
       return true;
     }
+    case "p":
+    case "P":
+      pasteOverVisualLineSelection();
+      return true;
     case "J":
       // Move the selected block(s) down one position, keeping them selected.
       moveVisualLineSelection("down");
@@ -3270,6 +3274,249 @@ const pasteOverVisualSelection = async () => {
     setCursorPosition(current, target);
     vim_info.desired_column = columnInLine(current, target);
     updateInfoContainer();
+  }
+};
+
+/**
+ * Visual-line p / P: replace the selected lines with the clipboard, always
+ * line-wise. The clipboard is left as it was (as visual p / P do), so the
+ * same content can be put again.
+ *
+ * The clipboard is put first, in an empty line opened above the selection,
+ * and the selected lines are cut after: the put lines land at the
+ * selection's place and level whatever is selected (the last line, the whole
+ * page, a parent without its children), and nothing is deleted unless its
+ * replacement is there. Every cut replaces the clipboard, so what it held is
+ * written back at the end.
+ */
+const pasteOverVisualLineSelection = async () => {
+  const { vim_info } = window;
+  const first = Math.min(vim_info.visual_start_line, vim_info.active_line);
+  const last = Math.max(vim_info.visual_start_line, vim_info.active_line);
+  const firstElement = vim_info.lines[first].element;
+
+  // V inside a single code block selects code LINES of one Notion block
+  // (see deleteVisualLineSelection): the range of those lines, without the
+  // line break after them.
+  let codeLines: { from: number; to: number } | null = null;
+  if (first === last && isInsideCodeBlock(firstElement)) {
+    const codeText = firstElement.textContent || "";
+    const selStart = getCursorIndexInElement(firstElement);
+    const selText = window.getSelection()?.toString() ?? "";
+    const selEnd = Math.max(selStart, selStart + selText.length - 1);
+    codeLines = {
+      from: lineBoundsAt(codeText, selStart).start,
+      to: lineBoundsAt(codeText, selEnd).end,
+    };
+  }
+
+  // Leave visual-line mode at once, so the selection is not drawn again.
+  vim_info.mode = "insert";
+  vim_info.pending_operator = null;
+  delete vim_info.visual_end_pos;
+  clearAllBackgroundColors();
+  window.getSelection()?.removeAllRanges();
+
+  // Where the cursor goes: the first put line (the selection's first line
+  // when nothing is put).
+  let landId: string | null = vim_info.lines[first].block_id;
+  let landPos = 0;
+  // Notion edits made, each one undo step.
+  let edits = 0;
+  let saved: { text: string; html: string; notion: Record<string, string> } | null = null;
+  let cut = false;
+  const cutLines = async (element: HTMLElement, lineCount: number) => {
+    cut = true;
+    edits += await deleteMultipleLinesAtomically(element, lineCount);
+    refreshLines();
+  };
+
+  beginBusy();
+  try {
+    let html = "";
+    let text = "";
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      if (item.types.includes("text/html")) {
+        html = await (await item.getType("text/html")).text();
+      }
+      if (item.types.includes("text/plain")) {
+        text = await (await item.getType("text/plain")).text();
+      }
+    }
+    // Nothing to put: nothing is deleted either.
+    if (!text) return;
+    const known = notionDataFor(text);
+    saved = { text, html, notion: known ?? {} };
+    // Lines yanked / deleted in Notion go back as Notion's own blocks.
+    const blocks = vim_info.yank_type === "line" ? known : null;
+    // Line-wise already: the line break ending the text adds no empty line.
+    const plain = text.replace(/\r?\n$/, "");
+
+    if (codeLines) {
+      deleteCharRange(firstElement, codeLines.from, codeLines.to);
+      clearNavigationGuard();
+      firstElement.focus({ preventScroll: true });
+      setCursorPosition(firstElement, codeLines.from);
+      // Notion picks up the caret from the async selectionchange event.
+      await sleepMs(60);
+      dispatchNotionPaste(firstElement, plain, "", {});
+      await sleepMs(100);
+      landPos = codeLines.from;
+      edits = 1;
+      return;
+    }
+
+    // Nothing can replace the page title: the lines below it are replaced.
+    let from = first;
+    while (from <= last && vim_info.lines[from].element.closest(".notion-page-block")) from++;
+    if (from > last) return;
+    const startElement = vim_info.lines[from].element as HTMLElement;
+    landId = vim_info.lines[from].block_id;
+    // A whole code block cannot be cut from here (Notion does not follow
+    // the caret into it, and would cut another block): leave it all.
+    if (
+      !acceptsBlockPaste(startElement, from) ||
+      vim_info.lines.slice(from, last + 1).some((l) => isInsideCodeBlock(l.element))
+    ) {
+      return;
+    }
+    // (A code block is one block with several lines.)
+    const blockIds = (lines: VimLine[]) =>
+      lines.map((l) => l.block_id).filter((id, i, all) => i === 0 || id !== all[i - 1]);
+    let selected = blockIds(vim_info.lines.slice(from, last + 1));
+    let selectedLines = last - from + 1;
+    const idsBefore = new Set(vim_info.lines.map((l) => l.block_id));
+
+    // The line the clipboard is put in (text) or after (Notion's blocks).
+    let anchor: HTMLElement | null = null;
+    let opened = false;
+    {
+      if ((startElement.textContent || "") === "") {
+        // Already an empty line (and Enter does not open one above it).
+        anchor = startElement;
+      } else {
+        // An empty line above the selection, at its first line's level (O).
+        vim_info.active_line = from;
+        clearNavigationGuard();
+        const depth = busyDepth();
+        openLineAbove();
+        // Wait for O to finish (it holds the typeahead queue itself).
+        for (let t = 0; t < 60 && busyDepth() > depth; t++) await sleepMs(25);
+        refreshLines();
+        const own = vim_info.lines.findIndex((l) => l.block_id === selected[0]);
+        const line = own > 0 ? vim_info.lines[own - 1] : undefined;
+        // Only a line that was not there before, right above the selection.
+        if (!line || idsBefore.has(line.block_id) || (line.element.textContent || "") !== "") {
+          return;
+        }
+        anchor = line.element as HTMLElement;
+        opened = true;
+        // (No undo step of its own: Notion undoes the new line together
+        // with what is put in it.)
+      }
+      clearNavigationGuard();
+      vim_info.mode = "insert";
+      anchor.focus({ preventScroll: true });
+      setCursorPosition(anchor, 0);
+      await sleepMs(60);
+      if (blocks) {
+        // Notion adds its blocks after a line with text (an empty line is
+        // filled instead, and keeps its own type): give it some, the line
+        // is cut below.
+        // (No undo step of its own: Notion undoes it with the paste.)
+        // (A space: it counts as text for Notion and is not seen.)
+        document.execCommand("insertText", false, " ");
+        await sleepMs(60);
+        dispatchNotionPaste(anchor, text, "", blocks);
+      } else if (plain !== "") {
+        // Several lines go as text, with an empty line between them:
+        // Notion starts a block there, and keeps a single line break (in
+        // text or HTML) inside one block.
+        const several = /\n/.test(plain);
+        dispatchNotionPaste(
+          anchor,
+          several ? plain.replace(/\r?\n/g, "\n\n") : plain,
+          several ? "" : html,
+          {},
+        );
+      }
+    }
+    await sleepMs(300);
+    refreshLines();
+
+    // The selection is only deleted once its replacement is there: blocks
+    // that were not there before, or text in the anchor line. (A clipboard
+    // holding just a line break puts an empty line: the anchor as it is.)
+    const isNew = (l: VimLine) => !idsBefore.has(l.block_id) && l.element !== anchor;
+    const filled = !!anchor && !blocks && (anchor.textContent || "") !== "";
+    const put = vim_info.lines.some(isNew) || filled || (!!anchor && !blocks && plain === "");
+    // (Blocks put after the selection's own first line take no undo step
+    // besides the cuts, as measured against Notion's undo.)
+    if (put && (blocks ? opened : plain !== "")) edits++;
+
+    // The anchor is one of the put lines when the text went into it.
+    const keepAnchor = put && !blocks && (filled || !vim_info.lines.some(isNew));
+    if (anchor && opened && !keepAnchor && anchor.isConnected) await cutLines(anchor, 1);
+    if (!put) {
+      // Nothing was put after the selection's own (empty) first line:
+      // take the text given to it away again.
+      if (anchor && !opened && blocks && (anchor.textContent || "") === " ") {
+        deleteCharRange(anchor, 0, 1);
+      }
+      return;
+    }
+    if (anchor && !opened) {
+      // The selection's own first line: it holds the put text and stays,
+      // or the blocks went after it and it is cut on its own (they now sit
+      // between it and the rest of the selection).
+      if (!keepAnchor && anchor.isConnected) {
+        clearNavigationGuard();
+        vim_info.mode = "insert";
+        await cutLines(anchor, 1);
+      }
+      selected = selected.slice(1);
+      selectedLines -= 1;
+    }
+    const firstPut = vim_info.lines.find(
+      (l) => !idsBefore.has(l.block_id) || (keepAnchor && l.element === anchor),
+    );
+    if (firstPut) landId = firstPut.block_id;
+
+    // Cut the selected lines, if they are still the same run of blocks.
+    if (selected.length > 0) {
+      const at = vim_info.lines.findIndex((l) => l.block_id === selected[0]);
+      const run = at === -1 ? [] : blockIds(vim_info.lines.slice(at, at + selectedLines));
+      if (run.length === selected.length && run.every((id, i) => id === selected[i])) {
+        clearNavigationGuard();
+        vim_info.mode = "insert";
+        await cutLines(vim_info.lines[at].element as HTMLElement, selectedLines);
+      }
+    }
+  } catch (err) {
+    console.error("[Vim-Notion] Failed to paste:", err);
+  } finally {
+    // Every cut replaced the clipboard: put back what it held.
+    if (cut && saved) {
+      const hasNotion = Object.keys(saved.notion).length > 0;
+      await (saved.html || hasNotion
+        ? writeClipboard(saved)
+        : navigator.clipboard.writeText(saved.text)
+      ).catch(() => {});
+    }
+    vim_info.mode = "normal";
+    // u undoes the whole put.
+    if (edits > 0) vim_info.undo_count = edits;
+    refreshLines();
+    clearAllBackgroundColors();
+    if (vim_info.lines.length > 0) {
+      const index = findLineByBlockId(landId, first);
+      setActiveLine(index);
+      setCursorPosition(vim_info.lines[index].element, landPos);
+      vim_info.desired_column = 0;
+    }
+    updateInfoContainer();
+    endBusy();
   }
 };
 

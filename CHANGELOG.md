@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-11-16
+
 ### Added
 - **`p` / `P` in visual mode** replace the selection with the clipboard (`viwp` puts it over a word). The clipboard keeps its content, so the same text can be put again.
+- **`p` / `P` in visual-line mode** (`V`) replace the selected lines with the clipboard, always as whole lines: text copied elsewhere becomes its own line(s), lines yanked in Notion (`yy`, `Vy`, `dd`) keep their block type, mentions and formatting. The clipboard keeps its content here too, and `u` undoes the put. Inside a code block, `V` … `p` replaces the selected code lines. A selection that holds a whole code block is left unchanged.
 
 ## [1.14.0] - 2026-11-06
 

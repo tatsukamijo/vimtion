@@ -2,7 +2,7 @@
 
 All Playwright E2E tests for Vimtion. Update this file when adding, removing, or renaming tests.
 
-**Total: 396 tests** (12 spec files)
+**Total: 491 tests** (26 spec files catalogued)
 
 ---
 
@@ -778,3 +778,38 @@ Block types not already in operators-block-types.spec.ts.
 | 3 | v with a motion: vep over part of a line | Pass |
 | 4 | u undoes the put in one step | Pass |
 | 5 | viwp inside a code block replaces the word, not the block | Pass |
+
+## visual-line-put.spec.ts (30 tests, fresh page per test)
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | Vp replaces one line with outside text and keeps the clipboard | Pass |
+| 2 | VjjP replaces several lines with one and keeps the clipboard | Pass |
+| 3 | a selection made upwards (Vk) is replaced the same way | Pass |
+| 4 | multi-line outside text becomes one line each | Pass |
+| 5 | yy then Vp over another line puts the yanked line there, repeatably | Pass |
+| 6 | Vjy then Vp: two yanked lines replace one | Pass |
+| 7 | the first and the last line of the page | Pass |
+| 8 | the whole body selected | Pass |
+| 9 | u undoes the whole put | Pass |
+| 10 | an empty clipboard deletes nothing | Pass |
+| 11 | a yanked paragraph over bullets replaces them with a paragraph | Pass |
+| 12 | outside text over a bullet between bullets | Pass |
+| 13 | a parent selected without its children keeps the children | Pass |
+| 14 | a parent selected with its children is replaced whole | Pass |
+| 15 | V on a code line inside a code block replaces that code line only | Pass |
+| 16 | u undoes a code line put | Pass |
+| 17 | an empty line is replaced in place | Pass |
+| 18 | a word yanked from a heading is put as a plain line (yiw, Vp) | Pass |
+| 19 | a yanked heading over a paragraph stays a heading (yy, Vp) | Pass |
+| 20 | typed-ahead keys wait for the put (Vp then j) | Pass |
+| 21 | yanked line over a selection starting on an empty line (yy, Vjp), then u | Pass |
+| 22 | text ending in a line break adds no empty line | Pass |
+| 23 | ggVGp replaces the body and keeps the title | Pass |
+| 24 | u after a put leaves the edit before it alone (text) | Pass |
+| 25 | u after a put leaves the edit before it alone (yanked line) | Pass |
+| 26 | lines copied elsewhere with html become one line each | Pass |
+| 27 | a URL over lines, then j: no menu takes the keys | Pass |
+| 28 | u after a put on an empty first line leaves the edit before it alone | Pass |
+| 29 | a selection holding a whole code block is left unchanged | Pass |
+| 30 | Vjjd over a whole code block deletes it (known bug: it is left behind) | **Fail** (BUG-101) |
