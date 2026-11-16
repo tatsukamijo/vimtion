@@ -215,6 +215,7 @@ Operate on text inside or around delimiters. All operators (`d`, `c`, `y`) and v
   - Quotes: `vi'` `va'` `vi"` `va"` `` vi` va` ``
   - Other: `vi/` `va/` `vi*` `va*`
 - **Operate**: `d` `y` `c` or use Notion shortcuts (Cmd+B, Cmd+I, etc.)
+- **Put**: `p` / `P` replace the selection with the clipboard and leave the clipboard as it was, so `viwp` can put the same text again
 
 **Line-wise (`V`)**: Select with `j` `k` `gg` `G` `{` `}`, then `d` `y` `c`
 

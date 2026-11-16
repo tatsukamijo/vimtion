@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`p` / `P` in visual mode** replace the selection with the clipboard (`viwp` puts it over a word). The clipboard keeps its content, so the same text can be put again.
+
 ## [1.14.0] - 2026-11-06
 
 ### Added
